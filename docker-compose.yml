@@ -1,3 +1,10 @@
+# Pensato per essere importato come stack in Portainer o come progetto in
+# Coolify: non include un reverse proxy proprio, si appoggia a quello già
+# presente sulla piattaforma (Traefik/Nginx Proxy Manager), che instrada
+# *.tuodominio.it verso il servizio "frontend" (porta 80).
+# In locale (docker compose up) funziona anche senza alcun proxy davanti,
+# raggiungendo direttamente le porte pubblicate qui sotto.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,8 +15,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-barmanager}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barmanager}"]
       interval: 5s
@@ -31,16 +36,20 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
+      UPLOADS_DIR: /app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
     ports:
+      # Comodo in locale per chiamare l'API direttamente (Postman/curl);
+      # in produzione non va pubblicata (la raggiunge solo "frontend").
       - "3000:3000"
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules
+      - uploads_data:/app/uploads
     command: sh -c "npx prisma db push && npm run start:dev"
 
   frontend:
@@ -48,19 +57,30 @@ services:
       context: ./frontend
       target: dev
     restart: unless-stopped
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
     depends_on:
       - backend
     ports:
+      # In produzione dietro Portainer/Coolify questa porta non va
+      # pubblicata sull'host: la raggiunge solo il reverse proxy della
+      # piattaforma sulla rete Docker interna. In locale è comoda per
+      # aprire subito http://localhost:5173.
       - "5173:5173"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     command: npm run dev -- --host 0.0.0.0
 
+    # Esempio di label Traefik, per un deploy su Portainer con Traefik
+    # davanti (Coolify le genera da sé dalla UI, non servono qui):
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.barmanager.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.tuodominio.it`)"
+    #   - "traefik.http.routers.barmanager.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.barmanager.loadbalancer.server.port=80"
+
 volumes:
   postgres_data:
   redis_data:
   backend_node_modules:
   frontend_node_modules:
+  uploads_data:

@@ -2,8 +2,9 @@ import { Card, CardActionArea, CardContent, Typography, Grid } from '@mui/materi
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ThermostatIcon from '@mui/icons-material/Thermostat';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
+import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useAuthStore, Role } from '../store/authStore';
 
 const modules = [
   {
@@ -12,7 +13,7 @@ const modules = [
     description: 'Timbratura, richieste assenza',
     icon: AccessTimeIcon,
     path: '/attendance',
-    roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'],
+    roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] as Role[],
   },
   {
     key: 'haccp',
@@ -20,7 +21,7 @@ const modules = [
     description: 'Temperature frigoriferi, report',
     icon: ThermostatIcon,
     path: '/haccp',
-    roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'],
+    roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] as Role[],
   },
   {
     key: 'inventory',
@@ -28,13 +29,27 @@ const modules = [
     description: 'Prodotti, fornitori, nuovo ordine',
     icon: Inventory2Icon,
     path: '/inventory',
-    roles: ['ADMIN', 'MANAGER'],
+    roles: ['ADMIN', 'MANAGER'] as Role[],
+  },
+  {
+    key: 'menu',
+    label: 'Menù online',
+    description: 'Categorie, piatti, disponibilità',
+    icon: RestaurantMenuIcon,
+    path: '/menu/admin',
+    roles: ['ADMIN', 'MANAGER'] as Role[],
   },
 ];
 
 export function Dashboard() {
   const navigate = useNavigate();
   const role = useAuthStore((s) => s.user?.role);
+
+  // Il Super Admin non opera sui moduli di un locale: la sua dashboard è la
+  // gestione locali.
+  if (role === 'SUPER_ADMIN') {
+    return <Navigate to="/super-admin/venues" replace />;
+  }
 
   const visible = modules.filter((m) => !role || m.roles.includes(role));
 
@@ -65,3 +80,4 @@ export function Dashboard() {
     </>
   );
 }
+

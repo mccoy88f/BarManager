@@ -14,7 +14,11 @@ import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+  requireVenueId,
+} from '../common/decorators/current-user.decorator';
 import { AttendanceService } from './attendance.service';
 import { ClockDto } from './dto/clock.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
@@ -45,13 +49,13 @@ export class AttendanceController {
   @Post('qr-tokens')
   @Roles(Role.ADMIN)
   createQrToken(@CurrentUser() user: AuthenticatedUser, @Body('label') label: string) {
-    return this.attendanceService.createQrToken(user.venueId, label);
+    return this.attendanceService.createQrToken(requireVenueId(user), label);
   }
 
   @Get('qr-tokens')
   @Roles(Role.ADMIN)
   listQrTokens(@CurrentUser() user: AuthenticatedUser) {
-    return this.attendanceService.listQrTokens(user.venueId);
+    return this.attendanceService.listQrTokens(requireVenueId(user));
   }
 
   // Admin/Manager: consultazione e correzione presenze
@@ -63,7 +67,7 @@ export class AttendanceController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.attendanceService.listRecords(user.venueId, { employeeId, from, to });
+    return this.attendanceService.listRecords(requireVenueId(user), { employeeId, from, to });
   }
 
   @Patch(':id/correct')
@@ -85,7 +89,7 @@ export class AttendanceController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const records = await this.attendanceService.listRecords(user.venueId, { from, to });
+    const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
     const buffer = await this.xlsx.buildSheet(
       'Presenze',
       [
@@ -118,7 +122,7 @@ export class AttendanceController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const records = await this.attendanceService.listRecords(user.venueId, { from, to });
+    const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
     const buffer = await this.pdf.buildDocument((doc) => {
       doc.fontSize(16).text('Report presenze', { align: 'center' }).moveDown();
       doc.fontSize(10);

@@ -4,7 +4,11 @@ import { PrinterUsage, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+  requireVenueId,
+} from '../common/decorators/current-user.decorator';
 import { HaccpService } from './haccp.service';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
@@ -23,12 +27,12 @@ export class HaccpController {
   @Post('fridges')
   @Roles(Role.ADMIN)
   createFridge(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFridgeDto) {
-    return this.haccpService.createFridge(user.venueId, dto);
+    return this.haccpService.createFridge(requireVenueId(user), dto);
   }
 
   @Get('fridges')
   listFridges(@CurrentUser() user: AuthenticatedUser) {
-    return this.haccpService.listFridges(user.venueId);
+    return this.haccpService.listFridges(requireVenueId(user));
   }
 
   @Post('readings')
@@ -42,7 +46,7 @@ export class HaccpController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.haccpService.listReadings(user.venueId, from, to);
+    return this.haccpService.listReadings(requireVenueId(user), from, to);
   }
 
   /** Stampa il report giornaliero su stampante POS Epson e registra la firma. */
@@ -52,20 +56,21 @@ export class HaccpController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { reportDate: string; signedByName: string },
   ) {
-    const readings = await this.haccpService.listReadings(user.venueId, body.reportDate, body.reportDate);
+    const venueId = requireVenueId(user);
+    const readings = await this.haccpService.listReadings(venueId, body.reportDate, body.reportDate);
 
     const lines = readings.map(
       (r) =>
         `${r.fridge.label.padEnd(20)} ${r.value}°C ${r.outOfRange ? '[FUORI SOGLIA]' : ''} - ${r.recordedAt.toLocaleTimeString('it-IT')}`,
     );
 
-    const result = await this.printing.printReport(user.venueId, PrinterUsage.HACCP, {
+    const result = await this.printing.printReport(venueId, PrinterUsage.HACCP, {
       title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
       lines,
       footer: [`Firmato da: ${body.signedByName}`, '', '_________________________'],
     });
 
-    const report = await this.haccpService.signReport(user.venueId, {
+    const report = await this.haccpService.signReport(venueId, {
       reportDate: body.reportDate,
       signedByName: body.signedByName,
       printedOnPos: result.printed,
@@ -82,9 +87,10 @@ export class HaccpController {
     @Res() res: Response,
     @Body() body: { reportDate: string; signedByName: string; signatureImg: string },
   ) {
-    const readings = await this.haccpService.listReadings(user.venueId, body.reportDate, body.reportDate);
+    const venueId = requireVenueId(user);
+    const readings = await this.haccpService.listReadings(venueId, body.reportDate, body.reportDate);
 
-    await this.haccpService.signReport(user.venueId, {
+    await this.haccpService.signReport(venueId, {
       reportDate: body.reportDate,
       signedByName: body.signedByName,
       signatureImg: body.signatureImg,
@@ -116,6 +122,6 @@ export class HaccpController {
   @Get('reports')
   @Roles(Role.ADMIN, Role.MANAGER)
   listReports(@CurrentUser() user: AuthenticatedUser) {
-    return this.haccpService.listReports(user.venueId);
+    return this.haccpService.listReports(requireVenueId(user));
   }
 }

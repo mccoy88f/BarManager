@@ -3,7 +3,11 @@ import { LeaveStatus, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+  requireVenueId,
+} from '../../common/decorators/current-user.decorator';
 import { LeaveRequestsService } from './leave-requests.service';
 import { CreateLeaveRequestDto } from '../dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from '../dto/review-leave-request.dto';
@@ -26,7 +30,7 @@ export class LeaveRequestsController {
   @Get()
   @Roles(Role.ADMIN, Role.MANAGER)
   listAll(@CurrentUser() user: AuthenticatedUser, @Query('status') status?: LeaveStatus) {
-    return this.service.listForVenue(user.venueId, status);
+    return this.service.listForVenue(requireVenueId(user), status);
   }
 
   @Patch(':id/review')

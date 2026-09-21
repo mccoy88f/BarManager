@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { AttendanceSource, AttendanceType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
-import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 
 @Injectable()
@@ -47,10 +47,11 @@ export class AttendanceService {
   }
 
   async clock(user: AuthenticatedUser, qrTokenValue: string) {
+    const venueId = requireVenueId(user);
     const employeeId = await this.resolveEmployeeId(user.userId);
 
     const qrToken = await this.prisma.qrToken.findUnique({ where: { token: qrTokenValue } });
-    if (!qrToken || !qrToken.active || qrToken.venueId !== user.venueId) {
+    if (!qrToken || !qrToken.active || qrToken.venueId !== venueId) {
       throw new NotFoundException('QR non valido');
     }
 
@@ -66,7 +67,7 @@ export class AttendanceService {
     });
 
     await this.audit.log({
-      venueId: user.venueId,
+      venueId,
       userId: user.userId,
       entity: 'AttendanceRecord',
       entityId: record.id,
@@ -109,7 +110,7 @@ export class AttendanceService {
     });
 
     await this.audit.log({
-      venueId: admin.venueId,
+      venueId: requireVenueId(admin),
       userId: admin.userId,
       entity: 'AttendanceRecord',
       entityId: recordId,

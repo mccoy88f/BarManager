@@ -2,7 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { LeaveStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import {
+  AuthenticatedUser,
+  requireVenueId,
+} from '../../common/decorators/current-user.decorator';
 import { CreateLeaveRequestDto } from '../dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from '../dto/review-leave-request.dto';
 
@@ -38,7 +41,7 @@ export class LeaveRequestsService {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
     const reviewers = await this.prisma.user.findMany({
       where: {
-        venueId: user.venueId,
+        venueId: requireVenueId(user),
         OR: [{ role: 'ADMIN' }, { employee: { department: employee?.department, isManager: true } }],
       },
     });
@@ -86,7 +89,7 @@ export class LeaveRequestsService {
     });
 
     await this.audit.log({
-      venueId: reviewer.venueId,
+      venueId: requireVenueId(reviewer),
       userId: reviewer.userId,
       entity: 'LeaveRequest',
       entityId: requestId,

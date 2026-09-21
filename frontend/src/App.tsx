@@ -8,10 +8,16 @@ import { ClockPage } from './pages/attendance/ClockPage';
 import { LeaveRequests } from './pages/attendance/LeaveRequests';
 import { HaccpHome } from './pages/haccp/HaccpHome';
 import { InventoryHome } from './pages/inventory/InventoryHome';
+import { MenuAdmin } from './pages/menu/MenuAdmin';
+import { PublicMenu } from './pages/menu/PublicMenu';
+import { Venues } from './pages/super-admin/Venues';
 
 export default function App() {
   return (
     <Routes>
+      {/* Menù pubblico: nessun login, nessuna shell applicativa */}
+      <Route path="/menu" element={<PublicMenu />} />
+
       <Route path="/login" element={<Login />} />
 
       <Route element={<ProtectedRoute />}>
@@ -23,6 +29,10 @@ export default function App() {
           <Route path="/haccp" element={<HaccpHome />} />
           <Route element={<ProtectedRoute allow={['ADMIN', 'MANAGER']} />}>
             <Route path="/inventory" element={<InventoryHome />} />
+            <Route path="/menu/admin" element={<MenuAdmin />} />
+          </Route>
+          <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
+            <Route path="/super-admin/venues" element={<Venues />} />
           </Route>
         </Route>
       </Route>

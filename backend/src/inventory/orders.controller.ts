@@ -3,7 +3,11 @@ import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+  requireVenueId,
+} from '../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderLineDto } from './dto/update-order-line.dto';
@@ -21,12 +25,12 @@ export class OrdersController {
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
-    return this.ordersService.listOrders(user.venueId);
+    return this.ordersService.listOrders(requireVenueId(user));
   }
 
   @Get(':id')
   get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.ordersService.getOrder(user.venueId, id);
+    return this.ordersService.getOrder(requireVenueId(user), id);
   }
 
   @Patch(':id/lines/:lineId')

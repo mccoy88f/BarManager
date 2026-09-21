@@ -1,0 +1,150 @@
+import { NotFoundException, Injectable } from '@nestjs/common';
+import { MenuAvailability } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
+import { CreateMenuItemDto } from './dto/create-menu-item.dto';
+import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+
+@Injectable()
+export class MenuService {
+  constructor(private prisma: PrismaService) {}
+
+  // ---- Categorie ------------------------------------------------------
+
+  createCategory(venueId: string, dto: CreateMenuCategoryDto) {
+    return this.prisma.menuCategory.create({ data: { ...dto, venueId } });
+  }
+
+  listCategories(venueId: string) {
+    return this.prisma.menuCategory.findMany({
+      where: { venueId },
+      orderBy: { sortOrder: 'asc' },
+      include: { items: true },
+    });
+  }
+
+  // ---- Voci di menù (amministrazione) ------------------------------------
+
+  createItem(venueId: string, dto: CreateMenuItemDto) {
+    return this.prisma.menuItem.create({ data: { ...dto, venueId } });
+  }
+
+  listItems(venueId: string, categoryId?: string) {
+    return this.prisma.menuItem.findMany({
+      where: { venueId, categoryId },
+      orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
+      include: { category: true },
+    });
+  }
+
+  async updateItem(venueId: string, itemId: string, dto: UpdateMenuItemDto) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.update({ where: { id: itemId }, data: dto });
+  }
+
+  async setVisibility(venueId: string, itemId: string, visible: boolean) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.update({ where: { id: itemId }, data: { visible } });
+  }
+
+  async setUnavailableUntil(venueId: string, itemId: string, until: string | null | undefined) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.update({
+      where: { id: itemId },
+      data: { unavailableUntil: until ? new Date(until) : null },
+    });
+  }
+
+  async setPhoto(venueId: string, itemId: string, photoUrl: string) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.update({ where: { id: itemId }, data: { photoUrl } });
+  }
+
+  async deleteItem(venueId: string, itemId: string) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.delete({ where: { id: itemId } });
+  }
+
+  private async assertOwnership(venueId: string, itemId: string) {
+    const item = await this.prisma.menuItem.findUnique({ where: { id: itemId } });
+    if (!item || item.venueId !== venueId) {
+      throw new NotFoundException('Voce di menù non trovata');
+    }
+    return item;
+  }
+
+  // ---- Menù pubblico (nessun login) --------------------------------------
+
+  /**
+   * Determina la fascia corrente (pranzo/cena/nessuna) in base all'orario
+   * configurato dal locale. Usa l'ora del server: la gestione del fuso
+   * orario per-locale è una rifinitura futura (v. roadmap).
+   */
+  private currentPeriod(venue: {
+    lunchStart: string;
+    lunchEnd: string;
+    dinnerStart: string;
+    dinnerEnd: string;
+  }): 'LUNCH' | 'DINNER' | 'NONE' {
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const toMinutes = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    if (minutes >= toMinutes(venue.lunchStart) && minutes <= toMinutes(venue.lunchEnd)) {
+      return 'LUNCH';
+    }
+    if (minutes >= toMinutes(venue.dinnerStart) && minutes <= toMinutes(venue.dinnerEnd)) {
+      return 'DINNER';
+    }
+    return 'NONE';
+  }
+
+  async getPublicMenu(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue || !venue.active) {
+      throw new NotFoundException('Locale non trovato');
+    }
+
+    const period = this.currentPeriod(venue);
+    const allowedAvailabilities: MenuAvailability[] =
+      period === 'LUNCH'
+        ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]
+        : period === 'DINNER'
+          ? [MenuAvailability.DINNER, MenuAvailability.ALL_DAY]
+          : [MenuAvailability.ALL_DAY];
+
+    const categories = await this.prisma.menuCategory.findMany({
+      where: { venueId },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        items: {
+          where: { visible: true, availability: { in: allowedAvailabilities } },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+
+    const now = new Date();
+    return {
+      venue: { name: venue.name },
+      categories: categories
+        .filter((c) => c.items.length > 0)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          items: c.items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            price: item.price,
+            photoUrl: item.photoUrl,
+            allergens: item.allergens,
+            available: !item.unavailableUntil || item.unavailableUntil <= now,
+          })),
+        })),
+    };
+  }
+}

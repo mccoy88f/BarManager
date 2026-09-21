@@ -12,15 +12,26 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum Role {
+  SUPER_ADMIN // gestore della piattaforma: crea/sospende i locali, nessun venueId
   ADMIN
   MANAGER
   EMPLOYEE
 }
 
+/// Un locale/azienda, isolato dagli altri (multi-tenant) e raggiungibile
+/// sul proprio sotto-dominio (`slug`.tuodominio.it). Creato dal Super Admin.
 model Venue {
   id        String   @id @default(cuid())
   name      String
+  slug      String   @unique // sotto-dominio, es. "locale1" -> locale1.tuodominio.it
+  active    Boolean  @default(true) // sospensione locale (mancato pagamento, ecc.)
   createdAt DateTime @default(now())
+
+  // Fasce orarie del menù, personalizzabili per locale ("HH:mm")
+  lunchStart  String @default("12:00")
+  lunchEnd    String @default("15:00")
+  dinnerStart String @default("19:00")
+  dinnerEnd   String @default("23:00")
 
   users             User[]
   employees         Employee[]
@@ -32,6 +43,8 @@ model Venue {
   auditLogs         AuditLog[]
   qrTokens          QrToken[]
   haccpReports      HaccpReport[]
+  menuCategories    MenuCategory[]
+  menuItems         MenuItem[]
 }
 
 model User {
@@ -42,8 +55,9 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  venueId String
-  venue   Venue  @relation(fields: [venueId], references: [id])
+  // null solo per SUPER_ADMIN: è trasversale, non appartiene a un locale
+  venueId String?
+  venue   Venue?  @relation(fields: [venueId], references: [id])
 
   employee Employee?
 
@@ -329,6 +343,76 @@ model OrderLine {
   stockOnHand Float // giacenza rilevata al momento dell'ordine
   suggestedQty Float // calcolata: max(0, standardQty - stockOnHand)
   orderedQty   Float // quantità effettiva ordinata (editabile dall'utente)
+}
+
+// ---------------------------------------------------------------------------
+// Menù online
+// ---------------------------------------------------------------------------
+
+/// I 14 allergeni ad indicazione obbligatoria (Reg. UE 1169/2011).
+enum Allergen {
+  GLUTEN
+  CRUSTACEANS
+  EGGS
+  FISH
+  PEANUTS
+  SOYBEANS
+  MILK
+  NUTS
+  CELERY
+  MUSTARD
+  SESAME
+  SULPHITES
+  LUPIN
+  MOLLUSCS
+}
+
+enum MenuAvailability {
+  LUNCH
+  DINNER
+  ALL_DAY
+}
+
+model MenuCategory {
+  id        String @id @default(cuid())
+  name      String
+  sortOrder Int    @default(0)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  items MenuItem[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([venueId, name])
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  photoUrl    String?
+  allergens   Allergen[] @default([])
+
+  availability MenuAvailability @default(ALL_DAY)
+
+  visible         Boolean   @default(true) // mostra/nascondi dal menù pubblico
+  unavailableUntil DateTime? // "esaurito fino a": nel menù ma non ordinabile finché non passa
+
+  sortOrder Int @default(0)
+
+  categoryId String
+  category   MenuCategory @relation(fields: [categoryId], references: [id])
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, categoryId])
 }
 
 // ---------------------------------------------------------------------------

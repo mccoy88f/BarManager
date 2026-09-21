@@ -1,7 +1,14 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Contesto di tenant risolto dal TenantMiddleware in base al sotto-dominio. */
+export interface LoginContext {
+  venue?: { id: string; slug: string } | null;
+  isAdminHost?: boolean;
+}
 
 @Injectable()
 export class AuthService {
@@ -10,7 +17,7 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, context: LoginContext = {}) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.active) {
       throw new UnauthorizedException('Credenziali non valide');
@@ -20,6 +27,8 @@ export class AuthService {
     if (!passwordOk) {
       throw new UnauthorizedException('Credenziali non valide');
     }
+
+    this.assertHostMatchesUser(user, context);
 
     const payload = {
       userId: user.id,
@@ -60,5 +69,30 @@ export class AuthService {
 
   static async hashPassword(password: string): Promise<string> {
     return argon2.hash(password);
+  }
+
+  /**
+   * Verifica la coerenza fra il sotto-dominio da cui si accede e l'utente:
+   * - host di amministrazione → solo SUPER_ADMIN;
+   * - sotto-dominio di un locale → solo utenti di quel locale (il SUPER_ADMIN
+   *   può comunque autenticarsi ovunque, per supporto);
+   * - nessun contesto risolto (sviluppo locale senza sotto-domini) → nessun
+   *   controllo, per non complicare lo sviluppo in locale.
+   */
+  private assertHostMatchesUser(user: { role: Role; venueId: string | null }, context: LoginContext) {
+    if (context.isAdminHost) {
+      if (user.role !== Role.SUPER_ADMIN) {
+        throw new UnauthorizedException(
+          'Accedi dal sotto-dominio del tuo locale, non da quello di amministrazione',
+        );
+      }
+      return;
+    }
+
+    if (context.venue) {
+      if (user.role !== Role.SUPER_ADMIN && user.venueId !== context.venue.id) {
+        throw new UnauthorizedException('Utente non abilitato per questo locale');
+      }
+    }
   }
 }

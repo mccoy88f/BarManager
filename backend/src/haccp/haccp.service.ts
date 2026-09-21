@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
-import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
 
@@ -25,8 +25,9 @@ export class HaccpService {
   // ---- Rilevazioni temperatura ------------------------------------------
 
   async createReading(user: AuthenticatedUser, dto: CreateReadingDto) {
+    const venueId = requireVenueId(user);
     const fridge = await this.prisma.fridge.findUnique({ where: { id: dto.fridgeId } });
-    if (!fridge || fridge.venueId !== user.venueId) {
+    if (!fridge || fridge.venueId !== venueId) {
       throw new NotFoundException('Frigorifero non trovato');
     }
 
@@ -48,7 +49,7 @@ export class HaccpService {
     });
 
     await this.audit.log({
-      venueId: user.venueId,
+      venueId,
       userId: user.userId,
       entity: 'TemperatureReading',
       entityId: reading.id,
@@ -58,7 +59,7 @@ export class HaccpService {
 
     if (outOfRange) {
       const managers = await this.prisma.user.findMany({
-        where: { venueId: user.venueId, role: { in: ['ADMIN', 'MANAGER'] } },
+        where: { venueId, role: { in: ['ADMIN', 'MANAGER'] } },
       });
       await this.prisma.notification.createMany({
         data: managers.map((m) => ({

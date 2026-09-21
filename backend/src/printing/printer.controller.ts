@@ -3,7 +3,11 @@ import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+  requireVenueId,
+} from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** CRUD stampanti di rete configurate dall'amministratore. */
@@ -15,7 +19,7 @@ export class PrinterController {
 
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
-    return this.prisma.printer.findMany({ where: { venueId: user.venueId } });
+    return this.prisma.printer.findMany({ where: { venueId: requireVenueId(user) } });
   }
 
   @Post()
@@ -29,7 +33,7 @@ export class PrinterController {
         host: body.host,
         port: body.port ?? 9100,
         usage: body.usage,
-        venueId: user.venueId,
+        venueId: requireVenueId(user),
       },
     });
   }

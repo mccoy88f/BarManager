@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { OrderStatus, PrinterUsage } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
-import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { MailService } from './mail.service';
 import { PrintingService } from '../printing/printing.service';
@@ -18,8 +18,9 @@ export class OrdersService {
 
   /** Crea un nuovo ordine (bozza) calcolando le quantità da ordinare. */
   async createOrder(user: AuthenticatedUser, dto: CreateOrderDto) {
+    const venueId = requireVenueId(user);
     const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });
-    if (!supplier || supplier.venueId !== user.venueId) {
+    if (!supplier || supplier.venueId !== venueId) {
       throw new NotFoundException('Fornitore non trovato');
     }
 
@@ -29,7 +30,7 @@ export class OrdersService {
 
     const order = await this.prisma.order.create({
       data: {
-        venueId: user.venueId,
+        venueId,
         supplierId: dto.supplierId,
         createdById: user.userId,
         lines: {
@@ -50,7 +51,7 @@ export class OrdersService {
     });
 
     await this.audit.log({
-      venueId: user.venueId,
+      venueId,
       userId: user.userId,
       entity: 'Order',
       entityId: order.id,
@@ -89,7 +90,8 @@ export class OrdersService {
    * reparto/categoria configurati) + stampa checklist su stampante POS.
    */
   async sendOrder(user: AuthenticatedUser, orderId: string) {
-    const order = await this.getOrder(user.venueId, orderId);
+    const venueId = requireVenueId(user);
+    const order = await this.getOrder(venueId, orderId);
     if (order.status !== OrderStatus.DRAFT) {
       throw new BadRequestException('Ordine già inviato');
     }
@@ -98,7 +100,7 @@ export class OrdersService {
 
     // Responsabili di reparto/categoria da mettere in CC
     const managers = await this.prisma.employee.findMany({
-      where: { venueId: user.venueId, isManager: true, active: true },
+      where: { venueId, isManager: true, active: true },
       include: { user: { select: { email: true } } },
     });
     const managerEmails = managers
@@ -116,7 +118,7 @@ export class OrdersService {
       text: `Buongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
     });
 
-    const printResult = await this.printing.printReport(user.venueId, PrinterUsage.ORDERS, {
+    const printResult = await this.printing.printReport(venueId, PrinterUsage.ORDERS, {
       title: `Ordine ${order.supplier.name}`,
       lines: onlyOrdered.map((l) => `${l.product.name.padEnd(24)} x ${l.orderedQty} ${l.product.unit}`),
       footer: ['Checklist per controllo scarico merce ->'],
@@ -129,7 +131,7 @@ export class OrdersService {
     });
 
     await this.audit.log({
-      venueId: user.venueId,
+      venueId,
       userId: user.userId,
       entity: 'Order',
       entityId: orderId,

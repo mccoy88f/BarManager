@@ -1,35 +1,46 @@
 # BarManager
 
-Piattaforma web (PWA, containerizzata con Docker) per la gestione operativa di bar/ristoranti:
+Piattaforma **multi-tenant** (web, PWA, containerizzata con Docker) per la gestione operativa di bar/ristoranti — un sotto-dominio per locale, pensata per il deploy su **Portainer** o **Coolify**:
 
+- **Gestione locali** — un Super Admin crea i locali e il relativo account Admin; ogni locale è isolato e raggiungibile sul proprio sotto-dominio.
 - **Presenze dipendenti** — timbratura via QR code, richieste assenza (ferie/permessi/malattia), report XLS/PDF.
 - **Controlli HACCP** — rilevazione temperature frigoriferi, report stampabile su POS Epson, firma.
 - **Inventario e ordini** — categorie/prodotti/fornitori, calcolo automatico quantità da ordinare, invio email e stampa checklist.
+- **Menù online** — categorie, piatti con foto/prezzo/descrizione/allergeni, disponibilità oraria (pranzo/cena/tutto il giorno), visibilità e "temporaneamente non disponibile fino a", pagina pubblica senza login (es. da QR al tavolo).
 
-Documento di progettazione completo (stack tecnologico, data model, moduli aggiuntivi proposti, roadmap): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+Documento di progettazione completo (stack tecnologico, data model, moduli aggiuntivi proposti, deployment, roadmap): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Stack
 
-Backend NestJS + PostgreSQL (Prisma) + Redis · Frontend React + MUI (Material Design), PWA installabile e predisposta per un wrapper Android via Capacitor. Dettagli completi nel documento di sviluppo.
+Backend NestJS + PostgreSQL (Prisma) + Redis · Frontend React + **MUI (Material Design)**, unica libreria icone `@mui/icons-material`, PWA installabile e predisposta per un wrapper Android via Capacitor. Nessun reverse proxy proprio: si appoggia a quello già presente su Portainer/Coolify. Dettagli completi nel documento di sviluppo.
 
 ## Avvio rapido (sviluppo)
 
 ```bash
-cp .env.example .env   # valorizza le variabili (in particolare SMTP se vuoi testare l'invio ordini)
+cp .env.example .env   # valorizza le variabili (SMTP, ROOT_DOMAIN in produzione, ecc.)
 docker compose up --build
 ```
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000/api
-- Postgres: localhost:5432 · Redis: localhost:6379
+- Frontend: http://localhost:5173 (chiama l'API in modo relativo, stesso origin)
+- Backend API (diretta, comoda per test): http://localhost:3000/api
 
-Al primo avvio il backend applica lo schema Prisma al database (`prisma db push`). Per creare l'utente amministratore iniziale:
+In locale, senza `ROOT_DOMAIN` configurato, il riconoscimento del locale per sotto-dominio è disattivato: login e menù pubblico funzionano comunque (il menù pubblico accetta `?venueSlug=demo` in query string per simulare un sotto-dominio).
+
+Al primo avvio il backend applica lo schema Prisma al database (`prisma db push`). Per creare gli account iniziali:
 
 ```bash
 docker compose exec backend npm run prisma:seed
 ```
 
-Crea un admin `admin@barmanager.local` / `admin123` (**da cambiare subito** in produzione) — vedi `backend/prisma/seed.ts`.
+Crea:
+- **Super Admin** (gestisce i locali): `superadmin@barmanager.local` / `superadmin123`
+- **Admin del locale demo** (slug `demo`): `admin@barmanager.local` / `admin123`
+
+**Da cambiare subito** in produzione — vedi `backend/prisma/seed.ts`.
+
+## Deploy su Portainer / Coolify
+
+Vedi §9 del [documento di sviluppo](docs/DEVELOPMENT.md#9-nota-di-deployment) per il dettaglio: DNS wildcard `*.tuodominio.it`, configurazione del dominio su Coolify (TLS wildcard via DNS-01) o label Traefik su Portainer, e raggiungibilità delle stampanti Epson di rete.
 
 ## Struttura del repository
 
@@ -43,4 +54,4 @@ BarManager/
 
 ## Stato del progetto
 
-Scaffold iniziale (Fase 0 della roadmap): autenticazione JWT + RBAC, data model completo, ed endpoint/pagine funzionanti end-to-end per i tre moduli richiesti (presenze, HACCP, inventario/ordini). Alcune schermate di amministrazione (gestione dipendenti, categorie/prodotti, stampanti) sono disponibili via API ma non hanno ancora una UI dedicata — vedi §8 del documento di sviluppo per il dettaglio di cosa manca e la roadmap.
+Multi-tenant (Super Admin + locali per sotto-dominio), autenticazione JWT + RBAC con isolamento dati per locale, e i quattro moduli richiesti (presenze, HACCP, inventario/ordini, menù online) funzionanti end-to-end. Alcune schermate di amministrazione secondarie (gestione dipendenti, categorie/prodotti, stampanti) sono disponibili via API ma non hanno ancora una UI dedicata — vedi §8 del documento di sviluppo per il dettaglio di cosa manca e la roadmap.

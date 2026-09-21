@@ -1,9 +1,12 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
-});
+// Relativo di proposito: frontend e API vivono sempre sullo stesso
+// sotto-dominio (proxy Nginx in produzione, proxy Vite in sviluppo), così
+// non serve alcuna configurazione per-locale lato client né CORS.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+export const api = axios.create({ baseURL: API_BASE_URL });
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
@@ -23,10 +26,7 @@ api.interceptors.response.use(
       const refreshToken = useAuthStore.getState().refreshToken;
       if (refreshToken) {
         try {
-          const { data } = await axios.post(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/refresh`,
-            { refreshToken },
-          );
+          const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
           useAuthStore.getState().setAccessToken(data.accessToken);
           original.headers.Authorization = `Bearer ${data.accessToken}`;
           return api(original);

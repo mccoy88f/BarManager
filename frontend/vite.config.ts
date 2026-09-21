@@ -25,5 +25,19 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Stesso schema del proxy Nginx di produzione: frontend e API sullo
+    // stesso origin anche in sviluppo, nessuna gestione CORS lato client.
+    // "backend" risolve al servizio Docker Compose; in esecuzione fuori
+    // da Docker, sovrascrivi con `VITE_DEV_PROXY_TARGET`.
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_PROXY_TARGET || 'http://backend:3000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: process.env.VITE_DEV_PROXY_TARGET || 'http://backend:3000',
+        changeOrigin: true,
+      },
+    },
   },
 });
