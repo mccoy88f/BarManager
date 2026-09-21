@@ -29,6 +29,7 @@ export class UsersService {
             role: dto.role,
             department: dto.department,
             isManager: dto.isManager ?? false,
+            allowedModules: dto.allowedModules ?? [],
             venueId,
           },
         },

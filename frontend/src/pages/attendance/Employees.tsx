@@ -5,11 +5,14 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   Stack,
   Switch,
@@ -21,6 +24,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { MODULE_LABELS, ModuleKey } from '../../config/modules';
+
+const ALL_MODULE_KEYS = Object.keys(MODULE_LABELS) as ModuleKey[];
 
 interface EmployeeRow {
   id: string;
@@ -31,6 +37,7 @@ interface EmployeeRow {
   phone?: string;
   isManager: boolean;
   active: boolean;
+  allowedModules: string[];
   user?: { id: string; email: string; active: boolean; role: string } | null;
 }
 
@@ -42,6 +49,7 @@ const emptyCreateForm = {
   role: '',
   department: '',
   isManager: false,
+  allowedModules: [] as string[],
 };
 
 const emptyEditForm = {
@@ -53,7 +61,44 @@ const emptyEditForm = {
   isManager: false,
   email: '',
   password: '',
+  allowedModules: [] as string[],
 };
+
+function toggleModule(list: string[], key: ModuleKey): string[] {
+  return list.includes(key) ? list.filter((m) => m !== key) : [...list, key];
+}
+
+function ModulesCheckboxes({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <Box sx={{ gridColumn: '1 / -1' }}>
+      <Typography variant="body2" color="text.secondary" gutterBottom>
+        Moduli a cui può accedere, indipendentemente dal ruolo. Nessuna selezione = permessi di
+        default (Dipendente: solo HACCP; Responsabile: tutti). Selezionandone anche uno solo,
+        l'elenco scelto qui sostituisce il default.
+      </Typography>
+      <FormGroup row>
+        {ALL_MODULE_KEYS.map((key) => (
+          <FormControlLabel
+            key={key}
+            control={
+              <Checkbox
+                checked={value.includes(key)}
+                onChange={() => onChange(toggleModule(value, key))}
+              />
+            }
+            label={MODULE_LABELS[key]}
+          />
+        ))}
+      </FormGroup>
+    </Box>
+  );
+}
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -110,6 +155,7 @@ export function Employees() {
         department: editForm.department,
         phone: editForm.phone,
         isManager: editForm.isManager,
+        allowedModules: editForm.allowedModules,
       };
       if (editForm.email.trim()) payload.email = editForm.email.trim();
       if (editForm.password) payload.password = editForm.password;
@@ -151,6 +197,7 @@ export function Employees() {
       isManager: employee.isManager,
       email: employee.user?.email ?? '',
       password: '',
+      allowedModules: employee.allowedModules,
     });
   };
 
@@ -194,6 +241,10 @@ export function Employees() {
               label="Reparto"
               value={form.department}
               onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+            />
+            <ModulesCheckboxes
+              value={form.allowedModules}
+              onChange={(allowedModules) => setForm((f) => ({ ...f, allowedModules }))}
             />
           </Box>
           {createError && (
@@ -306,6 +357,10 @@ export function Employees() {
             value={editForm.password}
             onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
             sx={{ gridColumn: '1 / -1' }}
+          />
+          <ModulesCheckboxes
+            value={editForm.allowedModules}
+            onChange={(allowedModules) => setEditForm((f) => ({ ...f, allowedModules }))}
           />
           {editError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }} onClose={() => setEditError(null)}>

@@ -46,12 +46,20 @@ export class AttendanceService {
     return { lastRecord: last, nextAction };
   }
 
-  async clock(user: AuthenticatedUser, qrTokenValue: string) {
+  /**
+   * Timbra inizio/fine turno. Con qrTokenValue: postazione fisica (source
+   * QR, anti-frode). Senza: timbratura diretta dall'app per il dipendente
+   * già loggato (source MANUAL) — utile quando non c'è un QR a portata di
+   * mano, es. da smartphone personale o in fase di test.
+   */
+  async clock(user: AuthenticatedUser, qrTokenValue?: string) {
     const venueId = requireVenueId(user);
     const employeeId = await this.resolveEmployeeId(user.userId);
 
-    const qrToken = await this.prisma.qrToken.findUnique({ where: { token: qrTokenValue } });
-    if (!qrToken || !qrToken.active || qrToken.venueId !== venueId) {
+    const qrToken = qrTokenValue
+      ? await this.prisma.qrToken.findUnique({ where: { token: qrTokenValue } })
+      : null;
+    if (qrTokenValue && (!qrToken || !qrToken.active || qrToken.venueId !== venueId)) {
       throw new NotFoundException('QR non valido');
     }
 
@@ -61,8 +69,8 @@ export class AttendanceService {
       data: {
         employeeId,
         type: nextAction,
-        source: AttendanceSource.QR,
-        qrTokenId: qrToken.id,
+        source: qrToken ? AttendanceSource.QR : AttendanceSource.MANUAL,
+        qrTokenId: qrToken?.id,
       },
     });
 
@@ -81,13 +89,20 @@ export class AttendanceService {
   // ---- Amministrazione ----------------------------------------------------
 
   listRecords(venueId: string, filters: { employeeId?: string; from?: string; to?: string }) {
+    // "to" arriva come data (es. "2026-09-21"), interpretata da new Date()
+    // come mezzanotte UTC: senza estenderla a fine giornata, "lte" escludeva
+    // di fatto le timbrature dell'intera giornata da lista ed export XLS/PDF
+    // (stesso bug già corretto per i report HACCP).
+    const toDate = filters.to ? new Date(filters.to) : undefined;
+    toDate?.setUTCHours(23, 59, 59, 999);
+
     return this.prisma.attendanceRecord.findMany({
       where: {
         employee: { venueId },
         employeeId: filters.employeeId,
         timestamp: {
           gte: filters.from ? new Date(filters.from) : undefined,
-          lte: filters.to ? new Date(filters.to) : undefined,
+          lte: toDate,
         },
       },
       include: { employee: true },
@@ -96,8 +111,17 @@ export class AttendanceService {
   }
 
   async correctRecord(admin: AuthenticatedUser, recordId: string, dto: CorrectAttendanceDto) {
-    const before = await this.prisma.attendanceRecord.findUnique({ where: { id: recordId } });
-    if (!before) throw new NotFoundException('Timbratura non trovata');
+    const venueId = requireVenueId(admin);
+    const before = await this.prisma.attendanceRecord.findUnique({
+      where: { id: recordId },
+      include: { employee: true },
+    });
+    // Verifica che la timbratura appartenga al locale di chi corregge: senza
+    // questo controllo un Admin poteva riscrivere la timbratura di un altro
+    // locale indovinandone l'id (stesso tipo di bug già corretto altrove).
+    if (!before || before.employee.venueId !== venueId) {
+      throw new NotFoundException('Timbratura non trovata');
+    }
 
     const after = await this.prisma.attendanceRecord.update({
       where: { id: recordId },
@@ -110,7 +134,7 @@ export class AttendanceService {
     });
 
     await this.audit.log({
-      venueId: requireVenueId(admin),
+      venueId,
       userId: admin.userId,
       entity: 'AttendanceRecord',
       entityId: recordId,

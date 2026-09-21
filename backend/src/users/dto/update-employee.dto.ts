@@ -1,4 +1,6 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+
+const MODULE_KEYS = ['haccp', 'inventory', 'menu', 'tasks'];
 
 export class UpdateEmployeeDto {
   @IsOptional()
@@ -24,6 +26,12 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   isManager?: boolean;
+
+  /** Moduli extra concessi (vedi ModuleAccessGuard): vuoto = default del ruolo. */
+  @IsOptional()
+  @IsArray()
+  @IsIn(MODULE_KEYS, { each: true })
+  allowedModules?: string[];
 
   /** Email di accesso (User): aggiorna solo se il dipendente ha un account. */
   @IsOptional()

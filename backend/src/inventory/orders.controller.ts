@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { ModuleAccessGuard } from '../common/guards/module-access.guard';
+import { RequireModule } from '../common/decorators/require-module.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -12,9 +12,12 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderLineDto } from './dto/update-order-line.dto';
 
+// Niente @Roles(ADMIN, MANAGER) qui: l'accesso al modulo Inventario è
+// governato da ModuleAccessGuard (l'Admin può concederlo anche a un
+// Dipendente, indipendentemente dal ruolo — vedi Employees.allowedModules).
 @Controller('inventory/orders')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.MANAGER)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
+@RequireModule('inventory')
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 

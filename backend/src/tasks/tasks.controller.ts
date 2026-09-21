@@ -1,8 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { Role, TaskStatus, TaskType } from '@prisma/client';
+import { TaskStatus, TaskType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { ModuleAccessGuard } from '../common/guards/module-access.guard';
+import { RequireModule } from '../common/decorators/require-module.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -12,10 +13,12 @@ import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 
+// Niente @Roles(ADMIN, MANAGER): l'accesso al modulo Attività è governato
+// da ModuleAccessGuard, concedibile per singolo dipendente dall'Admin.
 /** Attività e scadenze (pagamenti fornitori, visite mediche, attestati, ...). */
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.MANAGER)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
+@RequireModule('tasks')
 export class TasksController {
   constructor(private tasksService: TasksService) {}
 

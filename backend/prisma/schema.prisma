@@ -91,6 +91,13 @@ model Employee {
   isManager   Boolean  @default(false) // responsabile di reparto (CC ordini, approvazione ferie del team)
   active      Boolean  @default(true)
 
+  // Moduli extra a cui il dipendente può accedere (es. "haccp", "inventory",
+  // "menu", "tasks"), indipendentemente dal ruolo: impostati dall'admin
+  // nella scheda del dipendente. Array vuoto = fallback ai permessi di
+  // default del ruolo (MANAGER: tutti; EMPLOYEE: solo HACCP), per non
+  // rompere il comportamento dei dipendenti già esistenti mai configurati.
+  allowedModules String[] @default([])
+
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 

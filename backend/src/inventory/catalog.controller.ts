@@ -3,6 +3,8 @@ import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { ModuleAccessGuard } from '../common/guards/module-access.guard';
+import { RequireModule } from '../common/decorators/require-module.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -17,7 +19,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Controller('inventory')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
+@RequireModule('inventory')
 export class CatalogController {
   constructor(private catalog: CatalogService) {}
 

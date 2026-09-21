@@ -6,6 +6,8 @@ export interface AuthenticatedUser {
   role: string;
   /** null solo per SUPER_ADMIN, trasversale ai locali. */
   venueId: string | null;
+  /** Solo per Manager/Dipendente: vedi ModuleAccessGuard. */
+  allowedModules?: string[];
 }
 
 /**

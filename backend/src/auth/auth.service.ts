@@ -30,11 +30,25 @@ export class AuthService {
 
     this.assertHostMatchesUser(user, context);
 
+    // Solo per Manager/Dipendente: i permessi per modulo (§ ModuleAccessGuard)
+    // finiscono nel payload così il frontend può filtrare la navigazione
+    // senza una chiamata aggiuntiva — l'autorità resta comunque lato server,
+    // verificata ad ogni richiesta dal guard.
+    let allowedModules: string[] | undefined;
+    if (user.role === Role.MANAGER || user.role === Role.EMPLOYEE) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { userId: user.id },
+        select: { allowedModules: true },
+      });
+      allowedModules = employee?.allowedModules ?? [];
+    }
+
     const payload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       venueId: user.venueId,
+      ...(allowedModules !== undefined ? { allowedModules } : {}),
     };
 
     const accessToken = await this.jwt.signAsync(payload, {
@@ -46,7 +60,12 @@ export class AuthService {
       expiresIn: process.env.JWT_REFRESH_TTL || '7d',
     });
 
-    return { accessToken, refreshToken, user: payload };
+    const venueName = user.venueId
+      ? (await this.prisma.venue.findUnique({ where: { id: user.venueId }, select: { name: true } }))
+          ?.name ?? null
+      : null;
+
+    return { accessToken, refreshToken, user: payload, venueName };
   }
 
   async refresh(refreshToken: string) {

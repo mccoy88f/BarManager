@@ -4,6 +4,8 @@ import { PrinterUsage, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { ModuleAccessGuard } from '../common/guards/module-access.guard';
+import { RequireModule } from '../common/decorators/require-module.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -16,7 +18,8 @@ import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
 
 @Controller('haccp')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
+@RequireModule('haccp')
 export class HaccpController {
   constructor(
     private haccpService: HaccpService,

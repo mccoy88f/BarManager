@@ -15,10 +15,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { randomUUID } from 'crypto';
-import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { ModuleAccessGuard } from '../common/guards/module-access.guard';
+import { RequireModule } from '../common/decorators/require-module.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -30,10 +30,12 @@ import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { SetUnavailableDto } from './dto/set-unavailable.dto';
 
-/** Amministrazione del menù (Admin/Manager del locale). */
+// Niente @Roles(ADMIN, MANAGER): l'accesso al modulo Menù è governato da
+// ModuleAccessGuard, concedibile per singolo dipendente dall'Admin.
+/** Amministrazione del menù (Admin/Manager del locale, o Dipendente autorizzato). */
 @Controller('menu')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.MANAGER)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
+@RequireModule('menu')
 export class MenuController {
   constructor(private menuService: MenuService) {}
 

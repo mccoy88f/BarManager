@@ -33,22 +33,38 @@ export default function App() {
           <Route path="/clock/:token" element={<ClockPage />} />
           <Route path="/attendance" element={<AttendanceHome />} />
           <Route path="/attendance/leave-requests" element={<LeaveRequests />} />
-          <Route path="/haccp" element={<HaccpHome />} />
+
+          {/* Gestione dipendenti/postazioni: sempre riservata ad Admin/Manager,
+              non concedibile via permessi per modulo (non è un "modulo" ma
+              amministrazione del personale). */}
           <Route element={<ProtectedRoute allow={['ADMIN', 'MANAGER']} />}>
+            <Route path="/attendance/employees" element={<Employees />} />
+            <Route path="/attendance/records" element={<AttendanceRecords />} />
+          </Route>
+          <Route element={<ProtectedRoute allow={['ADMIN']} />}>
+            <Route path="/attendance/qr-tokens" element={<QrTokens />} />
+            <Route path="/settings" element={<SettingsHome />} />
+          </Route>
+
+          {/* Moduli concedibili per singolo dipendente (Employees.allowedModules):
+              l'Admin ha sempre accesso, Manager/Dipendente in base al permesso. */}
+          <Route element={<ProtectedRoute moduleKey="haccp" />}>
+            <Route path="/haccp" element={<HaccpHome />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="inventory" />}>
             <Route path="/inventory" element={<InventoryHome />} />
             <Route path="/inventory/suppliers" element={<Suppliers />} />
             <Route path="/inventory/catalog" element={<Catalog />} />
-            <Route path="/menu/admin" element={<MenuAdmin />} />
-            <Route path="/tasks" element={<TasksAdmin />} />
-            <Route path="/attendance/employees" element={<Employees />} />
-            <Route path="/attendance/qr-tokens" element={<QrTokens />} />
-            <Route path="/attendance/records" element={<AttendanceRecords />} />
           </Route>
+          <Route element={<ProtectedRoute moduleKey="menu" />}>
+            <Route path="/menu/admin" element={<MenuAdmin />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="tasks" />}>
+            <Route path="/tasks" element={<TasksAdmin />} />
+          </Route>
+
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
             <Route path="/super-admin/venues" element={<Venues />} />
-          </Route>
-          <Route element={<ProtectedRoute allow={['ADMIN']} />}>
-            <Route path="/settings" element={<SettingsHome />} />
           </Route>
         </Route>
       </Route>

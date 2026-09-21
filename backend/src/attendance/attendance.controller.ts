@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Role } from '@prisma/client';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -40,6 +41,7 @@ export class AttendanceController {
     return this.attendanceService.getCurrentStatus(user.userId);
   }
 
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('clock')
   clock(@CurrentUser() user: AuthenticatedUser, @Body() dto: ClockDto) {
     return this.attendanceService.clock(user, dto.qrToken);
