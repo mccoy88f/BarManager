@@ -1,5 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { api } from '../../api/client';
@@ -56,6 +69,7 @@ function QrTokenCard({ qrToken }: { qrToken: QrTokenRow }) {
  */
 export function QrTokens() {
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
 
   const tokensQuery = useQuery({
@@ -68,37 +82,23 @@ export function QrTokens() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance-qr-tokens'] });
       setLabel('');
+      setOpen(false);
     },
   });
 
+  const openDialog = () => {
+    setLabel('');
+    setOpen(true);
+  };
+
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuova postazione QR
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Stampa il QR e affiggilo alla postazione (es. ingresso cucina): i dipendenti lo
-            inquadrano per timbrare inizio/fine turno.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Nome postazione"
-              size="small"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              disabled={!label || createMutation.isPending}
-              onClick={() => createMutation.mutate()}
-            >
-              Genera QR
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Postazioni QR</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
+          Genera QR
+        </Button>
+      </Box>
 
       <Stack direction="row" flexWrap="wrap" gap={2}>
         {tokensQuery.data?.map((qrToken) => (
@@ -106,7 +106,37 @@ export function QrTokens() {
             <QrTokenCard qrToken={qrToken} />
           </Box>
         ))}
+        {tokensQuery.data?.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Nessuna postazione QR creata.
+          </Typography>
+        )}
       </Stack>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova postazione QR</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Stampa il QR e affiggilo alla postazione (es. ingresso cucina): i dipendenti lo
+            inquadrano per timbrare inizio/fine turno.
+          </Typography>
+          <TextField
+            label="Nome postazione"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!label || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Genera QR
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

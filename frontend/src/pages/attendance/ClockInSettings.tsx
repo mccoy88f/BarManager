@@ -6,6 +6,10 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Stack,
   Switch,
@@ -13,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { Link as RouterLink } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -63,6 +68,7 @@ export function ClockInSettings() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
   const [newTagLabel, setNewTagLabel] = useState('');
   const [newTagValue, setNewTagValue] = useState('');
   const [tagError, setTagError] = useState<string | null>(null);
@@ -141,9 +147,17 @@ export function ClockInSettings() {
       setNewTagLabel('');
       setNewTagValue('');
       setTagError(null);
+      setTagDialogOpen(false);
     },
     onError: (err) => setTagError(extractErrorMessage(err)),
   });
+
+  const openTagDialog = () => {
+    setNewTagLabel('');
+    setNewTagValue('');
+    setTagError(null);
+    setTagDialogOpen(true);
+  };
 
   const deleteTagMutation = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/attendance/nfc-tags/${id}`)).data,
@@ -272,42 +286,17 @@ export function ClockInSettings() {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Tag NFC
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="h6">Tag NFC</Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openTagDialog}>
+              Aggiungi
+            </Button>
+          </Box>
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Scegli un'etichetta e un testo per ogni tag, poi scrivi lo stesso testo sul tag fisico
             con un'app di scrittura NFC (es. NFC Tools) — BarManager non scrive sui tag, solo li
             legge al momento della timbratura.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField
-              label="Etichetta (es. Ingresso cucina)"
-              size="small"
-              value={newTagLabel}
-              onChange={(e) => setNewTagLabel(e.target.value)}
-            />
-            <TextField
-              label="Testo da scrivere sul tag"
-              size="small"
-              value={newTagValue}
-              onChange={(e) => setNewTagValue(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              disabled={
-                !newTagLabel.trim() || newTagValue.trim().length < 4 || createTagMutation.isPending
-              }
-              onClick={() => createTagMutation.mutate()}
-            >
-              Aggiungi
-            </Button>
-          </Box>
-          {tagError && (
-            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setTagError(null)}>
-              {tagError}
-            </Alert>
-          )}
 
           <Stack spacing={1} sx={{ mt: 2 }}>
             {tagsQuery.data?.map((tag) => (
@@ -336,6 +325,35 @@ export function ClockInSettings() {
           </Stack>
         </CardContent>
       </Card>
+
+      <Dialog open={tagDialogOpen} onClose={() => setTagDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuovo tag NFC</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            label="Etichetta (es. Ingresso cucina)"
+            value={newTagLabel}
+            onChange={(e) => setNewTagLabel(e.target.value)}
+          />
+          <TextField
+            label="Testo da scrivere sul tag"
+            value={newTagValue}
+            onChange={(e) => setNewTagValue(e.target.value)}
+          />
+          {tagError && <Alert severity="error">{tagError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTagDialogOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={
+              !newTagLabel.trim() || newTagValue.trim().length < 4 || createTagMutation.isPending
+            }
+            onClick={() => createTagMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={!!tagToDelete}

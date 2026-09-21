@@ -6,10 +6,15 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
@@ -46,6 +51,7 @@ function extractErrorMessage(error: unknown): string {
 
 export function Suppliers() {
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +76,7 @@ export function Suppliers() {
       invalidate();
       setForm({ name: '', email: '', phone: '' });
       setError(null);
+      setOpen(false);
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -84,48 +91,20 @@ export function Suppliers() {
     onSuccess: invalidate,
   });
 
+  const openCreate = () => {
+    setForm({ name: '', email: '', phone: '' });
+    setError(null);
+    setOpen(true);
+  };
+
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuovo fornitore
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr 1fr' } }}>
-            <TextField
-              label="Nome"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <TextField
-              label="Email"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            />
-            <TextField
-              label="Telefono"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-            />
-          </Box>
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={!form.name || !form.email || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
-          >
-            Aggiungi
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Typography variant="h6">Fornitori</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Fornitori</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          Aggiungi
+        </Button>
+      </Box>
       <Stack spacing={2}>
         {suppliersQuery.data?.map((supplier) => (
           <Card key={supplier.id} variant="outlined">
@@ -157,7 +136,45 @@ export function Suppliers() {
             </CardContent>
           </Card>
         ))}
+        {suppliersQuery.data?.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Nessun fornitore censito.
+          </Typography>
+        )}
       </Stack>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuovo fornitore</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            label="Nome"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <TextField
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
+          <TextField
+            label="Telefono"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+          />
+          {error && <Alert severity="error">{error}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!form.name || !form.email || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

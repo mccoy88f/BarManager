@@ -5,12 +5,17 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   MenuItem,
   Stack,
   TextField,
   Typography,
   IconButton,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,17 +54,20 @@ const recurrenceLabels: Record<string, string> = {
   YEARLY: 'Ogni anno',
 };
 
+const emptyForm = {
+  title: '',
+  description: '',
+  type: 'GENERIC',
+  dueDate: '',
+  recurrence: 'NONE',
+  relatedEmployeeId: '',
+};
+
 /** Attività e scadenze: pagamenti fornitori, visite mediche, attestati, ecc. */
 export function TasksAdmin() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    type: 'GENERIC',
-    dueDate: '',
-    recurrence: 'NONE',
-    relatedEmployeeId: '',
-  });
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
 
   const tasksQuery = useQuery({
@@ -84,14 +92,8 @@ export function TasksAdmin() {
       ).data,
     onSuccess: () => {
       invalidate();
-      setForm({
-        title: '',
-        description: '',
-        type: 'GENERIC',
-        dueDate: '',
-        recurrence: 'NONE',
-        relatedEmployeeId: '',
-      });
+      setForm(emptyForm);
+      setOpen(false);
     },
   });
 
@@ -108,87 +110,21 @@ export function TasksAdmin() {
     },
   });
 
+  const openCreate = () => {
+    setForm(emptyForm);
+    setOpen(true);
+  };
+
   const now = new Date();
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuova attività/scadenza
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-            <TextField
-              label="Titolo"
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            />
-            <TextField
-              label="Scadenza"
-              type="date"
-              InputLabelProps={{ shrink: true }}
-              value={form.dueDate}
-              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-            />
-            <TextField
-              select
-              label="Tipo"
-              value={form.type}
-              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-            >
-              {Object.entries(typeLabels).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Ricorrenza"
-              value={form.recurrence}
-              onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value }))}
-            >
-              {Object.entries(recurrenceLabels).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Persona collegata (opzionale)"
-              value={form.relatedEmployeeId}
-              onChange={(e) => setForm((f) => ({ ...f, relatedEmployeeId: e.target.value }))}
-            >
-              <MenuItem value="">Nessuna</MenuItem>
-              {employeesQuery.data?.map((employee) => (
-                <MenuItem key={employee.id} value={employee.id}>
-                  {employee.firstName} {employee.lastName}
-                </MenuItem>
-              ))}
-            </TextField>
-            <div />
-            <TextField
-              label="Note"
-              multiline
-              minRows={2}
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              sx={{ gridColumn: '1 / -1' }}
-            />
-          </Box>
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={!form.title || !form.dueDate || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
-          >
-            Aggiungi
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Typography variant="h6">Attività aperte</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Attività aperte</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          Aggiungi
+        </Button>
+      </Box>
       <Stack spacing={1}>
         {tasksQuery.data?.map((task) => {
           const overdue = new Date(task.dueDate) < now;
@@ -236,7 +172,86 @@ export function TasksAdmin() {
             </Card>
           );
         })}
+        {tasksQuery.data?.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Nessuna attività aperta.
+          </Typography>
+        )}
       </Stack>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova attività/scadenza</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+          <TextField
+            label="Titolo"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
+          <TextField
+            label="Scadenza"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={form.dueDate}
+            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+          />
+          <TextField
+            select
+            label="Tipo"
+            value={form.type}
+            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+          >
+            {Object.entries(typeLabels).map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Ricorrenza"
+            value={form.recurrence}
+            onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value }))}
+          >
+            {Object.entries(recurrenceLabels).map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Persona collegata (opzionale)"
+            value={form.relatedEmployeeId}
+            onChange={(e) => setForm((f) => ({ ...f, relatedEmployeeId: e.target.value }))}
+          >
+            <MenuItem value="">Nessuna</MenuItem>
+            {employeesQuery.data?.map((employee) => (
+              <MenuItem key={employee.id} value={employee.id}>
+                {employee.firstName} {employee.lastName}
+              </MenuItem>
+            ))}
+          </TextField>
+          <div />
+          <TextField
+            label="Note"
+            multiline
+            minRows={2}
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!form.title || !form.dueDate || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={!!taskToDelete}

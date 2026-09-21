@@ -19,6 +19,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -112,6 +113,7 @@ function extractErrorMessage(error: unknown): string {
 /** Anagrafica dipendenti: crea gli account (email+password) con cui accedono. */
 export function Employees() {
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyCreateForm);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmployeeRow | null>(null);
@@ -201,75 +203,20 @@ export function Employees() {
     });
   };
 
+  const openCreate = () => {
+    setForm(emptyCreateForm);
+    setCreateError(null);
+    setOpen(true);
+  };
+
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuovo dipendente
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-            <TextField
-              label="Nome"
-              value={form.firstName}
-              onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-            />
-            <TextField
-              label="Cognome"
-              value={form.lastName}
-              onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
-            />
-            <TextField
-              label="Email di accesso"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            />
-            <TextField
-              label="Password iniziale"
-              type="password"
-              helperText="Almeno 8 caratteri"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            />
-            <TextField
-              label="Mansione"
-              value={form.role}
-              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-            />
-            <TextField
-              label="Reparto"
-              value={form.department}
-              onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-            />
-            <ModulesCheckboxes
-              value={form.allowedModules}
-              onChange={(allowedModules) => setForm((f) => ({ ...f, allowedModules }))}
-            />
-          </Box>
-          {createError && (
-            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setCreateError(null)}>
-              {createError}
-            </Alert>
-          )}
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={
-              !form.firstName ||
-              !form.lastName ||
-              !form.email ||
-              form.password.length < 8 ||
-              createMutation.isPending
-            }
-            onClick={() => createMutation.mutate()}
-          >
-            Aggiungi
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Typography variant="h6">Dipendenti</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Dipendenti</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+          Aggiungi
+        </Button>
+      </Box>
       <Stack spacing={2}>
         {employeesQuery.data?.map((employee) => (
           <Card key={employee.id} variant="outlined">
@@ -315,6 +262,70 @@ export function Employees() {
           </Card>
         ))}
       </Stack>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuovo dipendente</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+          <TextField
+            label="Nome"
+            value={form.firstName}
+            onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+          />
+          <TextField
+            label="Cognome"
+            value={form.lastName}
+            onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+          />
+          <TextField
+            label="Email di accesso"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
+          <TextField
+            label="Password iniziale"
+            type="password"
+            helperText="Almeno 8 caratteri"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+          />
+          <TextField
+            label="Mansione"
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+          />
+          <TextField
+            label="Reparto"
+            value={form.department}
+            onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+          />
+          <ModulesCheckboxes
+            value={form.allowedModules}
+            onChange={(allowedModules) => setForm((f) => ({ ...f, allowedModules }))}
+          />
+          {createError && (
+            <Alert severity="error" sx={{ gridColumn: '1 / -1' }} onClose={() => setCreateError(null)}>
+              {createError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={
+              !form.firstName ||
+              !form.lastName ||
+              !form.email ||
+              form.password.length < 8 ||
+              createMutation.isPending
+            }
+            onClick={() => createMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Modifica dipendente</DialogTitle>

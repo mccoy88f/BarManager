@@ -6,6 +6,10 @@ import {
   CardContent,
   CardMedia,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   MenuItem as MuiMenuItem,
   Stack,
   Switch,
@@ -13,6 +17,7 @@ import {
   Typography,
   IconButton,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
@@ -65,7 +70,9 @@ const allergenLabels: Record<string, string> = {
 
 export function MenuAdmin() {
   const queryClient = useQueryClient();
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [newItem, setNewItem] = useState({
     name: '',
     price: '',
@@ -91,6 +98,7 @@ export function MenuAdmin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       setNewCategoryName('');
+      setCategoryDialogOpen(false);
     },
   });
 
@@ -111,6 +119,7 @@ export function MenuAdmin() {
     onSuccess: () => {
       invalidate();
       setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+      setItemDialogOpen(false);
     },
   });
 
@@ -157,6 +166,16 @@ export function MenuAdmin() {
     const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
     uploadPhotoMutation.mutate({ id: cropTargetItemId, file });
     cancelPhotoCrop();
+  };
+
+  const openCategoryDialog = () => {
+    setNewCategoryName('');
+    setCategoryDialogOpen(true);
+  };
+
+  const openItemDialog = () => {
+    setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+    setItemDialogOpen(true);
   };
 
   const publicMenuUrl = `${window.location.origin}/menu`;
@@ -222,22 +241,10 @@ export function MenuAdmin() {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuova categoria
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Nome categoria"
-              size="small"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              disabled={!newCategoryName || createCategoryMutation.isPending}
-              onClick={() => createCategoryMutation.mutate()}
-            >
-              Aggiungi
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Categorie</Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCategoryDialog}>
+              Aggiungi categoria
             </Button>
           </Box>
 
@@ -275,70 +282,12 @@ export function MenuAdmin() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Nuova voce di menù
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-            <TextField
-              label="Nome piatto"
-              value={newItem.name}
-              onChange={(e) => setNewItem((v) => ({ ...v, name: e.target.value }))}
-            />
-            <TextField
-              label="Prezzo (€)"
-              type="number"
-              value={newItem.price}
-              onChange={(e) => setNewItem((v) => ({ ...v, price: e.target.value }))}
-            />
-            <TextField
-              select
-              label="Categoria"
-              value={newItem.categoryId}
-              onChange={(e) => setNewItem((v) => ({ ...v, categoryId: e.target.value }))}
-            >
-              {categoriesQuery.data?.map((c) => (
-                <MuiMenuItem key={c.id} value={c.id}>
-                  {c.name}
-                </MuiMenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Disponibilità oraria"
-              value={newItem.availability}
-              onChange={(e) => setNewItem((v) => ({ ...v, availability: e.target.value }))}
-            >
-              {Object.entries(availabilityLabels).map(([value, label]) => (
-                <MuiMenuItem key={value} value={value}>
-                  {label}
-                </MuiMenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Descrizione"
-              multiline
-              minRows={2}
-              value={newItem.description}
-              onChange={(e) => setNewItem((v) => ({ ...v, description: e.target.value }))}
-              sx={{ gridColumn: '1 / -1' }}
-            />
-          </Box>
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={
-              !newItem.name || !newItem.price || !newItem.categoryId || createItemMutation.isPending
-            }
-            onClick={() => createItemMutation.mutate()}
-          >
-            Aggiungi al menù
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Typography variant="h6">Voci di menù</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Voci di menù</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openItemDialog}>
+          Aggiungi al menù
+        </Button>
+      </Box>
       <Stack spacing={2}>
         {itemsQuery.data?.map((item) => (
           <Card key={item.id} variant="outlined">
@@ -427,6 +376,89 @@ export function MenuAdmin() {
           </Card>
         ))}
       </Stack>
+
+      <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova categoria</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <TextField
+            label="Nome categoria"
+            fullWidth
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCategoryDialogOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!newCategoryName || createCategoryMutation.isPending}
+            onClick={() => createCategoryMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova voce di menù</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+          <TextField
+            label="Nome piatto"
+            value={newItem.name}
+            onChange={(e) => setNewItem((v) => ({ ...v, name: e.target.value }))}
+          />
+          <TextField
+            label="Prezzo (€)"
+            type="number"
+            value={newItem.price}
+            onChange={(e) => setNewItem((v) => ({ ...v, price: e.target.value }))}
+          />
+          <TextField
+            select
+            label="Categoria"
+            value={newItem.categoryId}
+            onChange={(e) => setNewItem((v) => ({ ...v, categoryId: e.target.value }))}
+          >
+            {categoriesQuery.data?.map((c) => (
+              <MuiMenuItem key={c.id} value={c.id}>
+                {c.name}
+              </MuiMenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Disponibilità oraria"
+            value={newItem.availability}
+            onChange={(e) => setNewItem((v) => ({ ...v, availability: e.target.value }))}
+          >
+            {Object.entries(availabilityLabels).map(([value, label]) => (
+              <MuiMenuItem key={value} value={value}>
+                {label}
+              </MuiMenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Descrizione"
+            multiline
+            minRows={2}
+            value={newItem.description}
+            onChange={(e) => setNewItem((v) => ({ ...v, description: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setItemDialogOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={
+              !newItem.name || !newItem.price || !newItem.categoryId || createItemMutation.isPending
+            }
+            onClick={() => createItemMutation.mutate()}
+          >
+            Aggiungi al menù
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <PhotoCropDialog
         open={!!cropImageSrc}

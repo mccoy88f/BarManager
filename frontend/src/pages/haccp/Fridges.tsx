@@ -6,10 +6,15 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
@@ -20,6 +25,8 @@ export interface Fridge {
   minTemp: number;
   maxTemp: number;
 }
+
+const emptyForm = { label: '', location: '', minTemp: '', maxTemp: '' };
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -33,7 +40,8 @@ function extractErrorMessage(error: unknown): string {
 /** Censimento frigoriferi/congelatori: etichetta, posizione e soglie di temperatura. */
 export function Fridges() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ label: '', location: '', minTemp: '', maxTemp: '' });
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
 
   const fridgesQuery = useQuery({
@@ -53,8 +61,9 @@ export function Fridges() {
       ).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fridges'] });
-      setForm({ label: '', location: '', minTemp: '', maxTemp: '' });
+      setForm(emptyForm);
       setError(null);
+      setOpen(false);
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -65,13 +74,41 @@ export function Fridges() {
     form.maxTemp !== '' &&
     Number(form.minTemp) <= Number(form.maxTemp);
 
+  const openDialog = () => {
+    setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
   return (
     <Card>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Frigoriferi e congelatori
-        </Typography>
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '2fr 2fr 1fr 1fr' } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">Frigoriferi e congelatori</Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
+            Aggiungi
+          </Button>
+        </Box>
+
+        <Stack direction="row" flexWrap="wrap" gap={1}>
+          {fridgesQuery.data?.map((fridge) => (
+            <Chip
+              key={fridge.id}
+              label={`${fridge.label} (${fridge.minTemp}°C / ${fridge.maxTemp}°C)${fridge.location ? ' — ' + fridge.location : ''}`}
+              variant="outlined"
+            />
+          ))}
+          {fridgesQuery.data?.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Nessun frigorifero censito.
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuovo frigorifero/congelatore</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
           <TextField
             label="Nome (es. Frigo bancone, Congelatore cucina)"
             value={form.label}
@@ -82,49 +119,37 @@ export function Fridges() {
             value={form.location}
             onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
           />
-          <TextField
-            label="Min °C"
-            type="number"
-            value={form.minTemp}
-            onChange={(e) => setForm((f) => ({ ...f, minTemp: e.target.value }))}
-          />
-          <TextField
-            label="Max °C"
-            type="number"
-            value={form.maxTemp}
-            onChange={(e) => setForm((f) => ({ ...f, maxTemp: e.target.value }))}
-          />
-        </Box>
-        <Typography variant="caption" color="text.secondary">
-          Una temperatura rilevata fuori da questo intervallo genera un avviso e richiede
-          un'azione correttiva obbligatoria.
-        </Typography>
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        <Box>
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr' }}>
+            <TextField
+              label="Min °C"
+              type="number"
+              value={form.minTemp}
+              onChange={(e) => setForm((f) => ({ ...f, minTemp: e.target.value }))}
+            />
+            <TextField
+              label="Max °C"
+              type="number"
+              value={form.maxTemp}
+              onChange={(e) => setForm((f) => ({ ...f, maxTemp: e.target.value }))}
+            />
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Una temperatura rilevata fuori da questo intervallo genera un avviso e richiede
+            un'azione correttiva obbligatoria.
+          </Typography>
+          {error && <Alert severity="error">{error}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            sx={{ mt: 2 }}
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => createMutation.mutate()}
           >
             Aggiungi
           </Button>
-        </Box>
-
-        <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 2 }}>
-          {fridgesQuery.data?.map((fridge) => (
-            <Chip
-              key={fridge.id}
-              label={`${fridge.label} (${fridge.minTemp}°C / ${fridge.maxTemp}°C)${fridge.location ? ' — ' + fridge.location : ''}`}
-              variant="outlined"
-            />
-          ))}
-        </Stack>
-      </CardContent>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

@@ -6,6 +6,10 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   MenuItem,
   Stack,
@@ -13,6 +17,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -33,6 +38,8 @@ const usageLabels: Record<string, string> = {
   GENERIC: 'Generico',
 };
 
+const emptyForm = { name: '', host: '', port: '9100', usage: 'GENERIC' };
+
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
     ?.data;
@@ -45,7 +52,8 @@ function extractErrorMessage(error: unknown): string {
 /** Stampanti di rete (POS Epson ESC/POS) usate per report HACCP e checklist ordini. */
 export function Printers() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ name: '', host: '', port: '9100', usage: 'GENERIC' });
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PrinterRow | null>(null);
 
@@ -68,8 +76,9 @@ export function Printers() {
       ).data,
     onSuccess: () => {
       invalidate();
-      setForm({ name: '', host: '', port: '9100', usage: 'GENERIC' });
+      setForm(emptyForm);
       setError(null);
+      setOpen(false);
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -88,63 +97,27 @@ export function Printers() {
     },
   });
 
+  const openCreate = () => {
+    setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
   return (
     <Card>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Stampanti di rete
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6">Stampanti di rete</Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+            Aggiungi
+          </Button>
+        </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Stampanti POS Epson (ESC/POS) raggiungibili in rete sulla porta indicata, usate per il
           report HACCP giornaliero e la checklist degli ordini fornitori.
         </Typography>
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '2fr 2fr 1fr 1.5fr' } }}>
-          <TextField
-            label="Nome"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          />
-          <TextField
-            label="Indirizzo IP"
-            value={form.host}
-            onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))}
-          />
-          <TextField
-            label="Porta"
-            type="number"
-            value={form.port}
-            onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
-          />
-          <TextField
-            select
-            label="Uso"
-            value={form.usage}
-            onChange={(e) => setForm((f) => ({ ...f, usage: e.target.value }))}
-          >
-            {Object.entries(usageLabels).map(([value, label]) => (
-              <MenuItem key={value} value={value}>
-                {label}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        <Box>
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={!form.name || !form.host || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
-          >
-            Aggiungi
-          </Button>
-        </Box>
 
-        <Stack spacing={1} sx={{ mt: 3 }}>
+        <Stack spacing={1} sx={{ mt: 2 }}>
           {printersQuery.data?.map((printer) => (
             <Box
               key={printer.id}
@@ -180,6 +153,51 @@ export function Printers() {
           )}
         </Stack>
       </CardContent>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova stampante</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            label="Nome"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <TextField
+            label="Indirizzo IP"
+            value={form.host}
+            onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))}
+          />
+          <TextField
+            label="Porta"
+            type="number"
+            value={form.port}
+            onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
+          />
+          <TextField
+            select
+            label="Uso"
+            value={form.usage}
+            onChange={(e) => setForm((f) => ({ ...f, usage: e.target.value }))}
+          >
+            {Object.entries(usageLabels).map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
+          </TextField>
+          {error && <Alert severity="error">{error}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!form.name || !form.host || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={!!toDelete}
