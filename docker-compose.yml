@@ -106,6 +106,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    # "default" per parlare con backend (risoluzione DNS interna di
+    # Compose); "coolify" perché Traefik vive lì (vedi il compose di
+    # coolify-proxy: "networks: coolify: external: true") — senza
+    # condividerla, scopre le label via socket Docker ma non ha una rete
+    # per raggiungere davvero il container: da qui "no available server"
+    # anche a router configurato correttamente.
+    networks:
+      - default
+      - coolify
 
     # Routing wildcard (*.${ROOT_DOMAIN}) via label Traefik, per i casi in
     # cui il dominio wildcard non si possa impostare dal dialog "Add
@@ -117,12 +126,27 @@ services:
     # placeholder "{nome:pattern}" di v2) — verificato contro il compose
     # di coolify-proxy: immagine traefik:v3.6, entrypoint HTTPS "https",
     # certresolver "letsencrypt" con DNS-01 su OVH già configurato.
+    #
+    # tls.domains esplicito: con una regola HostRegexp (nessun hostname
+    # fisso) Traefik non può dedurre da solo per quale dominio richiedere
+    # il certificato, quindi senza questa coppia di label non ne
+    # richiede nessuno e il browser vede il certificato di default (da
+    # cui l'errore SSL).
     labels:
       - traefik.enable=true
+      - traefik.docker.network=coolify
       - 'traefik.http.routers.barmanager.rule=HostRegexp(`^[a-z0-9-]+\.${ROOT_DOMAIN}$`)'
       - traefik.http.routers.barmanager.entrypoints=https
       - traefik.http.routers.barmanager.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.routers.barmanager.tls.domains[0].main=${ROOT_DOMAIN}
+      - traefik.http.routers.barmanager.tls.domains[0].sans=*.${ROOT_DOMAIN}
       - traefik.http.services.barmanager.loadbalancer.server.port=80
+
+networks:
+  # Creata e gestita da coolify-proxy, non da questo stack: deve già
+  # esistere sul server (external: true), non viene creata qui.
+  coolify:
+    external: true
 
 volumes:
   postgres_data_v2:

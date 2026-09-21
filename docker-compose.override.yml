@@ -33,6 +33,16 @@ services:
       retries: 5
       start_period: 10s
 
+# Le liste "networks:" dei servizi si uniscono con quelle di
+# docker-compose.yml (non le sostituiscono), quindi "coolify" resta
+# comunque referenziata da frontend anche qui: non potendola togliere,
+# le togliamo il flag "external" così Compose se la crea da sé in
+# locale (una rete vuota, mai raggiunta da nessun proxy reale) invece
+# di pretendere che esista già una rete "coolify" del server Coolify.
+networks:
+  coolify:
+    external: false
+
 volumes:
   backend_node_modules:
   frontend_node_modules:
