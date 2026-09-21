@@ -22,7 +22,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-barmanager}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Rinominato da "postgres_data" apposta: i deploy falliti prima del
+      # fix di DATABASE_URL avevano già inizializzato quel volume con
+      # credenziali diverse (Postgres le applica solo alla primissima
+      # creazione, mai più dopo), causando "P1000: Authentication
+      # failed" ad ogni avvio anche a variabili corrette. Un nome nuovo
+      # forza Compose a creare un volume vuoto invece di riusare quello
+      # vecchio — via preferibile a toccare i volumi dalla UI di
+      # Coolify, che li tiene in sola lettura lì.
+      - postgres_data_v2:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barmanager}"]
       interval: 5s
@@ -115,6 +123,6 @@ services:
       - "traefik.http.services.barmanager.loadbalancer.server.port=80"
 
 volumes:
-  postgres_data:
+  postgres_data_v2:
   redis_data:
   uploads_data:
