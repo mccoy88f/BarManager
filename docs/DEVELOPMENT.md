@@ -152,12 +152,15 @@ Modulo trasversale, non legato a un `venueId` (è il Super Admin che li amminist
 
 ### 5.1 Presenze dipendenti
 
-**Flusso timbratura — due modalità, stesso `AttendanceRecord`:**
+**Metodi di timbratura verificata — l'admin ne abilita anche più di uno insieme (`Venue.clockIn*Enabled`):**
 1. **QR di postazione** (anti-frode, presenza fisica): l'admin genera/stampa un QR per ogni postazione (es. ingresso), che incapsula un URL tipo `https://locale1.tuodominio.it/clock/{qrToken}`. Il dipendente lo inquadra → apre la PWA del **proprio** locale già loggata sulla pagina di timbratura. Registrata con `source: QR`.
-2. **Diretta dall'app**: nella home, il dipendente vede lo stato del proprio turno (in corso dalle HH:MM, o fuori turno) e un pulsante **"Inizio turno" / "Fine turno"** che timbra subito, senza QR — utile da smartphone personale o quando non c'è una postazione fisica a portata di mano. Registrata con `source: MANUAL`.
-3. In entrambi i casi: due grandi pulsanti Material, stato corrente evidenziato, timestamp sempre server-side (mai quello del client). Anti-doppio-click: se l'ultimo evento è "inizio" senza "fine", il pulsante mostra solo "Fine turno" e viceversa.
+2. **GPS**: l'admin imposta una volta la posizione del locale (cattura dal browser) e un raggio in metri (default 20). Dalla home, il dipendente preme il pulsante GPS: il browser chiede la posizione, il server ricalcola la distanza dal punto del locale (formula haversine) e rifiuta se fuori raggio. Le coordinate esatte del locale non sono mai esposte al client, solo i metodi abilitati. Registrata con `source: GPS`.
+3. **Tag NFC**: l'admin censisce in app un'etichetta e un testo per ogni tag, poi scrive lo stesso testo sul tag fisico con un'app di terze parti (BarManager non scrive NFC, solo legge). Dalla home, il dipendente avvicina il telefono al tag (Web NFC — Chrome su Android): il testo letto è confrontato con quelli censiti per il locale. Registrata con `source: NFC`.
+4. **Diretta dall'app** (fallback): se il locale non ha abilitato nessuno dei tre metodi sopra, resta disponibile il pulsante diretto senza verifica, come in v1. Registrata con `source: MANUAL`.
 
-**Amministrazione:** vista tabellare (storico timbrature) con correzione manuale (data/ora + motivo obbligatorio, `source: CORRECTION`, tracciata in audit log) ed export XLS/PDF per periodo. QR di postazione generabili/scaricabili dalla stessa sezione.
+In tutti i casi: stato corrente evidenziato in home, timestamp sempre server-side (mai quello del client). Anti-doppio-click: se l'ultimo evento è "inizio" senza "fine", il pulsante mostra solo "Fine turno" e viceversa.
+
+**Amministrazione:** vista tabellare (storico timbrature) con correzione manuale (data/ora + motivo obbligatorio, `source: CORRECTION`, tracciata in audit log) ed export XLS/PDF per periodo. QR di postazione, tag NFC e metodi abilitati si gestiscono dalla sezione "Metodi di timbratura".
 
 **Richieste assenza (dipendente):** form tipo/giorno intero-parziale/note; **approvazione (admin/responsabile):** coda pendenti, approva/rifiuta con nota.
 
