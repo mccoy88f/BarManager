@@ -31,8 +31,14 @@ services:
       # vecchio — via preferibile a toccare i volumi dalla UI di
       # Coolify, che li tiene in sola lettura lì.
       - postgres_data_v2:/var/lib/postgresql/data
+    # -d esplicito: senza, pg_isready si connette di default a un
+    # database con lo stesso nome dello username (-U), non a quello di
+    # POSTGRES_DB. Se sono due valori diversi l'healthcheck fallisce in
+    # loop con "database <utente> does not exist" anche a inizializzazione
+    # riuscita, e "postgres" non risulta mai sano (backend/frontend
+    # restano bloccati in attesa).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barmanager}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barmanager} -d ${POSTGRES_DB:-barmanager}"]
       interval: 5s
       timeout: 5s
       retries: 10
