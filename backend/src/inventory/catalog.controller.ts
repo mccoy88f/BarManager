@@ -10,9 +10,11 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { CatalogService } from './catalog.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,6 +30,16 @@ export class CatalogController {
   @Get('categories')
   listCategories(@CurrentUser() user: AuthenticatedUser) {
     return this.catalog.listCategories(requireVenueId(user));
+  }
+
+  @Patch('categories/:id')
+  @Roles(Role.ADMIN)
+  updateCategory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateCategoryDto,
+  ) {
+    return this.catalog.updateCategory(requireVenueId(user), id, dto);
   }
 
   @Post('suppliers')
@@ -53,8 +65,8 @@ export class CatalogController {
 
   @Post('products')
   @Roles(Role.ADMIN)
-  createProduct(@Body() dto: CreateProductDto) {
-    return this.catalog.createProduct(dto);
+  createProduct(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductDto) {
+    return this.catalog.createProduct(requireVenueId(user), dto);
   }
 
   @Get('products')
@@ -62,7 +74,22 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('categoryId') categoryId?: string,
     @Query('supplierId') supplierId?: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
-    return this.catalog.listProducts(requireVenueId(user), { categoryId, supplierId });
+    return this.catalog.listProducts(requireVenueId(user), {
+      categoryId,
+      supplierId,
+      includeInactive: includeInactive === 'true',
+    });
+  }
+
+  @Patch('products/:id')
+  @Roles(Role.ADMIN)
+  updateProduct(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+  ) {
+    return this.catalog.updateProduct(requireVenueId(user), id, dto);
   }
 }

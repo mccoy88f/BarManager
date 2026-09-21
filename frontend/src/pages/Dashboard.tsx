@@ -4,6 +4,7 @@ import ThermostatIcon from '@mui/icons-material/Thermostat';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import EventNoteIcon from '@mui/icons-material/EventNote';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore, Role } from '../store/authStore';
 import { AdminSummary } from '../components/AdminSummary';
@@ -48,6 +49,14 @@ const modules = [
     icon: EventNoteIcon,
     path: '/tasks',
     roles: ['ADMIN', 'MANAGER'] as Role[],
+  },
+  {
+    key: 'settings',
+    label: 'Impostazioni locale',
+    description: 'Fasce orarie pranzo/cena, stampanti',
+    icon: SettingsIcon,
+    path: '/settings',
+    roles: ['ADMIN'] as Role[],
   },
 ];
 

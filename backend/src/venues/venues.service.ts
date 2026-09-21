@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -45,5 +46,24 @@ export class VenuesService {
 
   setActive(venueId: string, active: boolean) {
     return this.prisma.venue.update({ where: { id: venueId }, data: { active } });
+  }
+
+  getOwn(venueId: string) {
+    return this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        lunchStart: true,
+        lunchEnd: true,
+        dinnerStart: true,
+        dinnerEnd: true,
+      },
+    });
+  }
+
+  updateHours(venueId: string, dto: UpdateVenueHoursDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 }

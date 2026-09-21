@@ -47,6 +47,15 @@ export class MenuController {
     return this.menuService.listCategories(requireVenueId(user));
   }
 
+  @Patch('categories/:id/move')
+  moveCategory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('direction') direction: 'up' | 'down',
+  ) {
+    return this.menuService.moveCategory(requireVenueId(user), id, direction);
+  }
+
   @Post('items')
   createItem(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateMenuItemDto) {
     return this.menuService.createItem(requireVenueId(user), dto);

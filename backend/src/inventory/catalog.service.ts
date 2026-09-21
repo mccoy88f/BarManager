@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class CatalogService {
@@ -20,6 +22,16 @@ export class CatalogService {
       include: { products: true },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async updateCategory(venueId: string, categoryId: string, dto: UpdateCategoryDto) {
+    const category = await this.prisma.productCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    return this.prisma.productCategory.update({ where: { id: categoryId }, data: dto });
   }
 
   // Fornitori
@@ -51,14 +63,53 @@ export class CatalogService {
   }
 
   // Prodotti
-  createProduct(dto: CreateProductDto) {
+  async createProduct(venueId: string, dto: CreateProductDto) {
+    await this.assertCategoryAndSupplierOwnership(venueId, dto.categoryId, dto.supplierId);
     return this.prisma.product.create({ data: dto });
   }
 
-  listProducts(venueId: string, filters: { categoryId?: string; supplierId?: string }) {
+  async updateProduct(venueId: string, productId: string, dto: UpdateProductDto) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: { category: true },
+    });
+    if (!product || product.category.venueId !== venueId) {
+      throw new NotFoundException('Prodotto non trovato');
+    }
+    if (dto.categoryId || dto.supplierId) {
+      await this.assertCategoryAndSupplierOwnership(
+        venueId,
+        dto.categoryId ?? product.categoryId,
+        dto.supplierId ?? product.supplierId,
+      );
+    }
+    return this.prisma.product.update({ where: { id: productId }, data: dto });
+  }
+
+  private async assertCategoryAndSupplierOwnership(
+    venueId: string,
+    categoryId: string,
+    supplierId: string,
+  ) {
+    const [category, supplier] = await Promise.all([
+      this.prisma.productCategory.findUnique({ where: { id: categoryId } }),
+      this.prisma.supplier.findUnique({ where: { id: supplierId } }),
+    ]);
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    if (!supplier || supplier.venueId !== venueId) {
+      throw new NotFoundException('Fornitore non trovato');
+    }
+  }
+
+  listProducts(
+    venueId: string,
+    filters: { categoryId?: string; supplierId?: string; includeInactive?: boolean },
+  ) {
     return this.prisma.product.findMany({
       where: {
-        active: true,
+        active: filters.includeInactive ? undefined : true,
         category: { venueId },
         categoryId: filters.categoryId,
         supplierId: filters.supplierId,

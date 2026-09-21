@@ -11,8 +11,16 @@ export class MenuService {
 
   // ---- Categorie ------------------------------------------------------
 
-  createCategory(venueId: string, dto: CreateMenuCategoryDto) {
-    return this.prisma.menuCategory.create({ data: { ...dto, venueId } });
+  async createCategory(venueId: string, dto: CreateMenuCategoryDto) {
+    let { sortOrder } = dto;
+    if (sortOrder === undefined) {
+      const last = await this.prisma.menuCategory.findFirst({
+        where: { venueId },
+        orderBy: { sortOrder: 'desc' },
+      });
+      sortOrder = (last?.sortOrder ?? -1) + 1;
+    }
+    return this.prisma.menuCategory.create({ data: { ...dto, sortOrder, venueId } });
   }
 
   listCategories(venueId: string) {
@@ -21,6 +29,35 @@ export class MenuService {
       orderBy: { sortOrder: 'asc' },
       include: { items: true },
     });
+  }
+
+  /** Sposta una categoria su/giù scambiando l'ordinamento con la vicina. */
+  async moveCategory(venueId: string, categoryId: string, direction: 'up' | 'down') {
+    const categories = await this.prisma.menuCategory.findMany({
+      where: { venueId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const index = categories.findIndex((c) => c.id === categoryId);
+    if (index === -1) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    const neighborIndex = direction === 'up' ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= categories.length) {
+      return categories; // già in cima/fondo: nessuna modifica
+    }
+    const current = categories[index];
+    const neighbor = categories[neighborIndex];
+    await this.prisma.$transaction([
+      this.prisma.menuCategory.update({
+        where: { id: current.id },
+        data: { sortOrder: neighbor.sortOrder },
+      }),
+      this.prisma.menuCategory.update({
+        where: { id: neighbor.id },
+        data: { sortOrder: current.sortOrder },
+      }),
+    ]);
+    return this.listCategories(venueId);
   }
 
   // ---- Voci di menù (amministrazione) ------------------------------------

@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './common/audit/audit.module';
 import { ReportsModule } from './reports/reports.module';
@@ -37,6 +38,12 @@ import { HealthModule } from './health/health.module';
     DashboardModule,
     PrintingModule,
     HealthModule,
+  ],
+  providers: [
+    // ThrottlerModule era registrato ma mai applicato: senza questo guard
+    // globale, login e menù pubblico restavano senza alcun limite di
+    // richieste nonostante il rate limiting fosse un requisito esplicito.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

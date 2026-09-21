@@ -12,10 +12,12 @@ import { AttendanceRecords } from './pages/attendance/AttendanceRecords';
 import { HaccpHome } from './pages/haccp/HaccpHome';
 import { InventoryHome } from './pages/inventory/InventoryHome';
 import { Suppliers } from './pages/inventory/Suppliers';
+import { Catalog } from './pages/inventory/Catalog';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { Venues } from './pages/super-admin/Venues';
+import { SettingsHome } from './pages/settings/SettingsHome';
 
 export default function App() {
   return (
@@ -35,6 +37,7 @@ export default function App() {
           <Route element={<ProtectedRoute allow={['ADMIN', 'MANAGER']} />}>
             <Route path="/inventory" element={<InventoryHome />} />
             <Route path="/inventory/suppliers" element={<Suppliers />} />
+            <Route path="/inventory/catalog" element={<Catalog />} />
             <Route path="/menu/admin" element={<MenuAdmin />} />
             <Route path="/tasks" element={<TasksAdmin />} />
             <Route path="/attendance/employees" element={<Employees />} />
@@ -43,6 +46,9 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
             <Route path="/super-admin/venues" element={<Venues />} />
+          </Route>
+          <Route element={<ProtectedRoute allow={['ADMIN']} />}>
+            <Route path="/settings" element={<SettingsHome />} />
           </Route>
         </Route>
       </Route>

@@ -1,16 +1,21 @@
-import { Box, Button } from '@mui/material';
+import { Box, Button, Stack } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
+import CategoryIcon from '@mui/icons-material/Category';
 import { useNavigate } from 'react-router-dom';
 import { NewOrder } from './NewOrder';
 
-// Home del modulo inventario: v1 espone direttamente il flusso "nuovo
-// ordine"; le schermate di gestione categorie/prodotti usano gli stessi
-// endpoint REST e vanno aggiunte nella Fase 1 della roadmap.
 export function InventoryHome() {
   const navigate = useNavigate();
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button
+          size="small"
+          startIcon={<CategoryIcon />}
+          onClick={() => navigate('/inventory/catalog')}
+        >
+          Categorie e prodotti
+        </Button>
         <Button
           size="small"
           startIcon={<SettingsIcon />}
@@ -18,7 +23,7 @@ export function InventoryHome() {
         >
           Fornitori
         </Button>
-      </Box>
+      </Stack>
       <NewOrder />
     </Box>
   );

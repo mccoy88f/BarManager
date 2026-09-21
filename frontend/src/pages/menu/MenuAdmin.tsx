@@ -16,9 +16,12 @@ import {
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { api } from '../../api/client';
+import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 
 interface MenuCategory {
   id: string;
@@ -91,6 +94,12 @@ export function MenuAdmin() {
     },
   });
 
+  const moveCategoryMutation = useMutation({
+    mutationFn: async ({ id, direction }: { id: string; direction: 'up' | 'down' }) =>
+      (await api.patch(`/menu/categories/${id}/move`, { direction })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
+  });
+
   const createItemMutation = useMutation({
     mutationFn: async () =>
       (
@@ -125,6 +134,30 @@ export function MenuAdmin() {
     },
     onSuccess: invalidate,
   });
+
+  const [cropTargetItemId, setCropTargetItemId] = useState<string | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+
+  const startPhotoCrop = (itemId: string, file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropTargetItemId(itemId);
+      setCropImageSrc(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const cancelPhotoCrop = () => {
+    setCropTargetItemId(null);
+    setCropImageSrc(null);
+  };
+
+  const confirmPhotoCrop = (blob: Blob) => {
+    if (!cropTargetItemId) return;
+    const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+    uploadPhotoMutation.mutate({ id: cropTargetItemId, file });
+    cancelPhotoCrop();
+  };
 
   const publicMenuUrl = `${window.location.origin}/menu`;
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -207,6 +240,38 @@ export function MenuAdmin() {
               Aggiungi
             </Button>
           </Box>
+
+          <Stack spacing={0.5} sx={{ mt: 2 }}>
+            {categoriesQuery.data?.map((category, index) => (
+              <Box
+                key={category.id}
+                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <Typography variant="body2">{category.name}</Typography>
+                <Stack direction="row">
+                  <IconButton
+                    size="small"
+                    disabled={index === 0 || moveCategoryMutation.isPending}
+                    onClick={() => moveCategoryMutation.mutate({ id: category.id, direction: 'up' })}
+                  >
+                    <ArrowUpwardIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    disabled={
+                      index === (categoriesQuery.data?.length ?? 0) - 1 ||
+                      moveCategoryMutation.isPending
+                    }
+                    onClick={() =>
+                      moveCategoryMutation.mutate({ id: category.id, direction: 'down' })
+                    }
+                  >
+                    <ArrowDownwardIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
         </CardContent>
       </Card>
 
@@ -314,7 +379,8 @@ export function MenuAdmin() {
                         hidden
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) uploadPhotoMutation.mutate({ id: item.id, file });
+                          if (file) startPhotoCrop(item.id, file);
+                          e.target.value = '';
                         }}
                       />
                     </IconButton>
@@ -361,6 +427,13 @@ export function MenuAdmin() {
           </Card>
         ))}
       </Stack>
+
+      <PhotoCropDialog
+        open={!!cropImageSrc}
+        imageSrc={cropImageSrc}
+        onCancel={cancelPhotoCrop}
+        onConfirm={confirmPhotoCrop}
+      />
     </Box>
   );
 }
