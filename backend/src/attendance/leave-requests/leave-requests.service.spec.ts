@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { LeaveRequestsService } from './leave-requests.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -14,6 +14,13 @@ const admin: AuthenticatedUser = {
 const employeeUser: AuthenticatedUser = {
   userId: 'user-1',
   email: 'dipendente@venue1.test',
+  role: 'EMPLOYEE',
+  venueId: 'venue-1',
+};
+
+const managerUser: AuthenticatedUser = {
+  userId: 'user-2',
+  email: 'responsabile@venue1.test',
   role: 'EMPLOYEE',
   venueId: 'venue-1',
 };
@@ -73,5 +80,69 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
       where: { userId: employeeUser.userId },
     });
     expect(request.employeeId).toBe('own-employee-id');
+  });
+});
+
+describe('LeaveRequestsService.remove — cancellazione richieste approvate', () => {
+  let prisma: {
+    employee: { findUnique: jest.Mock };
+    leaveRequest: { findUnique: jest.Mock; delete: jest.Mock };
+  };
+  let audit: { log: jest.Mock };
+  let service: LeaveRequestsService;
+
+  const approvedRequest = {
+    id: 'lr-1',
+    status: 'APPROVED',
+    employeeId: 'employee-2',
+    employee: { id: 'employee-2', venueId: 'venue-1' },
+  };
+
+  beforeEach(() => {
+    prisma = {
+      employee: { findUnique: jest.fn() },
+      leaveRequest: {
+        findUnique: jest.fn().mockResolvedValue(approvedRequest),
+        delete: jest.fn().mockResolvedValue(approvedRequest),
+      },
+    };
+    audit = { log: jest.fn() };
+    service = new LeaveRequestsService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+  });
+
+  it("l'admin elimina una richiesta approvata", async () => {
+    const result = await service.remove(admin, 'lr-1');
+    expect(result).toEqual({ success: true });
+    expect(prisma.leaveRequest.delete).toHaveBeenCalledWith({ where: { id: 'lr-1' } });
+    expect(audit.log).toHaveBeenCalled();
+  });
+
+  it('un dipendente responsabile (isManager) elimina una richiesta approvata', async () => {
+    prisma.employee.findUnique.mockResolvedValue({ isManager: true });
+    await service.remove(managerUser, 'lr-1');
+    expect(prisma.leaveRequest.delete).toHaveBeenCalledWith({ where: { id: 'lr-1' } });
+  });
+
+  it('un dipendente non responsabile non può eliminare la richiesta', async () => {
+    prisma.employee.findUnique.mockResolvedValue({ isManager: false });
+    await expect(service.remove(employeeUser, 'lr-1')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.leaveRequest.delete).not.toHaveBeenCalled();
+  });
+
+  it('una richiesta non ancora approvata non può essere eliminata', async () => {
+    prisma.leaveRequest.findUnique.mockResolvedValue({ ...approvedRequest, status: 'PENDING' });
+    await expect(service.remove(admin, 'lr-1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.leaveRequest.delete).not.toHaveBeenCalled();
+  });
+
+  it('una richiesta di un altro locale non viene trovata', async () => {
+    prisma.leaveRequest.findUnique.mockResolvedValue({
+      ...approvedRequest,
+      employee: { id: 'employee-2', venueId: 'venue-2' },
+    });
+    await expect(service.remove(admin, 'lr-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

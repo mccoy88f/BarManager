@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { LeaveStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -130,5 +135,58 @@ export class LeaveRequestsService {
     }
 
     return after;
+  }
+
+  /**
+   * Una richiesta approvata può sempre essere cancellata dall'admin o da un
+   * responsabile (Employee.isManager), ad es. per correggere un errore o un
+   * cambio di programma. Le richieste non ancora approvate si gestiscono con
+   * review() (approva/rifiuta), non con la cancellazione.
+   */
+  async remove(user: AuthenticatedUser, requestId: string) {
+    const request = await this.prisma.leaveRequest.findUnique({
+      where: { id: requestId },
+      include: { employee: true },
+    });
+    if (!request || request.employee.venueId !== requireVenueId(user)) {
+      throw new NotFoundException('Richiesta non trovata');
+    }
+    if (request.status !== 'APPROVED') {
+      throw new BadRequestException('Solo le richieste approvate possono essere eliminate.');
+    }
+    await this.assertCanManage(user);
+
+    await this.prisma.leaveRequest.delete({ where: { id: requestId } });
+
+    await this.audit.log({
+      venueId: requireVenueId(user),
+      userId: user.userId,
+      entity: 'LeaveRequest',
+      entityId: requestId,
+      action: 'DELETE',
+      before: request,
+    });
+
+    return { success: true };
+  }
+
+  /** Richieste approvate del locale, per chi può eliminarle (admin o responsabile). */
+  async listApprovedForManager(user: AuthenticatedUser) {
+    await this.assertCanManage(user);
+    return this.prisma.leaveRequest.findMany({
+      where: { employee: { venueId: requireVenueId(user) }, status: 'APPROVED' },
+      include: { employee: true },
+      orderBy: { startDate: 'desc' },
+    });
+  }
+
+  private async assertCanManage(user: AuthenticatedUser): Promise<void> {
+    if (user.role === 'ADMIN') return;
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.userId } });
+    if (!employee?.isManager) {
+      throw new ForbiddenException(
+        "Solo l'admin o un responsabile possono eliminare una richiesta approvata.",
+      );
+    }
   }
 }

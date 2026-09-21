@@ -35,12 +35,14 @@ export class AuthService {
     // senza una chiamata aggiuntiva — l'autorità resta comunque lato server,
     // verificata ad ogni richiesta dal guard.
     let allowedModules: string[] | undefined;
+    let isManager: boolean | undefined;
     if (user.role === Role.MANAGER || user.role === Role.EMPLOYEE) {
       const employee = await this.prisma.employee.findUnique({
         where: { userId: user.id },
-        select: { allowedModules: true },
+        select: { allowedModules: true, isManager: true },
       });
       allowedModules = employee?.allowedModules ?? [];
+      isManager = employee?.isManager ?? false;
     }
 
     const payload = {
@@ -49,6 +51,7 @@ export class AuthService {
       role: user.role,
       venueId: user.venueId,
       ...(allowedModules !== undefined ? { allowedModules } : {}),
+      ...(isManager !== undefined ? { isManager } : {}),
     };
 
     const accessToken = await this.jwt.signAsync(payload, {

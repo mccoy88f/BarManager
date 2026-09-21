@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   venueId: string | null;
   /** Solo per Manager/Dipendente: vedi ModuleAccessGuard. */
   allowedModules?: string[];
+  /** Solo per Manager/Dipendente: dipendente "Responsabile" (Employee.isManager). */
+  isManager?: boolean;
 }
 
 /**

@@ -11,6 +11,8 @@ interface AuthUser {
   venueId: string | null;
   /** Solo per Manager/Dipendente: moduli extra concessi dall'admin (vedi Employees). */
   allowedModules?: string[];
+  /** Solo per Manager/Dipendente: dipendente "Responsabile" (vedi Employees). */
+  isManager?: boolean;
 }
 
 interface AuthState {
