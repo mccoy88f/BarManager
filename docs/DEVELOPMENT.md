@@ -2,7 +2,7 @@
 
 > Piattaforma **multi-tenant** (un sotto-dominio per locale) per la gestione operativa di bar/ristoranti: presenze dipendenti, controlli HACCP, inventario e ordini fornitori, menù online, attività e scadenze — con una home dell'amministrazione che riepiloga ciò che richiede attenzione ogni giorno. Web app installabile come PWA, progettata per essere convertita in app Android nativa (wrapper Capacitor) senza riscrivere il frontend. Pensata per il deploy su **Portainer** o **Coolify**, dietro il loro reverse proxy.
 
-Versione: 0.3 — Attività/scadenze + home amministrazione
+Versione: 0.4 — Compose di produzione pronto per Portainer/Coolify
 Data: 2026-09-21
 
 ---
@@ -265,6 +265,10 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 - Endpoint notifiche (lista/segna come letta) ed endpoint di riepilogo `/dashboard/admin-summary`.
 - Home dell'amministrazione (§5.6): richieste pendenti con approvazione rapida, ordini del giorno, scadenze imminenti/scadute, notifiche.
 
+**Fase 0-quater — Compose di produzione (questo aggiornamento)**
+- `docker-compose.yml` passato allo stage `production` dei Dockerfile (era `dev`, non adatto a un deploy reale); `docker-compose.override.yml` aggiunto per mantenere invariata l'esperienza di sviluppo in locale (§9.0).
+- CLI di Prisma spostata tra le dipendenze di runtime, altrimenti assente nell'immagine di produzione (`npm ci --omit=dev`) e `prisma db push` non sarebbe potuto girare all'avvio del container.
+
 **Fase 1 — Rifinitura MVP**
 - UI di amministrazione mancanti (dipendenti, categorie/prodotti, stampanti) — oggi disponibili via API.
 - Notifica push via PWA per gli avvisi urgenti (oggi solo in-app/email), allegati alle attività/scadenze.
@@ -281,12 +285,22 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 
 ## 9. Nota di deployment
 
+### 9.0 Due file compose: produzione vs sviluppo
+
+- `docker-compose.yml` è il file di **produzione**: costruisce lo stage `production` dei Dockerfile (backend compilato con `nest build`, frontend buildato con Vite e servito da Nginx), senza montare il codice sorgente nei container. È questo il file che Portainer/Coolify leggono collegandosi al repository.
+- `docker-compose.override.yml` esiste **solo per lo sviluppo in locale**: Docker Compose lo carica automaticamente insieme a `docker-compose.yml` quando lanci `docker compose up` da questa cartella (nessuna opzione da aggiungere), riportando i servizi allo stage `dev` con hot reload e bind mount del codice. Portainer e Coolify, collegandosi al repository Git, non lo considerano affatto: usano solo `docker-compose.yml`.
+- La CLI di Prisma (`prisma`) è tenuta come **dipendenza di runtime** (non solo di sviluppo) apposta: serve per eseguire `prisma db push` all'avvio del container anche nell'immagine di produzione, dove le `devDependencies` sono escluse (`npm ci --omit=dev`).
+
 ### 9.1 Portainer / Coolify e sotto-domini
 
 - **DNS**: creare un record **wildcard** `*.tuodominio.it → IP del server` (oltre, se serve, ad `admin.tuodominio.it` se si preferisce un sotto-dominio dedicato invece della wildcard per l'host di amministrazione).
-- **Coolify**: nella configurazione del dominio dell'applicazione si può indicare direttamente `*.tuodominio.it`; Coolify genera automaticamente le regole Traefik e il certificato wildcard (richiede credenziali del provider DNS per la validazione **DNS-01**, obbligatoria per i certificati wildcard).
-- **Portainer**: si importa `docker-compose.yml` come stack; se davanti c'è Traefik o Nginx Proxy Manager, va aggiunta la regola di routing per `*.tuodominio.it` verso il servizio `frontend` (porta 80) — un esempio di label Traefik è incluso, commentato, in `docker-compose.yml`.
-- L'app **non** include un proprio container reverse proxy: il traffico arriva già in chiaro (HTTP) dal proxy della piattaforma al container `frontend`, che fa da unico punto d'ingresso (proxando `/api` al backend).
+- **Coolify** — passi:
+  1. *New Resource* → **Docker Compose**, collegando il repository (branch `main`); Coolify legge `docker-compose.yml`.
+  2. Impostare le variabili d'ambiente nella sezione *Environment Variables* della risorsa (stesso contenuto di `.env.example`: credenziali Postgres, `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`, SMTP, `ROOT_DOMAIN`, ...) — Coolify genera da sé il file `.env` che il compose si aspetta (`env_file: .env`).
+  3. Assegnare il dominio al servizio **frontend** (porta 80): `*.tuodominio.it` per la wildcard (richiede un provider DNS collegato a Coolify per la validazione **DNS-01**, obbligatoria per i certificati wildcard) oppure un dominio singolo in assenza di wildcard. Il servizio **backend** non va esposto pubblicamente.
+  4. Deploy. Il primo avvio applica lo schema con `prisma db push`; creare l'utente iniziale con `docker compose exec backend npm run prisma:seed` (terminale Coolify o SSH) e cambiare subito le password di default (`backend/prisma/seed.ts`).
+- **Portainer**: si importa `docker-compose.yml` come stack (Stacks → Add stack → Repository); se davanti c'è Traefik o Nginx Proxy Manager, va aggiunta a mano la regola di routing per `*.tuodominio.it` verso il servizio `frontend` (porta 80) — un esempio di label Traefik è incluso, commentato, in `docker-compose.yml`.
+- L'app **non** include un proprio container reverse proxy: il traffico arriva già in chiaro (HTTP) dal proxy della piattaforma al container `frontend`, che fa da unico punto d'ingresso (proxando `/api` e `/uploads` al backend).
 
 ### 9.2 Stampanti di rete
 

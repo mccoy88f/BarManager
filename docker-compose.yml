@@ -1,9 +1,17 @@
-# Pensato per essere importato come stack in Portainer o come progetto in
-# Coolify: non include un reverse proxy proprio, si appoggia a quello già
-# presente sulla piattaforma (Traefik/Nginx Proxy Manager), che instrada
-# *.tuodominio.it verso il servizio "frontend" (porta 80).
-# In locale (docker compose up) funziona anche senza alcun proxy davanti,
-# raggiungendo direttamente le porte pubblicate qui sotto.
+# File di PRODUZIONE: usato direttamente da Portainer/Coolify quando
+# collegano questo repository. Costruisce le immagini ottimizzate (stage
+# "production" dei Dockerfile: backend compilato, frontend servito da
+# Nginx come static build) e non monta il codice sorgente nei container.
+#
+# In locale, "docker compose up" carica automaticamente anche
+# docker-compose.override.yml (hot reload, bind mount del codice, porte
+# dirette su localhost) senza bisogno di alcuna opzione aggiuntiva: la
+# UX di sviluppo descritta nel README resta invariata.
+#
+# Nessun reverse proxy proprio: il traffico arriva già instradato dal
+# proxy della piattaforma (Traefik su Coolify, Traefik/Nginx Proxy
+# Manager su Portainer) verso il servizio "frontend" (porta 80), che fa
+# da unico punto d'ingresso e proxa "/api" e "/uploads" al backend.
 
 services:
   postgres:
@@ -30,7 +38,7 @@ services:
   backend:
     build:
       context: ./backend
-      target: dev
+      target: production
     restart: unless-stopped
     env_file: .env
     environment:
@@ -42,36 +50,29 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    ports:
-      # Comodo in locale per chiamare l'API direttamente (Postman/curl);
-      # in produzione non va pubblicata (la raggiunge solo "frontend").
-      - "3000:3000"
     volumes:
-      - ./backend:/app
-      - backend_node_modules:/app/node_modules
       - uploads_data:/app/uploads
-    command: sh -c "npx prisma db push && npm run start:dev"
+    # "prisma db push" applica lo schema corrente al database ad ogni
+    # avvio/deploy. Va bene per questa fase del progetto; prima di andare
+    # live con dati reali conviene passare a migrazioni versionate
+    # ("prisma migrate deploy", vedi docs/DEVELOPMENT.md §10).
+    command: sh -c "npx prisma db push && node dist/main"
 
   frontend:
     build:
       context: ./frontend
-      target: dev
+      target: production
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      # In produzione dietro Portainer/Coolify questa porta non va
-      # pubblicata sull'host: la raggiunge solo il reverse proxy della
-      # piattaforma sulla rete Docker interna. In locale è comoda per
-      # aprire subito http://localhost:5173.
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    command: npm run dev -- --host 0.0.0.0
 
-    # Esempio di label Traefik, per un deploy su Portainer con Traefik
-    # davanti (Coolify le genera da sé dalla UI, non servono qui):
+    # Coolify: assegna il dominio (anche wildcard *.tuodominio.it) a
+    # questo servizio dalla UI, indicando la porta 80 — genera da sé le
+    # regole Traefik e il certificato TLS, nessuna label da scrivere qui.
+    #
+    # Portainer con Traefik/Nginx Proxy Manager davanti: serve invece una
+    # regola di routing esplicita verso questo servizio (porta 80), ad
+    # esempio con label Traefik:
     # labels:
     #   - "traefik.enable=true"
     #   - "traefik.http.routers.barmanager.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.tuodominio.it`)"
@@ -81,6 +82,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  backend_node_modules:
-  frontend_node_modules:
   uploads_data:

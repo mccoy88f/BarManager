@@ -42,16 +42,27 @@ Crea:
 
 ## Deploy su Portainer / Coolify
 
-Vedi §9 del [documento di sviluppo](docs/DEVELOPMENT.md#9-nota-di-deployment) per il dettaglio: DNS wildcard `*.tuodominio.it`, configurazione del dominio su Coolify (TLS wildcard via DNS-01) o label Traefik su Portainer, e raggiungibilità delle stampanti Epson di rete.
+`docker-compose.yml` è già pronto per essere puntato da Coolify/Portainer: usa le immagini di produzione (backend compilato, frontend statico servito da Nginx), senza bind mount del codice. `docker-compose.override.yml` esiste solo per lo sviluppo in locale (hot reload) e viene ignorato da entrambe le piattaforme quando si collegano al repository.
+
+Passi minimi su **Coolify**:
+1. New Resource → **Docker Compose** → collega questo repository/branch (`main`). Coolify legge automaticamente `docker-compose.yml`.
+2. Imposta le variabili d'ambiente (stesso contenuto di `.env.example`: `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `SMTP_*`, `ROOT_DOMAIN=tuodominio.it`, ecc.) nella sezione *Environment Variables* della risorsa — Coolify genera da sé il `.env` che il compose si aspetta.
+3. Nella configurazione del servizio **frontend**, assegna il dominio: `*.tuodominio.it` (wildcard, richiede un provider DNS configurato su Coolify per il certificato via DNS‑01) oppure un dominio singolo se non hai ancora la wildcard, porta **80**. Il servizio **backend** non va esposto pubblicamente: lo raggiunge solo "frontend" via rete Docker interna.
+4. Deploy. Al primo avvio il backend esegue `prisma db push` sul database Postgres del compose, poi crea l'utente iniziale con `docker compose exec backend npm run prisma:seed` (dal terminale integrato di Coolify o via SSH sul server) — cambia subito le password di default.
+
+Su **Portainer** la procedura è analoga (Stacks → Add stack → Repository), ma se davanti c'è Traefik/Nginx Proxy Manager serve aggiungere la regola di routing verso "frontend:80" a mano (esempio di label Traefik incluso, commentato, in `docker-compose.yml`).
+
+Vedi §9 del [documento di sviluppo](docs/DEVELOPMENT.md#9-nota-di-deployment) per il dettaglio (DNS wildcard, raggiungibilità delle stampanti Epson di rete).
 
 ## Struttura del repository
 
 ```
 BarManager/
-├── docs/DEVELOPMENT.md   # documento di sviluppo completo
-├── docker-compose.yml
-├── backend/               # API NestJS + Prisma
-└── frontend/              # React + MUI (PWA)
+├── docs/DEVELOPMENT.md            # documento di sviluppo completo
+├── docker-compose.yml             # produzione (Portainer/Coolify)
+├── docker-compose.override.yml    # solo sviluppo locale (hot reload)
+├── backend/                       # API NestJS + Prisma
+└── frontend/                      # React + MUI (PWA)
 ```
 
 ## Stato del progetto

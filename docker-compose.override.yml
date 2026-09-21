@@ -1,0 +1,30 @@
+# Caricato automaticamente da "docker compose up" in locale (mai da
+# Portainer/Coolify, che leggono solo docker-compose.yml): riporta i
+# servizi allo stage "dev" con hot reload, bind mount del codice
+# sorgente e porte pubblicate direttamente su localhost.
+
+services:
+  backend:
+    build:
+      target: dev
+    ports:
+      # Comodo per chiamare l'API direttamente (Postman/curl) in locale.
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    command: sh -c "npx prisma db push && npm run start:dev"
+
+  frontend:
+    build:
+      target: dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
