@@ -16,6 +16,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PrintingModule } from './printing/printing.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { PrintingModule } from './printing/printing.module';
     NotificationsModule,
     DashboardModule,
     PrintingModule,
+    HealthModule,
   ],
 })
 export class AppModule implements NestModule {

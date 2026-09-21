@@ -19,5 +19,10 @@
     "noFallthroughCasesInSwitch": true,
     "moduleResolution": "node",
     "esModuleInterop": true
-  }
+  },
+  // Senza "include", tsc raccoglie anche prisma/seed.ts (fuori da src/,
+  // eseguito a parte via ts-node): la radice comune diventa la root del
+  // progetto e l'output finisce sotto dist/src/... invece che dist/...,
+  // rompendo "node dist/main" (package.json "start" e Dockerfile CMD).
+  "include": ["src/**/*.ts"]
 }
