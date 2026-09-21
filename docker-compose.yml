@@ -113,20 +113,16 @@ services:
     # Con queste label NON aggiungere anche un dominio dalla UI per lo
     # stesso servizio: creerebbe due router in conflitto.
     #
-    # Un certificato wildcard richiede comunque la validazione DNS-01
-    # (obbligatoria per ACME/Let's Encrypt sui wildcard): il resolver
-    # indicato sotto deve corrispondere a uno già configurato con le
-    # credenziali del provider DNS nelle impostazioni server/proxy di
-    # Coolify — verificane il nome esatto lì (su Portainer con Traefik
-    # esterno, il nome del resolver dipende da come l'hai configurato tu).
-    # Anche il nome dell'entrypoint HTTPS ("https" qui sotto) va
-    # confermato contro la configurazione Traefik effettiva.
+    # Sintassi HostRegexp di Traefik v3 (regex diretta, non più i
+    # placeholder "{nome:pattern}" di v2) — verificato contro il compose
+    # di coolify-proxy: immagine traefik:v3.6, entrypoint HTTPS "https",
+    # certresolver "letsencrypt" con DNS-01 su OVH già configurato.
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.barmanager.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${ROOT_DOMAIN}`)"
-      - "traefik.http.routers.barmanager.entrypoints=https"
-      - "traefik.http.routers.barmanager.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
-      - "traefik.http.services.barmanager.loadbalancer.server.port=80"
+      - traefik.enable=true
+      - 'traefik.http.routers.barmanager.rule=HostRegexp(`^[a-z0-9-]+\.${ROOT_DOMAIN}$`)'
+      - traefik.http.routers.barmanager.entrypoints=https
+      - traefik.http.routers.barmanager.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.barmanager.loadbalancer.server.port=80
 
 volumes:
   postgres_data_v2:
