@@ -47,7 +47,13 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # Costruita dalle stesse variabili POSTGRES_* del servizio "postgres"
+      # qui sopra (unica fonte di verità per la password): un DATABASE_URL
+      # impostato a mano, disallineato da POSTGRES_PASSWORD, è la causa più
+      # comune di "P1000: Authentication failed" — soprattutto dopo un
+      # redeploy, perché Postgres applica POSTGRES_USER/PASSWORD solo alla
+      # primissima creazione del volume dati, non ad ogni avvio.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-barmanager}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-barmanager}
       REDIS_URL: redis://redis:6379
       UPLOADS_DIR: /app/uploads
     depends_on:
