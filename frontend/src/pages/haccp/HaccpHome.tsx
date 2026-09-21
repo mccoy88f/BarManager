@@ -1,8 +1,14 @@
+import { Box } from '@mui/material';
+import { Fridges } from './Fridges';
 import { TemperatureEntry } from './TemperatureEntry';
+import { ReadingsHistory } from './ReadingsHistory';
 
-// In v1 la home del modulo HACCP coincide con l'inserimento temperature,
-// il flusso più usato quotidianamente; report/firma restano lato backend
-// (endpoint pronti) in attesa della UI dedicata (Fase 1 della roadmap).
 export function HaccpHome() {
-  return <TemperatureEntry />;
+  return (
+    <Box sx={{ display: 'grid', gap: 3 }}>
+      <Fridges />
+      <TemperatureEntry />
+      <ReadingsHistory />
+    </Box>
+  );
 }

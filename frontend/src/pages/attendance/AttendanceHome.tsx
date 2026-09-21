@@ -29,6 +29,30 @@ export function AttendanceHome() {
           </CardActionArea>
         </Card>
       </Grid>
+      <Grid item xs={12} sm={6}>
+        <Card>
+          <CardActionArea onClick={() => navigate('/attendance/qr-tokens')} sx={{ p: 2 }}>
+            <CardContent>
+              <Typography variant="h6">QR per timbratura</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Genera e scarica i QR delle postazioni per inizio/fine turno
+              </Typography>
+            </CardContent>
+          </CardActionArea>
+        </Card>
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <Card>
+          <CardActionArea onClick={() => navigate('/attendance/records')} sx={{ p: 2 }}>
+            <CardContent>
+              <Typography variant="h6">Storico timbrature</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Consulta ed esporta le presenze in XLS o PDF
+              </Typography>
+            </CardContent>
+          </CardActionArea>
+        </Card>
+      </Grid>
     </Grid>
   );
 }

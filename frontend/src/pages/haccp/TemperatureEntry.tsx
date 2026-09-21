@@ -1,37 +1,72 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
-  Button,
-  Stack,
-  Alert,
 } from '@mui/material';
+import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import type { Fridge } from './Fridges';
 
-interface Fridge {
-  id: string;
-  label: string;
-  minTemp: number;
-  maxTemp: number;
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore durante il salvataggio.';
 }
 
 /**
- * Form mobile-friendly: un frigo per riga, input numerico grande.
- * Se il valore è fuori soglia richiede obbligatoriamente l'azione correttiva
- * (requisito HACCP: l'anomalia va sempre accompagnata dalla correzione).
+ * Tabella con tutti i frigo/congelatori alla data odierna: un rigo per
+ * frigo, inserimento del valore rilevato e, se fuori soglia, dell'azione
+ * correttiva (obbligatoria lato backend). In fondo, firma e stampa del
+ * report giornaliero sulla stampante HACCP configurata.
  */
 export function TemperatureEntry() {
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
   const [corrective, setCorrective] = useState<Record<string, string>>({});
+  const [printOpen, setPrintOpen] = useState(false);
+  const [signedByName, setSignedByName] = useState('');
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [printSuccess, setPrintSuccess] = useState<string | null>(null);
+
+  const today = todayIso();
 
   const fridgesQuery = useQuery({
     queryKey: ['fridges'],
     queryFn: async () => (await api.get<Fridge[]>('/haccp/fridges')).data,
+  });
+
+  const todayReadingsQuery = useQuery({
+    queryKey: ['readings', today],
+    queryFn: async () =>
+      (await api.get('/haccp/readings', { params: { from: today, to: today } })).data as Array<{
+        id: string;
+        fridgeId: string;
+        value: number;
+        outOfRange: boolean;
+      }>,
   });
 
   const submitMutation = useMutation({
@@ -45,70 +80,176 @@ export function TemperatureEntry() {
       ).data,
     onSuccess: (_, fridgeId) => {
       setValues((v) => ({ ...v, [fridgeId]: '' }));
+      setCorrective((c) => ({ ...c, [fridgeId]: '' }));
       queryClient.invalidateQueries({ queryKey: ['readings'] });
     },
   });
 
-  return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h6">Rilevazione temperature</Typography>
-      <Stack spacing={2}>
-        {fridgesQuery.data?.map((fridge) => {
-          const value = values[fridge.id] ?? '';
-          const numValue = Number(value);
-          const outOfRange =
-            value !== '' && (numValue < fridge.minTemp || numValue > fridge.maxTemp);
+  const printMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post('/haccp/report/print', {
+          reportDate: today,
+          signedByName: signedByName.trim(),
+        })
+      ).data,
+    onSuccess: (data) => {
+      setPrintError(null);
+      setPrintSuccess(
+        data?.print?.printed
+          ? 'Report stampato correttamente.'
+          : 'Report registrato e firmato (stampante non disponibile: verifica la configurazione).',
+      );
+      setPrintOpen(false);
+      setSignedByName('');
+    },
+    onError: (err) => setPrintError(extractErrorMessage(err)),
+  });
 
-          return (
-            <Card key={fridge.id} variant="outlined">
-              <CardContent>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  {fridge.label}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Range accettabile: {fridge.minTemp}°C / {fridge.maxTemp}°C
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, mt: 1, alignItems: 'center' }}>
-                  <TextField
-                    label="°C"
-                    type="number"
-                    value={value}
-                    onChange={(e) => setValues((v) => ({ ...v, [fridge.id]: e.target.value }))}
-                    sx={{ width: 120 }}
-                  />
-                  <Button
-                    variant="contained"
-                    disabled={
-                      value === '' ||
-                      (outOfRange && !corrective[fridge.id]) ||
-                      submitMutation.isPending
-                    }
-                    onClick={() => submitMutation.mutate(fridge.id)}
-                  >
-                    Registra
-                  </Button>
-                </Box>
-                {outOfRange && (
-                  <>
-                    <Alert severity="warning" sx={{ mt: 1 }}>
-                      Valore fuori soglia: indica l'azione correttiva
-                    </Alert>
+  const readingsByFridge = new Map(
+    (todayReadingsQuery.data ?? []).map((r) => [r.fridgeId, r]),
+  );
+
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h6">
+            Rilevazione temperature — {new Date().toLocaleDateString('it-IT')}
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<PrintIcon />}
+            onClick={() => {
+              setPrintError(null);
+              setPrintOpen(true);
+            }}
+          >
+            Firma e stampa report
+          </Button>
+        </Box>
+
+        {printSuccess && (
+          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrintSuccess(null)}>
+            {printSuccess}
+          </Alert>
+        )}
+
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Frigo/Congelatore</TableCell>
+              <TableCell>Range</TableCell>
+              <TableCell>Già registrato oggi</TableCell>
+              <TableCell>Valore rilevato</TableCell>
+              <TableCell>Azione correttiva</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {fridgesQuery.data?.map((fridge) => {
+              const value = values[fridge.id] ?? '';
+              const numValue = Number(value);
+              const outOfRange =
+                value !== '' && (numValue < fridge.minTemp || numValue > fridge.maxTemp);
+              const alreadyToday = readingsByFridge.get(fridge.id);
+
+              return (
+                <TableRow key={fridge.id}>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={600}>
+                      {fridge.label}
+                    </Typography>
+                    {fridge.location && (
+                      <Typography variant="caption" color="text.secondary">
+                        {fridge.location}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {fridge.minTemp}°C / {fridge.maxTemp}°C
+                  </TableCell>
+                  <TableCell>
+                    {alreadyToday ? (
+                      <Chip
+                        size="small"
+                        color={alreadyToday.outOfRange ? 'warning' : 'success'}
+                        label={`${alreadyToday.value}°C`}
+                      />
+                    ) : (
+                      <Chip size="small" variant="outlined" label="Nessuna" />
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <TextField
-                      label="Azione correttiva"
-                      fullWidth
-                      sx={{ mt: 1 }}
-                      value={corrective[fridge.id] ?? ''}
-                      onChange={(e) =>
-                        setCorrective((c) => ({ ...c, [fridge.id]: e.target.value }))
-                      }
+                      label="°C"
+                      type="number"
+                      size="small"
+                      value={value}
+                      onChange={(e) => setValues((v) => ({ ...v, [fridge.id]: e.target.value }))}
+                      sx={{ width: 100 }}
                     />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </Stack>
-    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {outOfRange && (
+                      <TextField
+                        label="Obbligatoria: fuori soglia"
+                        size="small"
+                        value={corrective[fridge.id] ?? ''}
+                        onChange={(e) =>
+                          setCorrective((c) => ({ ...c, [fridge.id]: e.target.value }))
+                        }
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={
+                        value === '' ||
+                        (outOfRange && !corrective[fridge.id]) ||
+                        submitMutation.isPending
+                      }
+                      onClick={() => submitMutation.mutate(fridge.id)}
+                    >
+                      Registra
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        {fridgesQuery.data?.length === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Nessun frigorifero censito: aggiungine uno qui sopra.
+          </Typography>
+        )}
+      </CardContent>
+
+      <Dialog open={printOpen} onClose={() => setPrintOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Firma e stampa report di oggi</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            label="Nome di chi firma"
+            value={signedByName}
+            onChange={(e) => setSignedByName(e.target.value)}
+            autoFocus
+          />
+          {printError && <Alert severity="error">{printError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPrintOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!signedByName.trim() || printMutation.isPending}
+            onClick={() => printMutation.mutate()}
+          >
+            Firma e stampa
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Card>
   );
 }

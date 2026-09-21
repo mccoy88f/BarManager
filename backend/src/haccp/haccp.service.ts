@@ -74,12 +74,19 @@ export class HaccpService {
   }
 
   listReadings(venueId: string, from?: string, to?: string) {
+    // "to" arriva come data (es. "2026-09-21"), che new Date() interpreta come
+    // mezzanotte UTC: senza estenderla a fine giornata, "lte" escluderebbe di
+    // fatto tutte le rilevazioni del giorno stesso (bug che rendeva vuoto
+    // anche il report/stampa HACCP, che usa la stessa data sia per from che to).
+    const toDate = to ? new Date(to) : undefined;
+    toDate?.setUTCHours(23, 59, 59, 999);
+
     return this.prisma.temperatureReading.findMany({
       where: {
         fridge: { venueId },
         recordedAt: {
           gte: from ? new Date(from) : undefined,
-          lte: to ? new Date(to) : undefined,
+          lte: toDate,
         },
       },
       include: { fridge: true, recordedBy: { select: { email: true } } },

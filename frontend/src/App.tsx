@@ -7,6 +7,8 @@ import { AttendanceHome } from './pages/attendance/AttendanceHome';
 import { ClockPage } from './pages/attendance/ClockPage';
 import { LeaveRequests } from './pages/attendance/LeaveRequests';
 import { Employees } from './pages/attendance/Employees';
+import { QrTokens } from './pages/attendance/QrTokens';
+import { AttendanceRecords } from './pages/attendance/AttendanceRecords';
 import { HaccpHome } from './pages/haccp/HaccpHome';
 import { InventoryHome } from './pages/inventory/InventoryHome';
 import { Suppliers } from './pages/inventory/Suppliers';
@@ -36,6 +38,8 @@ export default function App() {
             <Route path="/menu/admin" element={<MenuAdmin />} />
             <Route path="/tasks" element={<TasksAdmin />} />
             <Route path="/attendance/employees" element={<Employees />} />
+            <Route path="/attendance/qr-tokens" element={<QrTokens />} />
+            <Route path="/attendance/records" element={<AttendanceRecords />} />
           </Route>
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
             <Route path="/super-admin/venues" element={<Venues />} />
