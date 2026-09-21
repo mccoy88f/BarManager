@@ -70,6 +70,14 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Converte ore decimali in "H:MM" (es. 2.5 -> "2:30", 7.5 -> "7:30"). */
+export function formatHoursHHMM(hours: number): string {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}:${m.toString().padStart(2, '0')}`;
+}
+
 /**
  * Abbina inizio/fine turno per calcolare la durata in ore decimali
  * (centesimali, es. 7,50 = 7h30m), raggruppata per giorno e per dipendente,

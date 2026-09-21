@@ -27,7 +27,7 @@ import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
 import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
 import { SelfReportAttendanceDto } from './dto/self-report-attendance.dto';
-import { buildAttendanceSummary } from './attendance-summary.util';
+import { buildAttendanceSummary, formatHoursHHMM } from './attendance-summary.util';
 import { XlsxService } from '../reports/xlsx.service';
 import { PdfService } from '../reports/pdf.service';
 
@@ -180,7 +180,8 @@ export class AttendanceController {
               ? shift.clockOut.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
               : '—',
             methodOut: shift.methodOut,
-            hours: shift.hours != null ? shift.hours.toFixed(2) : '—',
+            hoursHHMM: shift.hours != null ? formatHoursHHMM(shift.hours) : '—',
+            hoursDecimal: shift.hours != null ? shift.hours.toFixed(2) : '—',
             note: shift.note,
           });
         }
@@ -191,7 +192,8 @@ export class AttendanceController {
           methodIn: '',
           clockOut: '',
           methodOut: '',
-          hours: day.dailyTotalHours.toFixed(2),
+          hoursHHMM: formatHoursHHMM(day.dailyTotalHours),
+          hoursDecimal: day.dailyTotalHours.toFixed(2),
           note: '',
         });
       }
@@ -202,7 +204,8 @@ export class AttendanceController {
         methodIn: '',
         clockOut: '',
         methodOut: '',
-        hours: employee.grandTotalHours.toFixed(2),
+        hoursHHMM: formatHoursHHMM(employee.grandTotalHours),
+        hoursDecimal: employee.grandTotalHours.toFixed(2),
         note: '',
       });
     }
@@ -216,7 +219,8 @@ export class AttendanceController {
         { header: 'Metodo inizio', key: 'methodIn', width: 26 },
         { header: 'Fine', key: 'clockOut', width: 10 },
         { header: 'Metodo fine', key: 'methodOut', width: 26 },
-        { header: 'Ore (decimali)', key: 'hours', width: 14 },
+        { header: 'Ore (hh:mm)', key: 'hoursHHMM', width: 12 },
+        { header: 'Ore (decimali)', key: 'hoursDecimal', width: 14 },
         { header: 'Nota', key: 'note', width: 30 },
       ],
       rows,
@@ -254,14 +258,24 @@ export class AttendanceController {
             const outTime = shift.clockOut
               ? shift.clockOut.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
               : '—';
-            const hours = shift.hours != null ? `${shift.hours.toFixed(2)} h` : '—';
+            const hours =
+              shift.hours != null
+                ? `${formatHoursHHMM(shift.hours)} h (${shift.hours.toFixed(2)})`
+                : '—';
             doc.text(
               `   ${inTime} (${shift.methodIn}) → ${outTime} (${shift.methodOut}) — ${hours}${shift.note ? ' — ' + shift.note : ''}`,
             );
           }
-          doc.text(`   Totale giornata: ${day.dailyTotalHours.toFixed(2)} h`);
+          doc.text(
+            `   Totale giornata: ${formatHoursHHMM(day.dailyTotalHours)} h (${day.dailyTotalHours.toFixed(2)})`,
+          );
         }
-        doc.fontSize(11).text(`Totale ${employee.employeeName}: ${employee.grandTotalHours.toFixed(2)} h`).moveDown();
+        doc
+          .fontSize(11)
+          .text(
+            `Totale ${employee.employeeName}: ${formatHoursHHMM(employee.grandTotalHours)} h (${employee.grandTotalHours.toFixed(2)})`,
+          )
+          .moveDown();
         doc.fontSize(9);
       }
       if (summaries.length === 0) {

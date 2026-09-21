@@ -1,5 +1,10 @@
 import { AttendanceApprovalStatus, AttendanceSource, AttendanceType } from '@prisma/client';
-import { AttendanceRecordForSummary, buildAttendanceSummary, methodLabel } from './attendance-summary.util';
+import {
+  AttendanceRecordForSummary,
+  buildAttendanceSummary,
+  formatHoursHHMM,
+  methodLabel,
+} from './attendance-summary.util';
 
 function record(overrides: Partial<AttendanceRecordForSummary>): AttendanceRecordForSummary {
   return {
@@ -135,5 +140,15 @@ describe('methodLabel', () => {
     expect(methodLabel(record({ source: AttendanceSource.MANUAL }))).toBe('App (diretta)');
     expect(methodLabel(record({ source: AttendanceSource.CORRECTION }))).toContain('admin');
     expect(methodLabel(record({ source: AttendanceSource.SELF_REPORTED }))).toContain('Dipendente');
+  });
+});
+
+describe('formatHoursHHMM', () => {
+  it('converte le ore decimali in formato H:MM', () => {
+    // 8:00-9:15 due volte = 2 x 1.25h = 2.5h decimali -> 2:30
+    expect(formatHoursHHMM(2.5)).toBe('2:30');
+    expect(formatHoursHHMM(7.5)).toBe('7:30');
+    expect(formatHoursHHMM(1.25)).toBe('1:15');
+    expect(formatHoursHHMM(0)).toBe('0:00');
   });
 });
