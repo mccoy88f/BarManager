@@ -17,6 +17,18 @@ export function AttendanceHome() {
           </CardActionArea>
         </Card>
       </Grid>
+      <Grid item xs={12} sm={6}>
+        <Card>
+          <CardActionArea onClick={() => navigate('/attendance/employees')} sx={{ p: 2 }}>
+            <CardContent>
+              <Typography variant="h6">Dipendenti</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Aggiungi, modifica ed elimina gli account del personale
+              </Typography>
+            </CardContent>
+          </CardActionArea>
+        </Card>
+      </Grid>
     </Grid>
   );
 }

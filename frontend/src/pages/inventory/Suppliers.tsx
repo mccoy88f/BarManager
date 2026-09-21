@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -34,9 +35,19 @@ const weekdays = [
  * Anagrafica fornitori: qui si impostano anche i giorni ricorrenti in cui
  * va fatto l'ordine (es. lunedì e giovedì), usati per il promemoria in home.
  */
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore durante il salvataggio del fornitore. Controlla i dati inseriti.';
+}
+
 export function Suppliers() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
+  const [error, setError] = useState<string | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ['suppliers-admin'],
@@ -46,11 +57,21 @@ export function Suppliers() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['suppliers-admin'] });
 
   const createMutation = useMutation({
-    mutationFn: async () => (await api.post('/inventory/suppliers', form)).data,
+    mutationFn: async () =>
+      (
+        await api.post('/inventory/suppliers', {
+          ...form,
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+        })
+      ).data,
     onSuccess: () => {
       invalidate();
       setForm({ name: '', email: '', phone: '' });
+      setError(null);
     },
+    onError: (err) => setError(extractErrorMessage(err)),
   });
 
   const toggleOrderDayMutation = useMutation({
@@ -88,6 +109,11 @@ export function Suppliers() {
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
             />
           </Box>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
           <Button
             variant="contained"
             sx={{ mt: 2 }}

@@ -50,7 +50,9 @@ export class TasksService {
 
     if (task.recurrence !== TaskRecurrence.NONE) {
       const nextDueDate = new Date(task.dueDate);
-      if (task.recurrence === TaskRecurrence.MONTHLY) {
+      if (task.recurrence === TaskRecurrence.WEEKLY) {
+        nextDueDate.setDate(nextDueDate.getDate() + 7);
+      } else if (task.recurrence === TaskRecurrence.MONTHLY) {
         nextDueDate.setMonth(nextDueDate.getMonth() + 1);
       } else if (task.recurrence === TaskRecurrence.YEARLY) {
         nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);

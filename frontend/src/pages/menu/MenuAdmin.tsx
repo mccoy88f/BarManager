@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -14,8 +14,10 @@ import {
   IconButton,
 } from '@mui/material';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import QRCode from 'qrcode';
 import { api } from '../../api/client';
 
 interface MenuCategory {
@@ -124,8 +126,67 @@ export function MenuAdmin() {
     onSuccess: invalidate,
   });
 
+  const publicMenuUrl = `${window.location.origin}/menu`;
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+
+  useEffect(() => {
+    QRCode.toDataURL(publicMenuUrl, { width: 320, margin: 1 })
+      .then(setQrCodeDataUrl)
+      .catch(() => setQrCodeDataUrl(''));
+  }, [publicMenuUrl]);
+
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Menù pubblico
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            I clienti possono vedere il menù, senza login, a questo indirizzo o scansionando il
+            QR code:
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
+            <Stack spacing={1} sx={{ flexGrow: 1, width: '100%' }}>
+              <TextField
+                label="URL menù pubblico"
+                value={publicMenuUrl}
+                size="small"
+                InputProps={{ readOnly: true }}
+                onFocus={(e) => e.target.select()}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={() => navigator.clipboard?.writeText(publicMenuUrl)}
+              >
+                Copia link
+              </Button>
+            </Stack>
+            {qrCodeDataUrl && (
+              <Stack spacing={1} alignItems="center">
+                <Box
+                  component="img"
+                  src={qrCodeDataUrl}
+                  alt="QR code menù pubblico"
+                  sx={{ width: 160, height: 160 }}
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  component="a"
+                  href={qrCodeDataUrl}
+                  download="menu-qrcode.png"
+                >
+                  Scarica QR code
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -257,18 +318,35 @@ export function MenuAdmin() {
                         }}
                       />
                     </IconButton>
-                    <IconButton
-                      size="small"
-                      title="Segna temporaneamente non disponibile (2 ore)"
-                      onClick={() =>
-                        setUnavailableMutation.mutate({
-                          id: item.id,
-                          until: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                        })
-                      }
-                    >
-                      <EventBusyIcon fontSize="small" />
-                    </IconButton>
+                    {(() => {
+                      const isUnavailable =
+                        !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();
+                      return (
+                        <IconButton
+                          size="small"
+                          color={isUnavailable ? 'warning' : 'default'}
+                          title={
+                            isUnavailable
+                              ? 'Rendi di nuovo disponibile'
+                              : 'Segna temporaneamente non disponibile (2 ore)'
+                          }
+                          onClick={() =>
+                            setUnavailableMutation.mutate({
+                              id: item.id,
+                              until: isUnavailable
+                                ? null
+                                : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                            })
+                          }
+                        >
+                          {isUnavailable ? (
+                            <EventAvailableIcon fontSize="small" />
+                          ) : (
+                            <EventBusyIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      );
+                    })()}
                     <Switch
                       checked={item.visible}
                       onChange={(e) =>

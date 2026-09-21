@@ -28,6 +28,12 @@ interface TaskRow {
   relatedEmployee?: { firstName: string; lastName: string };
 }
 
+interface EmployeeOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 const typeLabels: Record<string, string> = {
   GENERIC: 'Generica',
   SUPPLIER_PAYMENT: 'Pagamento fornitore',
@@ -38,6 +44,7 @@ const typeLabels: Record<string, string> = {
 
 const recurrenceLabels: Record<string, string> = {
   NONE: 'Non ricorrente',
+  WEEKLY: 'Ogni settimana',
   MONTHLY: 'Ogni mese',
   YEARLY: 'Ogni anno',
 };
@@ -51,6 +58,7 @@ export function TasksAdmin() {
     type: 'GENERIC',
     dueDate: '',
     recurrence: 'NONE',
+    relatedEmployeeId: '',
   });
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
 
@@ -59,13 +67,31 @@ export function TasksAdmin() {
     queryFn: async () => (await api.get<TaskRow[]>('/tasks', { params: { status: 'OPEN' } })).data,
   });
 
+  const employeesQuery = useQuery({
+    queryKey: ['employees-options'],
+    queryFn: async () => (await api.get<EmployeeOption[]>('/employees')).data,
+  });
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
   const createMutation = useMutation({
-    mutationFn: async () => (await api.post('/tasks', form)).data,
+    mutationFn: async () =>
+      (
+        await api.post('/tasks', {
+          ...form,
+          relatedEmployeeId: form.relatedEmployeeId || undefined,
+        })
+      ).data,
     onSuccess: () => {
       invalidate();
-      setForm({ title: '', description: '', type: 'GENERIC', dueDate: '', recurrence: 'NONE' });
+      setForm({
+        title: '',
+        description: '',
+        type: 'GENERIC',
+        dueDate: '',
+        recurrence: 'NONE',
+        relatedEmployeeId: '',
+      });
     },
   });
 
@@ -128,6 +154,20 @@ export function TasksAdmin() {
                 </MenuItem>
               ))}
             </TextField>
+            <TextField
+              select
+              label="Persona collegata (opzionale)"
+              value={form.relatedEmployeeId}
+              onChange={(e) => setForm((f) => ({ ...f, relatedEmployeeId: e.target.value }))}
+            >
+              <MenuItem value="">Nessuna</MenuItem>
+              {employeesQuery.data?.map((employee) => (
+                <MenuItem key={employee.id} value={employee.id}>
+                  {employee.firstName} {employee.lastName}
+                </MenuItem>
+              ))}
+            </TextField>
+            <div />
             <TextField
               label="Note"
               multiline

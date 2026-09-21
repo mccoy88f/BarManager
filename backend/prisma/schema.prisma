@@ -449,6 +449,7 @@ enum TaskStatus {
 /// successiva con la stessa scadenza spostata in avanti.
 enum TaskRecurrence {
   NONE
+  WEEKLY
   MONTHLY
   YEARLY
 }
