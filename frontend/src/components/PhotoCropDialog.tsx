@@ -88,7 +88,7 @@ export function PhotoCropDialog({ open, imageSrc, onCancel, onConfirm }: PhotoCr
           sx={{ mt: 2 }}
         />
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={onCancel} disabled={saving}>
           Annulla
         </Button>

@@ -363,7 +363,7 @@ export function AttendanceRecords() {
           />
           {correctError && <Alert severity="error">{correctError}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setEditing(null)}>Annulla</Button>
           <Button
             variant="contained"
@@ -393,6 +393,7 @@ export function AttendanceRecords() {
           <TextField
             select
             label="Tipo"
+            InputLabelProps={{ shrink: true }}
             value={addForm.type}
             onChange={(e) =>
               setAddForm((f) => ({ ...f, type: e.target.value as 'CLOCK_IN' | 'CLOCK_OUT' }))
@@ -417,7 +418,7 @@ export function AttendanceRecords() {
           />
           {addError && <Alert severity="error">{addError}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setAdding(false)}>Annulla</Button>
           <Button
             variant="contained"

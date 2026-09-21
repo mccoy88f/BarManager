@@ -219,7 +219,7 @@ export function Catalog() {
           />
           {categoryError && <Alert severity="error">{categoryError}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setCategoryDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
@@ -291,7 +291,7 @@ export function Catalog() {
             </Alert>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setProductDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

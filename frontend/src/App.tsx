@@ -8,6 +8,7 @@ import { ClockPage } from './pages/attendance/ClockPage';
 import { LeaveRequests } from './pages/attendance/LeaveRequests';
 import { Employees } from './pages/attendance/Employees';
 import { QrTokens } from './pages/attendance/QrTokens';
+import { NfcTags } from './pages/attendance/NfcTags';
 import { ClockInSettings } from './pages/attendance/ClockInSettings';
 import { AttendanceRecords } from './pages/attendance/AttendanceRecords';
 import { HaccpHome } from './pages/haccp/HaccpHome';
@@ -44,6 +45,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute allow={['ADMIN']} />}>
             <Route path="/attendance/qr-tokens" element={<QrTokens />} />
+            <Route path="/attendance/nfc-tags" element={<NfcTags />} />
             <Route path="/attendance/clock-in-settings" element={<ClockInSettings />} />
             <Route path="/settings" element={<SettingsHome />} />
           </Route>

@@ -6,23 +6,15 @@ import {
   Card,
   CardContent,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
   Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import { Link as RouterLink } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface VenueClockInSettings {
   clockInQrEnabled: boolean;
@@ -31,13 +23,6 @@ interface VenueClockInSettings {
   gpsLat: number | null;
   gpsLng: number | null;
   gpsRadiusMeters: number;
-}
-
-interface NfcTagRow {
-  id: string;
-  label: string;
-  value: string;
-  active: boolean;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -68,12 +53,6 @@ export function ClockInSettings() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [tagDialogOpen, setTagDialogOpen] = useState(false);
-  const [newTagLabel, setNewTagLabel] = useState('');
-  const [newTagValue, setNewTagValue] = useState('');
-  const [tagError, setTagError] = useState<string | null>(null);
-  const [tagToDelete, setTagToDelete] = useState<NfcTagRow | null>(null);
-
   const venueQuery = useQuery({
     queryKey: ['venue-me'],
     queryFn: async () => (await api.get<VenueClockInSettings>('/venues/me')).data,
@@ -91,11 +70,6 @@ export function ClockInSettings() {
       setGpsLng(venueQuery.data.gpsLng);
     }
   }, [venueQuery.data]);
-
-  const tagsQuery = useQuery({
-    queryKey: ['nfc-tags'],
-    queryFn: async () => (await api.get<NfcTagRow[]>('/attendance/nfc-tags')).data,
-  });
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -134,39 +108,6 @@ export function ClockInSettings() {
     );
   };
 
-  const createTagMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/attendance/nfc-tags', {
-          label: newTagLabel.trim(),
-          value: newTagValue.trim(),
-        })
-      ).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nfc-tags'] });
-      setNewTagLabel('');
-      setNewTagValue('');
-      setTagError(null);
-      setTagDialogOpen(false);
-    },
-    onError: (err) => setTagError(extractErrorMessage(err)),
-  });
-
-  const openTagDialog = () => {
-    setNewTagLabel('');
-    setNewTagValue('');
-    setTagError(null);
-    setTagDialogOpen(true);
-  };
-
-  const deleteTagMutation = useMutation({
-    mutationFn: async (id: string) => (await api.delete(`/attendance/nfc-tags/${id}`)).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nfc-tags'] });
-      setTagToDelete(null);
-    },
-  });
-
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Card>
@@ -186,7 +127,7 @@ export function ClockInSettings() {
                 <Typography variant="subtitle2">QR di postazione</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Il dipendente inquadra un QR affisso nel locale.{' '}
-                  <MuiLinkToQrTokens />
+                  <MuiLinkTo to="/attendance/qr-tokens" label="Gestisci i codici QR" />
                 </Typography>
               </Box>
               <Switch
@@ -253,7 +194,8 @@ export function ClockInSettings() {
               <Box>
                 <Typography variant="subtitle2">Tag NFC</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Il dipendente avvicina il telefono a un tag NFC fisico presente nel locale.
+                  Il dipendente avvicina il telefono a un tag NFC fisico presente nel locale.{' '}
+                  <MuiLinkTo to="/attendance/nfc-tags" label="Gestisci i tag NFC" />
                 </Typography>
               </Box>
               <Switch
@@ -283,95 +225,14 @@ export function ClockInSettings() {
           </Button>
         </CardContent>
       </Card>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">Tag NFC</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openTagDialog}>
-          Aggiungi
-        </Button>
-      </Box>
-      <Typography variant="body2" color="text.secondary">
-        Scegli un'etichetta e un testo per ogni tag, poi scrivi lo stesso testo sul tag fisico con
-        un'app di scrittura NFC (es. NFC Tools) — BarManager non scrive sui tag, solo li legge al
-        momento della timbratura.
-      </Typography>
-
-      <Stack spacing={1}>
-        {tagsQuery.data?.map((tag) => (
-          <Card key={tag.id} variant="outlined">
-            <CardContent
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  {tag.label}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {tag.value}
-                </Typography>
-              </Box>
-              <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </CardContent>
-          </Card>
-        ))}
-        {tagsQuery.data?.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            Nessun tag NFC censito.
-          </Typography>
-        )}
-      </Stack>
-
-      <Dialog open={tagDialogOpen} onClose={() => setTagDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuovo tag NFC</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
-          <TextField
-            label="Etichetta (es. Ingresso cucina)"
-            value={newTagLabel}
-            onChange={(e) => setNewTagLabel(e.target.value)}
-          />
-          <TextField
-            label="Testo da scrivere sul tag"
-            value={newTagValue}
-            onChange={(e) => setNewTagValue(e.target.value)}
-          />
-          {tagError && <Alert severity="error">{tagError}</Alert>}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTagDialogOpen(false)}>Annulla</Button>
-          <Button
-            variant="contained"
-            disabled={
-              !newTagLabel.trim() || newTagValue.trim().length < 4 || createTagMutation.isPending
-            }
-            onClick={() => createTagMutation.mutate()}
-          >
-            Aggiungi
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <ConfirmDialog
-        open={!!tagToDelete}
-        title="Eliminare il tag NFC?"
-        message={
-          tagToDelete
-            ? `"${tagToDelete.label}" verrà eliminato definitivamente. Il tag fisico continuerà a esistere ma non sarà più riconosciuto.`
-            : ''
-        }
-        loading={deleteTagMutation.isPending}
-        onCancel={() => setTagToDelete(null)}
-        onConfirm={() => tagToDelete && deleteTagMutation.mutate(tagToDelete.id)}
-      />
     </Box>
   );
 }
 
-function MuiLinkToQrTokens() {
+function MuiLinkTo({ to, label }: { to: string; label: string }) {
   return (
-    <RouterLink to="/attendance/qr-tokens" style={{ color: 'inherit' }}>
-      Gestisci i QR delle postazioni
+    <RouterLink to={to} style={{ color: 'inherit' }}>
+      {label}
     </RouterLink>
   );
 }

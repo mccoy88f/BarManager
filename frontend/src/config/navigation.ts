@@ -54,10 +54,18 @@ export const navigation: NavItem[] = [
       },
       {
         key: 'attendance-qr',
-        label: 'QR per timbratura',
+        label: 'Codici QR',
         path: '/attendance/qr-tokens',
         icon: AccessTimeIcon,
         description: 'Genera e scarica i QR delle postazioni per inizio/fine turno',
+        roles: ['ADMIN'],
+      },
+      {
+        key: 'attendance-nfc',
+        label: 'Tag NFC',
+        path: '/attendance/nfc-tags',
+        icon: AccessTimeIcon,
+        description: 'Censisci i tag NFC delle postazioni per inizio/fine turno',
         roles: ['ADMIN'],
       },
       {

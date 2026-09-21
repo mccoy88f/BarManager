@@ -164,7 +164,7 @@ export function Suppliers() {
           />
           {error && <Alert severity="error">{error}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

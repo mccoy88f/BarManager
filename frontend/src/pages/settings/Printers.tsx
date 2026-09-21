@@ -176,6 +176,7 @@ export function Printers() {
           <TextField
             select
             label="Uso"
+            InputLabelProps={{ shrink: true }}
             value={form.usage}
             onChange={(e) => setForm((f) => ({ ...f, usage: e.target.value }))}
           >
@@ -187,7 +188,7 @@ export function Printers() {
           </TextField>
           {error && <Alert severity="error">{error}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

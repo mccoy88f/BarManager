@@ -119,7 +119,7 @@ export function QrScanDialog({ open, onClose, onScan }: QrScanDialogProps) {
           </Box>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button onClick={onClose}>Annulla</Button>
       </DialogActions>
     </Dialog>

@@ -141,7 +141,13 @@ function SelfServiceLeaveRequests() {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova richiesta</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
-          <TextField select label="Tipo" value={type} onChange={(e) => setType(e.target.value)}>
+          <TextField
+            select
+            label="Tipo"
+            InputLabelProps={{ shrink: true }}
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
             {Object.entries(typeLabels).map(([value, label]) => (
               <MenuItem key={value} value={value}>
                 {label}
@@ -172,7 +178,7 @@ function SelfServiceLeaveRequests() {
             sx={{ gridColumn: '1 / -1' }}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
@@ -420,7 +426,13 @@ function AdminLeaveRequests() {
               </MenuItem>
             ))}
           </TextField>
-          <TextField select label="Tipo" value={type} onChange={(e) => setType(e.target.value)}>
+          <TextField
+            select
+            label="Tipo"
+            InputLabelProps={{ shrink: true }}
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
             {Object.entries(typeLabels).map(([value, label]) => (
               <MenuItem key={value} value={value}>
                 {label}
@@ -455,7 +467,7 @@ function AdminLeaveRequests() {
             </Alert>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

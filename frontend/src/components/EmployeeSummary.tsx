@@ -387,7 +387,7 @@ export function EmployeeSummary() {
           />
           {selfReportError && <Alert severity="error">{selfReportError}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setSelfReportOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

@@ -239,7 +239,7 @@ export function TemperatureEntry() {
           />
           {printError && <Alert severity="error">{printError}</Alert>}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setPrintOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

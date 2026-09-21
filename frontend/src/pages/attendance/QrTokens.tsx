@@ -126,7 +126,7 @@ export function QrTokens() {
             onChange={(e) => setLabel(e.target.value)}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"

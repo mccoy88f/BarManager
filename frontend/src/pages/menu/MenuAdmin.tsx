@@ -387,7 +387,7 @@ export function MenuAdmin() {
             onChange={(e) => setNewCategoryName(e.target.value)}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setCategoryDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
@@ -428,6 +428,7 @@ export function MenuAdmin() {
           <TextField
             select
             label="Disponibilità oraria"
+            InputLabelProps={{ shrink: true }}
             value={newItem.availability}
             onChange={(e) => setNewItem((v) => ({ ...v, availability: e.target.value }))}
           >
@@ -446,7 +447,7 @@ export function MenuAdmin() {
             sx={{ gridColumn: '1 / -1' }}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setItemDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
