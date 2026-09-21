@@ -150,3 +150,83 @@ describe('AttendanceService.clock', () => {
     });
   });
 });
+
+const admin: AuthenticatedUser = {
+  userId: 'admin-1',
+  email: 'admin@venue1.test',
+  role: 'ADMIN',
+  venueId: 'venue-1',
+};
+
+describe('AttendanceService.addRecord / deleteRecord — solo l\'admin, mai per sé stesso', () => {
+  let prisma: {
+    employee: { findUnique: jest.Mock };
+    attendanceRecord: { findUnique: jest.Mock; create: jest.Mock; delete: jest.Mock };
+  };
+  let audit: { log: jest.Mock };
+  let service: AttendanceService;
+
+  beforeEach(() => {
+    prisma = {
+      employee: { findUnique: jest.fn() },
+      attendanceRecord: {
+        findUnique: jest.fn(),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'record-1', ...data })),
+        delete: jest.fn(),
+      },
+    };
+    audit = { log: jest.fn() };
+    service = new AttendanceService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+  });
+
+  describe('addRecord', () => {
+    it('aggiunge una timbratura per un dipendente del locale', async () => {
+      prisma.employee.findUnique.mockResolvedValue({ id: 'employee-1', venueId: 'venue-1' });
+      const record = await service.addRecord(admin, {
+        employeeId: 'employee-1',
+        type: AttendanceType.CLOCK_IN,
+        timestamp: '2026-09-21T08:00:00.000Z',
+      });
+      expect(record.source).toBe(AttendanceSource.CORRECTION);
+      expect(record.correctedById).toBe('admin-1');
+    });
+
+    it('rifiuta un dipendente di un altro locale', async () => {
+      prisma.employee.findUnique.mockResolvedValue({ id: 'employee-1', venueId: 'venue-2' });
+      await expect(
+        service.addRecord(admin, {
+          employeeId: 'employee-1',
+          type: AttendanceType.CLOCK_IN,
+          timestamp: '2026-09-21T08:00:00.000Z',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.attendanceRecord.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteRecord', () => {
+    it('elimina una timbratura del locale', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        employee: { venueId: 'venue-1' },
+      });
+      const result = await service.deleteRecord(admin, 'record-1');
+      expect(result).toEqual({ success: true });
+      expect(prisma.attendanceRecord.delete).toHaveBeenCalledWith({ where: { id: 'record-1' } });
+    });
+
+    it('rifiuta una timbratura di un altro locale', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        employee: { venueId: 'venue-2' },
+      });
+      await expect(service.deleteRecord(admin, 'record-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.attendanceRecord.delete).not.toHaveBeenCalled();
+    });
+  });
+});

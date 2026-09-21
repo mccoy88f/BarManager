@@ -25,6 +25,7 @@ import { AttendanceService } from './attendance.service';
 import { ClockDto } from './dto/clock.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
+import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
 import { XlsxService } from '../reports/xlsx.service';
 import { PdfService } from '../reports/pdf.service';
 
@@ -107,6 +108,20 @@ export class AttendanceController {
     @Body() dto: CorrectAttendanceDto,
   ) {
     return this.attendanceService.correctRecord(user, id, dto);
+  }
+
+  // Solo l'admin aggiunge/elimina timbrature per conto di un dipendente
+  // (mai per sé stesso: l'admin non traccia la propria presenza).
+  @Post()
+  @Roles(Role.ADMIN)
+  addRecord(@CurrentUser() user: AuthenticatedUser, @Body() dto: AddAttendanceRecordDto) {
+    return this.attendanceService.addRecord(user, dto);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  deleteRecord(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.attendanceService.deleteRecord(user, id);
   }
 
   // Export report presenze

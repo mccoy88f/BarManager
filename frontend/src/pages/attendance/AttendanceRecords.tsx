@@ -17,8 +17,11 @@ import {
   Typography,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface AttendanceRecordRow {
   id: string;
@@ -71,6 +74,15 @@ export function AttendanceRecords() {
   const [newTimestamp, setNewTimestamp] = useState('');
   const [reason, setReason] = useState('');
   const [correctError, setCorrectError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<AttendanceRecordRow | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addForm, setAddForm] = useState({
+    employeeId: '',
+    type: 'CLOCK_IN' as 'CLOCK_IN' | 'CLOCK_OUT',
+    timestamp: '',
+    note: '',
+  });
+  const [addError, setAddError] = useState<string | null>(null);
 
   const employeesQuery = useQuery({
     queryKey: ['employees-options'],
@@ -109,6 +121,33 @@ export function AttendanceRecords() {
     setReason('');
     setCorrectError(null);
   };
+
+  const addMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post('/attendance', {
+          employeeId: addForm.employeeId,
+          type: addForm.type,
+          timestamp: new Date(addForm.timestamp).toISOString(),
+          note: addForm.note || undefined,
+        })
+      ).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      setAdding(false);
+      setAddForm({ employeeId: '', type: 'CLOCK_IN', timestamp: '', note: '' });
+      setAddError(null);
+    },
+    onError: (err) => setAddError(extractErrorMessage(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/attendance/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      setToDelete(null);
+    },
+  });
 
   const download = async (format: 'xlsx' | 'pdf') => {
     const response = await api.get(`/attendance/export/${format}`, {
@@ -166,6 +205,17 @@ export function AttendanceRecords() {
             <Button variant="outlined" onClick={() => download('pdf')}>
               Esporta PDF
             </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              sx={{ ml: 'auto' }}
+              onClick={() => {
+                setAddError(null);
+                setAdding(true);
+              }}
+            >
+              Aggiungi timbratura
+            </Button>
           </Stack>
         </CardContent>
       </Card>
@@ -188,9 +238,14 @@ export function AttendanceRecords() {
                   <Chip size="small" variant="outlined" label={sourceLabels[record.source] ?? record.source} />
                 </Stack>
               </Box>
-              <IconButton size="small" title="Correggi" onClick={() => openEdit(record)}>
-                <EditIcon fontSize="small" />
-              </IconButton>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton size="small" title="Correggi" onClick={() => openEdit(record)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" title="Elimina" onClick={() => setToDelete(record)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
             </CardContent>
           </Card>
         ))}
@@ -238,6 +293,73 @@ export function AttendanceRecords() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={adding} onClose={() => setAdding(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Aggiungi timbratura</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <TextField
+            select
+            label="Dipendente"
+            value={addForm.employeeId}
+            onChange={(e) => setAddForm((f) => ({ ...f, employeeId: e.target.value }))}
+          >
+            {employeesQuery.data?.map((employee) => (
+              <MenuItem key={employee.id} value={employee.id}>
+                {employee.firstName} {employee.lastName}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Tipo"
+            value={addForm.type}
+            onChange={(e) =>
+              setAddForm((f) => ({ ...f, type: e.target.value as 'CLOCK_IN' | 'CLOCK_OUT' }))
+            }
+          >
+            <MenuItem value="CLOCK_IN">Inizio turno</MenuItem>
+            <MenuItem value="CLOCK_OUT">Fine turno</MenuItem>
+          </TextField>
+          <TextField
+            label="Data e ora"
+            type="datetime-local"
+            InputLabelProps={{ shrink: true }}
+            value={addForm.timestamp}
+            onChange={(e) => setAddForm((f) => ({ ...f, timestamp: e.target.value }))}
+          />
+          <TextField
+            label="Nota (opzionale)"
+            multiline
+            minRows={2}
+            value={addForm.note}
+            onChange={(e) => setAddForm((f) => ({ ...f, note: e.target.value }))}
+          />
+          {addError && <Alert severity="error">{addError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAdding(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!addForm.employeeId || !addForm.timestamp || addMutation.isPending}
+            onClick={() => addMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        title="Eliminare la timbratura?"
+        message={
+          toDelete
+            ? `"${toDelete.employee.firstName} ${toDelete.employee.lastName}" — ${toDelete.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno del ${new Date(toDelete.timestamp).toLocaleString('it-IT')} verrà eliminata definitivamente.`
+            : ''
+        }
+        loading={deleteMutation.isPending}
+        onCancel={() => setToDelete(null)}
+        onConfirm={() => toDelete && deleteMutation.mutate(toDelete.id)}
+      />
     </Box>
   );
 }

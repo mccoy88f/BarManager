@@ -12,6 +12,7 @@ import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
+import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
 
 /** Distanza in metri fra due coordinate (formula haversine). */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -265,5 +266,63 @@ export class AttendanceService {
     });
 
     return after;
+  }
+
+  /**
+   * Aggiunge una timbratura per conto di un dipendente (es. l'ha dimenticata):
+   * solo l'admin, mai per sé stesso (l'admin non ha un Employee collegato).
+   */
+  async addRecord(admin: AuthenticatedUser, dto: AddAttendanceRecordDto) {
+    const venueId = requireVenueId(admin);
+    const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
+    if (!employee || employee.venueId !== venueId) {
+      throw new NotFoundException('Dipendente non trovato');
+    }
+
+    const record = await this.prisma.attendanceRecord.create({
+      data: {
+        employeeId: dto.employeeId,
+        type: dto.type,
+        timestamp: new Date(dto.timestamp),
+        source: AttendanceSource.CORRECTION,
+        correctedById: admin.userId,
+        note: dto.note,
+      },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: admin.userId,
+      entity: 'AttendanceRecord',
+      entityId: record.id,
+      action: 'CREATE',
+      after: record,
+    });
+
+    return record;
+  }
+
+  async deleteRecord(admin: AuthenticatedUser, recordId: string) {
+    const venueId = requireVenueId(admin);
+    const before = await this.prisma.attendanceRecord.findUnique({
+      where: { id: recordId },
+      include: { employee: true },
+    });
+    if (!before || before.employee.venueId !== venueId) {
+      throw new NotFoundException('Timbratura non trovata');
+    }
+
+    await this.prisma.attendanceRecord.delete({ where: { id: recordId } });
+
+    await this.audit.log({
+      venueId,
+      userId: admin.userId,
+      entity: 'AttendanceRecord',
+      entityId: recordId,
+      action: 'DELETE',
+      before,
+    });
+
+    return { success: true };
   }
 }
