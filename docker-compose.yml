@@ -126,11 +126,21 @@ services:
       - default
       - coolify
 
-    # Routing wildcard (*.${ROOT_DOMAIN}) via label Traefik, per i casi in
-    # cui il dominio wildcard non si possa impostare dal dialog "Add
+    # Routing wildcard (*.bm.tabloza.live) via label Traefik, per i casi
+    # in cui il dominio wildcard non si possa impostare dal dialog "Add
     # Domain" della UI (accetta solo un FQDN singolo, non "*.dominio").
     # Con queste label NON aggiungere anche un dominio dalla UI per lo
     # stesso servizio: creerebbe due router in conflitto.
+    #
+    # ATTENZIONE — dominio scritto a mano, non ${ROOT_DOMAIN}: verificato
+    # con "docker inspect" sul container reale che Coolify NON interpola
+    # in modo affidabile le variabili dentro "labels:" (a differenza di
+    # "environment:", dove invece funziona: vedi DATABASE_URL sopra) — una
+    # label con ${ROOT_DOMAIN} arrivava al container con il testo
+    # letterale "${ROOT_DOMAIN}" invece del dominio vero, e la regola di
+    # routing non faceva mai match (sintomo: 404 costante su Traefik).
+    # Se riusi questo file per un dominio diverso, sostituisci
+    # "bm.tabloza.live" qui sotto (3 occorrenze).
     #
     # Sintassi HostRegexp di Traefik v3 (regex diretta, non più i
     # placeholder "{nome:pattern}" di v2) — verificato contro il compose
@@ -145,11 +155,11 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=coolify
-      - 'traefik.http.routers.barmanager.rule=HostRegexp(`^[a-z0-9-]+\.${ROOT_DOMAIN}$`)'
+      - 'traefik.http.routers.barmanager.rule=HostRegexp(`^[a-z0-9-]+\.bm\.tabloza\.live$`)'
       - traefik.http.routers.barmanager.entrypoints=https
-      - traefik.http.routers.barmanager.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
-      - traefik.http.routers.barmanager.tls.domains[0].main=${ROOT_DOMAIN}
-      - traefik.http.routers.barmanager.tls.domains[0].sans=*.${ROOT_DOMAIN}
+      - traefik.http.routers.barmanager.tls.certresolver=letsencrypt
+      - traefik.http.routers.barmanager.tls.domains[0].main=bm.tabloza.live
+      - traefik.http.routers.barmanager.tls.domains[0].sans=*.bm.tabloza.live
       - traefik.http.services.barmanager.loadbalancer.server.port=80
 
 networks:
