@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { AttendanceSource, AttendanceType } from '@prisma/client';
+import { AttendanceApprovalStatus, AttendanceSource, AttendanceType } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -227,6 +227,119 @@ describe('AttendanceService.addRecord / deleteRecord — solo l\'admin, mai per 
         NotFoundException,
       );
       expect(prisma.attendanceRecord.delete).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('AttendanceService.getCurrentStatus', () => {
+  it('ignora le timbrature non confermate nel calcolo dello stato', async () => {
+    const prisma = {
+      employee: { findUnique: jest.fn().mockResolvedValue({ id: 'employee-1' }) },
+      attendanceRecord: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new AttendanceService(
+      prisma as unknown as PrismaService,
+      {} as unknown as AuditService,
+    );
+
+    await service.getCurrentStatus('user-1');
+
+    expect(prisma.attendanceRecord.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ approvalStatus: AttendanceApprovalStatus.CONFIRMED }),
+      }),
+    );
+  });
+});
+
+describe('AttendanceService.selfReport / reviewSelfReport', () => {
+  let prisma: {
+    employee: { findUnique: jest.Mock };
+    attendanceRecord: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+  };
+  let audit: { log: jest.Mock };
+  let service: AttendanceService;
+
+  beforeEach(() => {
+    prisma = {
+      employee: { findUnique: jest.fn().mockResolvedValue({ id: 'employee-1' }) },
+      attendanceRecord: {
+        findFirst: jest.fn().mockResolvedValue(null), // nessuna timbratura confermata -> CLOCK_IN
+        findUnique: jest.fn(),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'record-1', ...data })),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'record-1', ...data })),
+      },
+    };
+    audit = { log: jest.fn() };
+    service = new AttendanceService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+  });
+
+  describe('selfReport', () => {
+    it('crea una timbratura PENDING con source SELF_REPORTED', async () => {
+      const record = await service.selfReport(user, { timestamp: '2026-09-21T08:00:00.000Z' });
+      expect(record.approvalStatus).toBe(AttendanceApprovalStatus.PENDING);
+      expect(record.source).toBe(AttendanceSource.SELF_REPORTED);
+    });
+
+    it('rifiuta una data/ora nel futuro', async () => {
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await expect(service.selfReport(user, { timestamp: future })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.attendanceRecord.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reviewSelfReport', () => {
+    it("conferma una segnalazione pendente del locale", async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        approvalStatus: AttendanceApprovalStatus.PENDING,
+        employee: { venueId: 'venue-1' },
+      });
+      const record = await service.reviewSelfReport(admin, 'record-1', true);
+      expect(record.approvalStatus).toBe(AttendanceApprovalStatus.CONFIRMED);
+      expect(record.reviewedById).toBe('admin-1');
+    });
+
+    it('rifiuta una segnalazione pendente', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        approvalStatus: AttendanceApprovalStatus.PENDING,
+        employee: { venueId: 'venue-1' },
+      });
+      const record = await service.reviewSelfReport(admin, 'record-1', false);
+      expect(record.approvalStatus).toBe(AttendanceApprovalStatus.REJECTED);
+    });
+
+    it('rifiuta la revisione di una timbratura già revisionata', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        approvalStatus: AttendanceApprovalStatus.CONFIRMED,
+        employee: { venueId: 'venue-1' },
+      });
+      await expect(service.reviewSelfReport(admin, 'record-1', true)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rifiuta la revisione di una timbratura di un altro locale', async () => {
+      prisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'record-1',
+        approvalStatus: AttendanceApprovalStatus.PENDING,
+        employee: { venueId: 'venue-2' },
+      });
+      await expect(service.reviewSelfReport(admin, 'record-1', true)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.attendanceRecord.update).not.toHaveBeenCalled();
     });
   });
 });

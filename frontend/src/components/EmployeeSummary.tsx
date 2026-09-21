@@ -11,12 +11,18 @@ import {
   Divider,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import NfcIcon from '@mui/icons-material/Nfc';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -60,6 +66,12 @@ const statusColor: Record<string, 'default' | 'success' | 'error'> = {
   REJECTED: 'error',
 };
 
+function nowAsDatetimeLocal(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
     ?.data;
@@ -83,6 +95,10 @@ export function EmployeeSummary() {
   const [gpsBusy, setGpsBusy] = useState(false);
   const [nfcScanning, setNfcScanning] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
+  const [selfReportOpen, setSelfReportOpen] = useState(false);
+  const [selfReportTimestamp, setSelfReportTimestamp] = useState('');
+  const [selfReportError, setSelfReportError] = useState<string | null>(null);
+  const [selfReportSuccess, setSelfReportSuccess] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['attendance-status'],
@@ -172,6 +188,28 @@ export function EmployeeSummary() {
     clockMutation.mutate({ qrToken });
   };
 
+  const selfReportMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post('/attendance/self-report', {
+          timestamp: new Date(selfReportTimestamp).toISOString(),
+        })
+      ).data,
+    onSuccess: () => {
+      setSelfReportOpen(false);
+      setSelfReportError(null);
+      setSelfReportSuccess(true);
+    },
+    onError: (err) => setSelfReportError(extractErrorMessage(err)),
+  });
+
+  const openSelfReport = () => {
+    setSelfReportTimestamp(nowAsDatetimeLocal());
+    setSelfReportError(null);
+    setSelfReportSuccess(false);
+    setSelfReportOpen(true);
+  };
+
   if (!statusQuery.data) return null;
 
   const { lastRecord, nextAction } = statusQuery.data;
@@ -212,6 +250,11 @@ export function EmployeeSummary() {
               {methodError && (
                 <Alert severity="error" sx={{ mb: 1 }} onClose={() => setMethodError(null)}>
                   {methodError}
+                </Alert>
+              )}
+              {selfReportSuccess && (
+                <Alert severity="success" sx={{ mb: 1 }} onClose={() => setSelfReportSuccess(false)}>
+                  Segnalazione inviata: in attesa di conferma dell'amministratore.
                 </Alert>
               )}
 
@@ -268,6 +311,14 @@ export function EmployeeSummary() {
                     {actionLabel}
                   </Button>
                 )}
+                <Button
+                  variant="text"
+                  size="small"
+                  startIcon={<EditNoteIcon />}
+                  onClick={openSelfReport}
+                >
+                  Ho dimenticato di timbrare
+                </Button>
               </Stack>
             </CardContent>
           </Card>
@@ -319,6 +370,34 @@ export function EmployeeSummary() {
       </Grid>
 
       <QrScanDialog open={qrScanOpen} onClose={() => setQrScanOpen(false)} onScan={handleQrScan} />
+
+      <Dialog open={selfReportOpen} onClose={() => setSelfReportOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Ho dimenticato di timbrare</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Indica quando hai fatto {isClockedIn ? 'fine' : 'inizio'} turno: la timbratura resterà
+            in attesa finché l'amministratore non la conferma.
+          </Typography>
+          <TextField
+            label="Data e ora"
+            type="datetime-local"
+            InputLabelProps={{ shrink: true }}
+            value={selfReportTimestamp}
+            onChange={(e) => setSelfReportTimestamp(e.target.value)}
+          />
+          {selfReportError && <Alert severity="error">{selfReportError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelfReportOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!selfReportTimestamp || selfReportMutation.isPending}
+            onClick={() => selfReportMutation.mutate()}
+          >
+            Invia
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

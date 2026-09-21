@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AttendanceSource, AttendanceType, Prisma } from '@prisma/client';
+import { AttendanceApprovalStatus, AttendanceSource, AttendanceType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
@@ -13,6 +13,7 @@ import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
 import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
+import { SelfReportAttendanceDto } from './dto/self-report-attendance.dto';
 
 /** Distanza in metri fra due coordinate (formula haversine). */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -96,11 +97,16 @@ export class AttendanceService {
 
   // ---- Timbratura -------------------------------------------------------
 
-  /** Stato corrente del dipendente loggato: cosa può fare (inizio/fine). */
+  /**
+   * Stato corrente del dipendente loggato: cosa può fare (inizio/fine).
+   * Ignora le timbrature non ancora confermate (PENDING/REJECTED): una
+   * segnalazione "ho dimenticato di timbrare" in attesa di revisione non
+   * deve bloccare né alterare la timbratura normale nel frattempo.
+   */
   async getCurrentStatus(userId: string) {
     const employeeId = await this.resolveEmployeeId(userId);
     const last = await this.prisma.attendanceRecord.findFirst({
-      where: { employeeId },
+      where: { employeeId, approvalStatus: AttendanceApprovalStatus.CONFIRMED },
       orderBy: { timestamp: 'desc' },
     });
     const nextAction: AttendanceType =
@@ -208,6 +214,44 @@ export class AttendanceService {
     return record;
   }
 
+  /**
+   * "Ho dimenticato di timbrare": il dipendente dichiara lui stesso data/ora
+   * di una timbratura mancata. Resta PENDING (esclusa da stato/totali/export)
+   * finché l'admin non la conferma o rifiuta.
+   */
+  async selfReport(user: AuthenticatedUser, dto: SelfReportAttendanceDto) {
+    const venueId = requireVenueId(user);
+    const employeeId = await this.resolveEmployeeId(user.userId);
+
+    const timestamp = new Date(dto.timestamp);
+    if (timestamp.getTime() > Date.now()) {
+      throw new BadRequestException('Non puoi segnalare una timbratura nel futuro');
+    }
+
+    const { nextAction } = await this.getCurrentStatus(user.userId);
+
+    const record = await this.prisma.attendanceRecord.create({
+      data: {
+        employeeId,
+        type: nextAction,
+        timestamp,
+        source: AttendanceSource.SELF_REPORTED,
+        approvalStatus: AttendanceApprovalStatus.PENDING,
+      },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: user.userId,
+      entity: 'AttendanceRecord',
+      entityId: record.id,
+      action: 'CREATE',
+      after: record,
+    });
+
+    return record;
+  }
+
   // ---- Amministrazione ----------------------------------------------------
 
   listRecords(venueId: string, filters: { employeeId?: string; from?: string; to?: string }) {
@@ -227,7 +271,7 @@ export class AttendanceService {
           lte: toDate,
         },
       },
-      include: { employee: true },
+      include: { employee: true, qrToken: true, nfcTag: true },
       orderBy: { timestamp: 'desc' },
     });
   }
@@ -324,5 +368,50 @@ export class AttendanceService {
     });
 
     return { success: true };
+  }
+
+  /** Timbrature "ho dimenticato di timbrare" in attesa di conferma admin. */
+  listPending(venueId: string) {
+    return this.prisma.attendanceRecord.findMany({
+      where: { employee: { venueId }, approvalStatus: AttendanceApprovalStatus.PENDING },
+      include: { employee: true },
+      orderBy: { timestamp: 'asc' },
+    });
+  }
+
+  async reviewSelfReport(admin: AuthenticatedUser, recordId: string, approve: boolean) {
+    const venueId = requireVenueId(admin);
+    const before = await this.prisma.attendanceRecord.findUnique({
+      where: { id: recordId },
+      include: { employee: true },
+    });
+    if (!before || before.employee.venueId !== venueId) {
+      throw new NotFoundException('Timbratura non trovata');
+    }
+    if (before.approvalStatus !== AttendanceApprovalStatus.PENDING) {
+      throw new BadRequestException('Questa timbratura è già stata revisionata');
+    }
+
+    const after = await this.prisma.attendanceRecord.update({
+      where: { id: recordId },
+      data: {
+        approvalStatus: approve
+          ? AttendanceApprovalStatus.CONFIRMED
+          : AttendanceApprovalStatus.REJECTED,
+        reviewedById: admin.userId,
+      },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: admin.userId,
+      entity: 'AttendanceRecord',
+      entityId: recordId,
+      action: 'UPDATE',
+      before,
+      after,
+    });
+
+    return after;
   }
 }

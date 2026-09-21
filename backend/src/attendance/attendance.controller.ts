@@ -26,6 +26,8 @@ import { ClockDto } from './dto/clock.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
 import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
+import { SelfReportAttendanceDto } from './dto/self-report-attendance.dto';
+import { buildAttendanceSummary } from './attendance-summary.util';
 import { XlsxService } from '../reports/xlsx.service';
 import { PdfService } from '../reports/pdf.service';
 
@@ -54,6 +56,13 @@ export class AttendanceController {
   @Post('clock')
   clock(@CurrentUser() user: AuthenticatedUser, @Body() dto: ClockDto) {
     return this.attendanceService.clock(user, dto);
+  }
+
+  /** "Ho dimenticato di timbrare": resta in attesa finché l'admin non la rivede. */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('self-report')
+  selfReport(@CurrentUser() user: AuthenticatedUser, @Body() dto: SelfReportAttendanceDto) {
+    return this.attendanceService.selfReport(user, dto);
   }
 
   // Admin: gestione QR postazioni
@@ -124,7 +133,27 @@ export class AttendanceController {
     return this.attendanceService.deleteRecord(user, id);
   }
 
-  // Export report presenze
+  /** Timbrature "ho dimenticato di timbrare" in attesa di conferma. */
+  @Get('pending')
+  @Roles(Role.ADMIN)
+  listPending(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.listPending(requireVenueId(user));
+  }
+
+  @Patch(':id/review')
+  @Roles(Role.ADMIN)
+  reviewSelfReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('approve') approve: boolean,
+  ) {
+    return this.attendanceService.reviewSelfReport(user, id, approve);
+  }
+
+  // Export report presenze: una riga per turno (inizio+fine abbinati), ore
+  // decimali/centesimali, totale giornaliero e totale finale per dipendente,
+  // metodo e riferimento (QR/NFC/GPS) di inizio e fine. Solo le timbrature
+  // confermate concorrono al calcolo (vedi buildAttendanceSummary).
   @Get('export/xlsx')
   @Roles(Role.ADMIN, Role.MANAGER)
   async exportXlsx(
@@ -134,22 +163,63 @@ export class AttendanceController {
     @Query('to') to?: string,
   ) {
     const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
+    const summaries = buildAttendanceSummary(records);
+
+    const rows: Record<string, unknown>[] = [];
+    for (const employee of summaries) {
+      for (const day of employee.days) {
+        for (const shift of day.shifts) {
+          rows.push({
+            employee: employee.employeeName,
+            date: shift.date,
+            clockIn: shift.clockIn
+              ? shift.clockIn.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+              : '—',
+            methodIn: shift.methodIn,
+            clockOut: shift.clockOut
+              ? shift.clockOut.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+              : '—',
+            methodOut: shift.methodOut,
+            hours: shift.hours != null ? shift.hours.toFixed(2) : '—',
+            note: shift.note,
+          });
+        }
+        rows.push({
+          employee: '',
+          date: `Totale ${day.date}`,
+          clockIn: '',
+          methodIn: '',
+          clockOut: '',
+          methodOut: '',
+          hours: day.dailyTotalHours.toFixed(2),
+          note: '',
+        });
+      }
+      rows.push({
+        employee: `Totale ${employee.employeeName}`,
+        date: '',
+        clockIn: '',
+        methodIn: '',
+        clockOut: '',
+        methodOut: '',
+        hours: employee.grandTotalHours.toFixed(2),
+        note: '',
+      });
+    }
+
     const buffer = await this.xlsx.buildSheet(
       'Presenze',
       [
         { header: 'Dipendente', key: 'employee', width: 30 },
-        { header: 'Tipo', key: 'type', width: 12 },
-        { header: 'Data/ora', key: 'timestamp', width: 22 },
-        { header: 'Fonte', key: 'source', width: 12 },
+        { header: 'Data', key: 'date', width: 14 },
+        { header: 'Inizio', key: 'clockIn', width: 10 },
+        { header: 'Metodo inizio', key: 'methodIn', width: 26 },
+        { header: 'Fine', key: 'clockOut', width: 10 },
+        { header: 'Metodo fine', key: 'methodOut', width: 26 },
+        { header: 'Ore (decimali)', key: 'hours', width: 14 },
         { header: 'Nota', key: 'note', width: 30 },
       ],
-      records.map((r) => ({
-        employee: `${r.employee.firstName} ${r.employee.lastName}`,
-        type: r.type === 'CLOCK_IN' ? 'Inizio' : 'Fine',
-        timestamp: r.timestamp.toLocaleString('it-IT'),
-        source: r.source,
-        note: r.note ?? '',
-      })),
+      rows,
     );
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -167,14 +237,36 @@ export class AttendanceController {
     @Query('to') to?: string,
   ) {
     const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
+    const summaries = buildAttendanceSummary(records);
+
     const buffer = await this.pdf.buildDocument((doc) => {
       doc.fontSize(16).text('Report presenze', { align: 'center' }).moveDown();
       doc.fontSize(10);
-      records.forEach((r) => {
-        doc.text(
-          `${r.employee.firstName} ${r.employee.lastName} — ${r.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} — ${r.timestamp.toLocaleString('it-IT')}${r.note ? ' — ' + r.note : ''}`,
-        );
-      });
+      for (const employee of summaries) {
+        doc.fontSize(12).text(employee.employeeName, { underline: true }).moveDown(0.3);
+        doc.fontSize(9);
+        for (const day of employee.days) {
+          doc.text(day.date, { continued: false });
+          for (const shift of day.shifts) {
+            const inTime = shift.clockIn
+              ? shift.clockIn.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+              : '—';
+            const outTime = shift.clockOut
+              ? shift.clockOut.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+              : '—';
+            const hours = shift.hours != null ? `${shift.hours.toFixed(2)} h` : '—';
+            doc.text(
+              `   ${inTime} (${shift.methodIn}) → ${outTime} (${shift.methodOut}) — ${hours}${shift.note ? ' — ' + shift.note : ''}`,
+            );
+          }
+          doc.text(`   Totale giornata: ${day.dailyTotalHours.toFixed(2)} h`);
+        }
+        doc.fontSize(11).text(`Totale ${employee.employeeName}: ${employee.grandTotalHours.toFixed(2)} h`).moveDown();
+        doc.fontSize(9);
+      }
+      if (summaries.length === 0) {
+        doc.text('Nessuna timbratura confermata nel periodo selezionato.');
+      }
     });
     res.set({
       'Content-Type': 'application/pdf',

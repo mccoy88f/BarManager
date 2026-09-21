@@ -19,6 +19,8 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -28,6 +30,7 @@ interface AttendanceRecordRow {
   type: 'CLOCK_IN' | 'CLOCK_OUT';
   timestamp: string;
   source: string;
+  approvalStatus: 'CONFIRMED' | 'PENDING' | 'REJECTED';
   note?: string;
   employee: { id: string; firstName: string; lastName: string };
 }
@@ -40,8 +43,17 @@ interface EmployeeOption {
 
 const sourceLabels: Record<string, string> = {
   QR: 'QR',
+  GPS: 'GPS',
+  NFC: 'NFC',
   MANUAL: 'App',
   CORRECTION: 'Corretta',
+  SELF_REPORTED: 'Segnalata dal dipendente',
+};
+
+const approvalStatusChip: Record<string, { label: string; color: 'warning' | 'error' } | null> = {
+  CONFIRMED: null,
+  PENDING: { label: 'In attesa', color: 'warning' },
+  REJECTED: { label: 'Rifiutata', color: 'error' },
 };
 
 function firstDayOfMonth() {
@@ -97,6 +109,20 @@ export function AttendanceRecords() {
           params: { employeeId: employeeId || undefined, from, to },
         })
       ).data,
+  });
+
+  const pendingQuery = useQuery({
+    queryKey: ['attendance-pending'],
+    queryFn: async () => (await api.get<AttendanceRecordRow[]>('/attendance/pending')).data,
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({ id, approve }: { id: string; approve: boolean }) =>
+      (await api.patch(`/attendance/${id}/review`, { approve })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendance-pending'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+    },
   });
 
   const correctMutation = useMutation({
@@ -164,6 +190,52 @@ export function AttendanceRecords() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      {!!pendingQuery.data?.length && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              In attesa di approvazione ({pendingQuery.data.length})
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Timbrature segnalate dai dipendenti con "Ho dimenticato di timbrare": non contano
+              nei totali finché non le confermi.
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              {pendingQuery.data.map((record) => (
+                <Box
+                  key={record.id}
+                  sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <Typography variant="body2">
+                    {record.employee.firstName} {record.employee.lastName} —{' '}
+                    {record.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno —{' '}
+                    {new Date(record.timestamp).toLocaleString('it-IT')}
+                  </Typography>
+                  <Stack direction="row" spacing={0.5}>
+                    <IconButton
+                      size="small"
+                      color="success"
+                      title="Conferma"
+                      onClick={() => reviewMutation.mutate({ id: record.id, approve: true })}
+                    >
+                      <CheckIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title="Rifiuta"
+                      onClick={() => reviewMutation.mutate({ id: record.id, approve: false })}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -236,6 +308,13 @@ export function AttendanceRecords() {
                     {new Date(record.timestamp).toLocaleString('it-IT')}
                   </Typography>
                   <Chip size="small" variant="outlined" label={sourceLabels[record.source] ?? record.source} />
+                  {approvalStatusChip[record.approvalStatus] && (
+                    <Chip
+                      size="small"
+                      color={approvalStatusChip[record.approvalStatus]!.color}
+                      label={approvalStatusChip[record.approvalStatus]!.label}
+                    />
+                  )}
                 </Stack>
               </Box>
               <Stack direction="row" spacing={0.5}>

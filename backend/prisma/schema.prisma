@@ -167,14 +167,22 @@ enum AttendanceSource {
   NFC
   MANUAL
   CORRECTION
+  SELF_REPORTED // "Ho dimenticato di timbrare": inserita dal dipendente, in attesa di conferma admin
+}
+
+enum AttendanceApprovalStatus {
+  CONFIRMED // timbratura verificata in tempo reale (QR/GPS/NFC) o inserita dall'admin
+  PENDING // dichiarata dal dipendente stesso: non conta nei totali finché l'admin non la conferma
+  REJECTED
 }
 
 model AttendanceRecord {
-  id        String           @id @default(cuid())
-  type      AttendanceType
-  timestamp DateTime         @default(now())
-  source    AttendanceSource @default(QR)
-  note      String?
+  id             String                   @id @default(cuid())
+  type           AttendanceType
+  timestamp      DateTime                 @default(now())
+  source         AttendanceSource         @default(QR)
+  approvalStatus AttendanceApprovalStatus @default(CONFIRMED)
+  note           String?
 
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id])
@@ -191,6 +199,7 @@ model AttendanceRecord {
   gpsLng Float?
 
   correctedById String? // userId dell'admin che ha corretto il record
+  reviewedById  String? // userId dell'admin che ha approvato/rifiutato una segnalazione del dipendente
   createdAt     DateTime @default(now())
 
   @@index([employeeId, timestamp])
