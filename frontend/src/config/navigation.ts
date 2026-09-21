@@ -42,12 +42,14 @@ export const navigation: NavItem[] = [
         label: 'Richieste assenza',
         path: '/attendance/leave-requests',
         icon: AccessTimeIcon,
+        description: 'Ferie, permessi, malattia',
       },
       {
         key: 'attendance-employees',
         label: 'Dipendenti',
         path: '/attendance/employees',
         icon: AccessTimeIcon,
+        description: 'Aggiungi, modifica ed elimina gli account del personale',
         roles: ['ADMIN', 'MANAGER'],
       },
       {
@@ -55,6 +57,7 @@ export const navigation: NavItem[] = [
         label: 'QR per timbratura',
         path: '/attendance/qr-tokens',
         icon: AccessTimeIcon,
+        description: 'Genera e scarica i QR delle postazioni per inizio/fine turno',
         roles: ['ADMIN'],
       },
       {
@@ -62,6 +65,7 @@ export const navigation: NavItem[] = [
         label: 'Metodi di timbratura',
         path: '/attendance/clock-in-settings',
         icon: AccessTimeIcon,
+        description: 'Abilita QR, GPS e/o tag NFC per la timbratura verificata',
         roles: ['ADMIN'],
       },
       {
@@ -69,6 +73,7 @@ export const navigation: NavItem[] = [
         label: 'Storico timbrature',
         path: '/attendance/records',
         icon: AccessTimeIcon,
+        description: 'Consulta ed esporta le presenze in XLS o PDF',
         roles: ['ADMIN', 'MANAGER'],
       },
     ],

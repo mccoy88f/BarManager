@@ -20,6 +20,7 @@ import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { QrScanDialog } from './QrScanDialog';
 
 interface AttendanceStatus {
   lastRecord: { type: 'CLOCK_IN' | 'CLOCK_OUT'; timestamp: string } | null;
@@ -70,9 +71,10 @@ function extractErrorMessage(error: unknown): string {
 
 /**
  * Riepilogo mostrato in home per Dipendenti/Responsabili: stato attuale
- * della propria timbratura con i pulsanti dei metodi verificati abilitati
- * dall'admin per il locale (GPS, NFC — il QR resta uno scan fisico), e un
- * recap delle proprie richieste di assenza — speculare ad AdminSummary.
+ * della propria timbratura con un pulsante per ciascun metodo verificato
+ * abilitato dall'admin per il locale (GPS, NFC, QR — quest'ultimo apre la
+ * fotocamera in un modale, senza uscire dall'app), e un recap delle proprie
+ * richieste di assenza — speculare ad AdminSummary.
  */
 export function EmployeeSummary() {
   const navigate = useNavigate();
@@ -80,6 +82,7 @@ export function EmployeeSummary() {
   const [methodError, setMethodError] = useState<string | null>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [nfcScanning, setNfcScanning] = useState(false);
+  const [qrScanOpen, setQrScanOpen] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['attendance-status'],
@@ -97,8 +100,9 @@ export function EmployeeSummary() {
   });
 
   const clockMutation = useMutation({
-    mutationFn: async (payload: { gpsLat?: number; gpsLng?: number; nfcValue?: string } = {}) =>
-      (await api.post('/attendance/clock', payload)).data,
+    mutationFn: async (
+      payload: { gpsLat?: number; gpsLng?: number; nfcValue?: string; qrToken?: string } = {},
+    ) => (await api.post('/attendance/clock', payload)).data,
     onSuccess: () => {
       setMethodError(null);
       queryClient.invalidateQueries({ queryKey: ['attendance-status'] });
@@ -160,6 +164,12 @@ export function EmployeeSummary() {
       setNfcScanning(false);
       setMethodError('Impossibile avviare la lettura NFC (permesso negato o non disponibile).');
     }
+  };
+
+  const handleQrScan = (qrToken: string) => {
+    setQrScanOpen(false);
+    setMethodError(null);
+    clockMutation.mutate({ qrToken });
   };
 
   if (!statusQuery.data) return null;
@@ -233,9 +243,17 @@ export function EmployeeSummary() {
                   </Button>
                 )}
                 {settings?.clockInQrEnabled && (
-                  <Alert severity="info" icon={<QrCodeScannerIcon fontSize="small" />}>
-                    Oppure inquadra il QR affisso nel locale.
-                  </Alert>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    size="large"
+                    color={actionColor}
+                    startIcon={<QrCodeScannerIcon />}
+                    disabled={clockMutation.isPending}
+                    onClick={() => setQrScanOpen(true)}
+                  >
+                    {actionLabel} — QR
+                  </Button>
                 )}
                 {settingsQuery.data && !hasVerifiedMethod && (
                   <Button
@@ -299,6 +317,8 @@ export function EmployeeSummary() {
           </Card>
         </Grid>
       </Grid>
+
+      <QrScanDialog open={qrScanOpen} onClose={() => setQrScanOpen(false)} onScan={handleQrScan} />
     </Box>
   );
 }
