@@ -22,8 +22,29 @@ export class LeaveRequestsService {
     return employee.id;
   }
 
+  /**
+   * L'Admin (che non ha un Employee proprio) sceglie per quale dipendente
+   * creare la richiesta; chiunque altro la crea sempre per sé stesso, anche
+   * se per errore/manomissione arrivasse un employeeId nel corpo.
+   */
+  private async resolveTargetEmployeeId(
+    user: AuthenticatedUser,
+    requestedEmployeeId?: string,
+  ): Promise<string> {
+    if (user.role !== 'ADMIN' || !requestedEmployeeId) {
+      return this.resolveEmployeeId(user.userId);
+    }
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: requestedEmployeeId },
+    });
+    if (!employee || employee.venueId !== requireVenueId(user)) {
+      throw new NotFoundException('Dipendente non trovato');
+    }
+    return employee.id;
+  }
+
   async create(user: AuthenticatedUser, dto: CreateLeaveRequestDto) {
-    const employeeId = await this.resolveEmployeeId(user.userId);
+    const employeeId = await this.resolveTargetEmployeeId(user, dto.employeeId);
     const request = await this.prisma.leaveRequest.create({
       data: {
         employeeId,
