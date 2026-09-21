@@ -15,6 +15,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface TaskRow {
   id: string;
@@ -51,6 +52,7 @@ export function TasksAdmin() {
     dueDate: '',
     recurrence: 'NONE',
   });
+  const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', 'OPEN'],
@@ -74,7 +76,10 @@ export function TasksAdmin() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/tasks/${id}`)).data,
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      setTaskToDelete(null);
+    },
   });
 
   const now = new Date();
@@ -182,7 +187,7 @@ export function TasksAdmin() {
                   <IconButton
                     color="default"
                     title="Elimina"
-                    onClick={() => deleteMutation.mutate(task.id)}
+                    onClick={() => setTaskToDelete(task)}
                   >
                     <DeleteIcon />
                   </IconButton>
@@ -192,6 +197,19 @@ export function TasksAdmin() {
           );
         })}
       </Stack>
+
+      <ConfirmDialog
+        open={!!taskToDelete}
+        title="Eliminare l'attività?"
+        message={
+          taskToDelete
+            ? `"${taskToDelete.title}" verrà eliminata definitivamente.`
+            : ''
+        }
+        loading={deleteMutation.isPending}
+        onCancel={() => setTaskToDelete(null)}
+        onConfirm={() => taskToDelete && deleteMutation.mutate(taskToDelete.id)}
+      />
     </Box>
   );
 }
