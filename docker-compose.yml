@@ -110,8 +110,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # 127.0.0.1 esplicito (non "localhost"): stesso identico problema
+    # risolto per il backend — musl/Alpine può risolvere "localhost" su
+    # IPv6 (::1) prima di IPv4, e Nginx qui ascolta anche su IPv6 (vedi
+    # nginx.conf) ma l'ambiguità va evitata comunque.
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
       interval: 10s
       timeout: 5s
       retries: 5
