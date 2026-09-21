@@ -66,18 +66,26 @@ services:
     depends_on:
       - backend
 
-    # Coolify: assegna il dominio (anche wildcard *.tuodominio.it) a
-    # questo servizio dalla UI, indicando la porta 80 — genera da sé le
-    # regole Traefik e il certificato TLS, nessuna label da scrivere qui.
+    # Routing wildcard (*.${ROOT_DOMAIN}) via label Traefik, per i casi in
+    # cui il dominio wildcard non si possa impostare dal dialog "Add
+    # Domain" della UI (accetta solo un FQDN singolo, non "*.dominio").
+    # Con queste label NON aggiungere anche un dominio dalla UI per lo
+    # stesso servizio: creerebbe due router in conflitto.
     #
-    # Portainer con Traefik/Nginx Proxy Manager davanti: serve invece una
-    # regola di routing esplicita verso questo servizio (porta 80), ad
-    # esempio con label Traefik:
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.barmanager.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.tuodominio.it`)"
-    #   - "traefik.http.routers.barmanager.tls.certresolver=letsencrypt"
-    #   - "traefik.http.services.barmanager.loadbalancer.server.port=80"
+    # Un certificato wildcard richiede comunque la validazione DNS-01
+    # (obbligatoria per ACME/Let's Encrypt sui wildcard): il resolver
+    # indicato sotto deve corrispondere a uno già configurato con le
+    # credenziali del provider DNS nelle impostazioni server/proxy di
+    # Coolify — verificane il nome esatto lì (su Portainer con Traefik
+    # esterno, il nome del resolver dipende da come l'hai configurato tu).
+    # Anche il nome dell'entrypoint HTTPS ("https" qui sotto) va
+    # confermato contro la configurazione Traefik effettiva.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.barmanager.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.barmanager.entrypoints=https"
+      - "traefik.http.routers.barmanager.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.services.barmanager.loadbalancer.server.port=80"
 
 volumes:
   postgres_data:
