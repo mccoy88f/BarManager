@@ -1,5 +1,9 @@
 # --- base ---
 FROM node:20-alpine AS base
+# node:20-alpine non include OpenSSL: senza, gli engine binari di Prisma
+# (generate/db push, e il client a runtime) falliscono in modo criptico
+# ("Could not parse schema engine response").
+RUN apk add --no-cache openssl
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
@@ -21,6 +25,7 @@ RUN npm run build
 
 # --- production ---
 FROM node:20-alpine AS production
+RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./

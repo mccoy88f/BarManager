@@ -1,5 +1,10 @@
 generator client {
   provider = "prisma-client-js"
+  // "native" per lo sviluppo fuori Docker (macOS/Linux glibc); il target
+  // musl esplicito serve per i container node:20-alpine (Dockerfile),
+  // così l'engine giusto viene scaricato anche se l'auto-detect di
+  // OpenSSL nel container dovesse fallire.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
