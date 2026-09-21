@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Box,
   Card,
@@ -9,9 +10,13 @@ import {
   Button,
   Divider,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
+import GpsFixedIcon from '@mui/icons-material/GpsFixed';
+import NfcIcon from '@mui/icons-material/Nfc';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -19,6 +24,13 @@ import { api } from '../api/client';
 interface AttendanceStatus {
   lastRecord: { type: 'CLOCK_IN' | 'CLOCK_OUT'; timestamp: string } | null;
   nextAction: 'CLOCK_IN' | 'CLOCK_OUT';
+}
+
+interface ClockInSettings {
+  clockInQrEnabled: boolean;
+  clockInGpsEnabled: boolean;
+  clockInNfcEnabled: boolean;
+  gpsRadiusMeters: number;
 }
 
 interface LeaveRequestRow {
@@ -47,19 +59,36 @@ const statusColor: Record<string, 'default' | 'success' | 'error'> = {
   REJECTED: 'error',
 };
 
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore nella registrazione, riprova.';
+}
+
 /**
  * Riepilogo mostrato in home per Dipendenti/Responsabili: stato attuale
- * della propria timbratura con pulsante diretto (senza dover scansionare un
- * QR fisico), e un recap delle proprie richieste di assenza — speculare ad
- * AdminSummary per chi gestisce il locale.
+ * della propria timbratura con i pulsanti dei metodi verificati abilitati
+ * dall'admin per il locale (GPS, NFC — il QR resta uno scan fisico), e un
+ * recap delle proprie richieste di assenza — speculare ad AdminSummary.
  */
 export function EmployeeSummary() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [methodError, setMethodError] = useState<string | null>(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [nfcScanning, setNfcScanning] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['attendance-status'],
     queryFn: async () => (await api.get<AttendanceStatus>('/attendance/me/status')).data,
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: ['attendance-clock-in-settings'],
+    queryFn: async () => (await api.get<ClockInSettings>('/attendance/clock-in-settings')).data,
   });
 
   const leaveQuery = useQuery({
@@ -68,15 +97,82 @@ export function EmployeeSummary() {
   });
 
   const clockMutation = useMutation({
-    mutationFn: async () => (await api.post('/attendance/clock', {})).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance-status'] }),
+    mutationFn: async (payload: { gpsLat?: number; gpsLng?: number; nfcValue?: string } = {}) =>
+      (await api.post('/attendance/clock', payload)).data,
+    onSuccess: () => {
+      setMethodError(null);
+      queryClient.invalidateQueries({ queryKey: ['attendance-status'] });
+    },
+    onError: (err) => setMethodError(extractErrorMessage(err)),
   });
+
+  const clockWithGps = () => {
+    setMethodError(null);
+    if (!navigator.geolocation) {
+      setMethodError('Il browser non supporta la geolocalizzazione.');
+      return;
+    }
+    setGpsBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsBusy(false);
+        clockMutation.mutate({
+          gpsLat: position.coords.latitude,
+          gpsLng: position.coords.longitude,
+        });
+      },
+      () => {
+        setGpsBusy(false);
+        setMethodError('Posizione non disponibile: controlla i permessi del browser.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  const clockWithNfc = async () => {
+    setMethodError(null);
+    const NDEFReaderCtor = (window as unknown as { NDEFReader?: new () => NdefReaderLike })
+      .NDEFReader;
+    if (!NDEFReaderCtor) {
+      setMethodError('Questo dispositivo/browser non supporta la lettura NFC (serve Chrome su Android).');
+      return;
+    }
+    try {
+      setNfcScanning(true);
+      const reader = new NDEFReaderCtor();
+      await reader.scan();
+      reader.onreading = (event: NdefReadingEventLike) => {
+        setNfcScanning(false);
+        const record =
+          event.message.records.find((r) => r.recordType === 'text') ?? event.message.records[0];
+        if (!record) {
+          setMethodError('Tag NFC letto ma senza testo riconoscibile.');
+          return;
+        }
+        const text = new TextDecoder(record.encoding || 'utf-8').decode(record.data);
+        clockMutation.mutate({ nfcValue: text });
+      };
+      reader.onreadingerror = () => {
+        setNfcScanning(false);
+        setMethodError('Errore nella lettura del tag NFC, riprova.');
+      };
+    } catch {
+      setNfcScanning(false);
+      setMethodError('Impossibile avviare la lettura NFC (permesso negato o non disponibile).');
+    }
+  };
 
   if (!statusQuery.data) return null;
 
   const { lastRecord, nextAction } = statusQuery.data;
   const isClockedIn = nextAction === 'CLOCK_OUT';
   const recentLeaveRequests = (leaveQuery.data ?? []).slice(0, 3);
+  const settings = settingsQuery.data;
+  const hasVerifiedMethod =
+    !!settings && (settings.clockInGpsEnabled || settings.clockInQrEnabled || settings.clockInNfcEnabled);
+  const actionLabel = isClockedIn ? 'Fine turno' : 'Inizio turno';
+  const actionIcon = isClockedIn ? <StopIcon /> : <PlayArrowIcon />;
+  const actionColor = isClockedIn ? 'secondary' : 'primary';
 
   return (
     <Box sx={{ mb: 4 }}>
@@ -103,23 +199,58 @@ export function EmployeeSummary() {
                 </Typography>
               )}
 
-              {clockMutation.isError && (
-                <Alert severity="error" sx={{ mb: 1 }}>
-                  Errore nella registrazione, riprova.
+              {methodError && (
+                <Alert severity="error" sx={{ mb: 1 }} onClose={() => setMethodError(null)}>
+                  {methodError}
                 </Alert>
               )}
 
-              <Button
-                variant="contained"
-                fullWidth
-                size="large"
-                color={isClockedIn ? 'secondary' : 'primary'}
-                startIcon={isClockedIn ? <StopIcon /> : <PlayArrowIcon />}
-                disabled={clockMutation.isPending}
-                onClick={() => clockMutation.mutate()}
-              >
-                {isClockedIn ? 'Fine turno' : 'Inizio turno'}
-              </Button>
+              <Stack spacing={1}>
+                {settings?.clockInGpsEnabled && (
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    size="large"
+                    color={actionColor}
+                    startIcon={gpsBusy ? <CircularProgress size={18} color="inherit" /> : <GpsFixedIcon />}
+                    disabled={gpsBusy || clockMutation.isPending}
+                    onClick={clockWithGps}
+                  >
+                    {actionLabel} — GPS
+                  </Button>
+                )}
+                {settings?.clockInNfcEnabled && (
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    size="large"
+                    color={actionColor}
+                    startIcon={nfcScanning ? <CircularProgress size={18} color="inherit" /> : <NfcIcon />}
+                    disabled={nfcScanning || clockMutation.isPending}
+                    onClick={clockWithNfc}
+                  >
+                    {nfcScanning ? 'Avvicina il telefono al tag…' : `${actionLabel} — NFC`}
+                  </Button>
+                )}
+                {settings?.clockInQrEnabled && (
+                  <Alert severity="info" icon={<QrCodeScannerIcon fontSize="small" />}>
+                    Oppure inquadra il QR affisso nel locale.
+                  </Alert>
+                )}
+                {settingsQuery.data && !hasVerifiedMethod && (
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    size="large"
+                    color={actionColor}
+                    startIcon={actionIcon}
+                    disabled={clockMutation.isPending}
+                    onClick={() => clockMutation.mutate({})}
+                  >
+                    {actionLabel}
+                  </Button>
+                )}
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
@@ -170,4 +301,19 @@ export function EmployeeSummary() {
       </Grid>
     </Box>
   );
+}
+
+// Web NFC API: ancora sperimentale, non nei tipi DOM standard di TypeScript.
+interface NdefRecordLike {
+  recordType: string;
+  encoding?: string;
+  data: BufferSource;
+}
+interface NdefReadingEventLike {
+  message: { records: NdefRecordLike[] };
+}
+interface NdefReaderLike {
+  scan(): Promise<void>;
+  onreading: ((event: NdefReadingEventLike) => void) | null;
+  onreadingerror: (() => void) | null;
 }

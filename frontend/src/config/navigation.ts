@@ -58,6 +58,13 @@ export const navigation: NavItem[] = [
         roles: ['ADMIN'],
       },
       {
+        key: 'attendance-clock-in-settings',
+        label: 'Metodi di timbratura',
+        path: '/attendance/clock-in-settings',
+        icon: AccessTimeIcon,
+        roles: ['ADMIN'],
+      },
+      {
         key: 'attendance-records',
         label: 'Storico timbrature',
         path: '/attendance/records',

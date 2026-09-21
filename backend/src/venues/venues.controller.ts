@@ -11,6 +11,7 @@ import {
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
+import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -45,5 +46,14 @@ export class VenuesController {
   @Roles(Role.ADMIN)
   updateOwnHours(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateVenueHoursDto) {
     return this.venuesService.updateHours(requireVenueId(user), dto);
+  }
+
+  @Patch('me/clock-in-settings')
+  @Roles(Role.ADMIN)
+  updateOwnClockInSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateClockInSettingsDto,
+  ) {
+    return this.venuesService.updateClockInSettings(requireVenueId(user), dto);
   }
 }

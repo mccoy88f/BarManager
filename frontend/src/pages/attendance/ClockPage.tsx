@@ -3,6 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Card, CardContent, Typography, CircularProgress, Alert } from '@mui/material';
 import { api } from '../../api/client';
 
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore nella registrazione, riprova.';
+}
+
 /**
  * Pagina raggiunta inquadrando il QR di una postazione (/clock/:token).
  * Mostra un solo grande pulsante: "Inizio turno" o "Fine turno", in base
@@ -48,7 +57,7 @@ export function ClockPage() {
           )}
           {clockMutation.isError && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              Errore nella registrazione, riprova.
+              {extractErrorMessage(clockMutation.error)}
             </Alert>
           )}
 

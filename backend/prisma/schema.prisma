@@ -38,6 +38,20 @@ model Venue {
   dinnerStart String @default("19:00")
   dinnerEnd   String @default("23:00")
 
+  // Metodi di timbratura verificata abilitati dall'admin (più di uno può
+  // essere attivo insieme): QR di postazione, posizione GPS entro un raggio
+  // dal locale, tag NFC fisico. Se nessuno è abilitato, resta disponibile la
+  // timbratura diretta senza verifica (comportamento storico).
+  clockInQrEnabled  Boolean @default(true)
+  clockInGpsEnabled Boolean @default(false)
+  clockInNfcEnabled Boolean @default(false)
+
+  // Punto e raggio (metri) per la timbratura GPS: null finché l'admin non
+  // imposta la posizione del locale, anche se clockInGpsEnabled è true.
+  gpsLat          Float?
+  gpsLng          Float?
+  gpsRadiusMeters Int    @default(20)
+
   users             User[]
   employees         Employee[]
   fridges           Fridge[]
@@ -47,6 +61,7 @@ model Venue {
   orders            Order[]
   auditLogs         AuditLog[]
   qrTokens          QrToken[]
+  nfcTags           NfcTag[]
   haccpReports      HaccpReport[]
   menuCategories    MenuCategory[]
   menuItems         MenuItem[]
@@ -125,6 +140,22 @@ model QrToken {
   attendanceRecords AttendanceRecord[]
 }
 
+// Tag NFC fisico: l'admin definisce qui etichetta e testo (plain text), poi
+// scrive lo stesso testo sul tag fisico con un'app di terze parti (BarManager
+// non scrive NFC, solo legge e confronta al momento della timbratura).
+model NfcTag {
+  id        String   @id @default(cuid())
+  label     String // es. "Ingresso cucina"
+  value     String   @unique // testo scritto sul tag fisico
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  attendanceRecords AttendanceRecord[]
+}
+
 enum AttendanceType {
   CLOCK_IN
   CLOCK_OUT
@@ -132,6 +163,8 @@ enum AttendanceType {
 
 enum AttendanceSource {
   QR
+  GPS
+  NFC
   MANUAL
   CORRECTION
 }
@@ -148,6 +181,14 @@ model AttendanceRecord {
 
   qrTokenId String?
   qrToken   QrToken? @relation(fields: [qrTokenId], references: [id])
+
+  nfcTagId String?
+  nfcTag   NfcTag? @relation(fields: [nfcTagId], references: [id])
+
+  // Coordinate inviate dal client per una timbratura GPS (audit/verifica a
+  // posteriori), non usate per il calcolo che resta lato server al momento.
+  gpsLat Float?
+  gpsLng Float?
 
   correctedById String? // userId dell'admin che ha corretto il record
   createdAt     DateTime @default(now())

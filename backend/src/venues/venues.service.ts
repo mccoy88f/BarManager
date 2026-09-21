@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
+import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -59,11 +60,21 @@ export class VenuesService {
         lunchEnd: true,
         dinnerStart: true,
         dinnerEnd: true,
+        clockInQrEnabled: true,
+        clockInGpsEnabled: true,
+        clockInNfcEnabled: true,
+        gpsLat: true,
+        gpsLng: true,
+        gpsRadiusMeters: true,
       },
     });
   }
 
   updateHours(venueId: string, dto: UpdateVenueHoursDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  }
+
+  updateClockInSettings(venueId: string, dto: UpdateClockInSettingsDto) {
     return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 }

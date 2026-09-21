@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -23,6 +24,7 @@ import {
 import { AttendanceService } from './attendance.service';
 import { ClockDto } from './dto/clock.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
+import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
 import { XlsxService } from '../reports/xlsx.service';
 import { PdfService } from '../reports/pdf.service';
 
@@ -41,10 +43,16 @@ export class AttendanceController {
     return this.attendanceService.getCurrentStatus(user.userId);
   }
 
+  /** Quali metodi di timbratura verificata sono abilitati (mai le coordinate esatte). */
+  @Get('clock-in-settings')
+  getClockInSettings(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.getClockInSettings(requireVenueId(user));
+  }
+
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post('clock')
   clock(@CurrentUser() user: AuthenticatedUser, @Body() dto: ClockDto) {
-    return this.attendanceService.clock(user, dto.qrToken);
+    return this.attendanceService.clock(user, dto);
   }
 
   // Admin: gestione QR postazioni
@@ -58,6 +66,25 @@ export class AttendanceController {
   @Roles(Role.ADMIN)
   listQrTokens(@CurrentUser() user: AuthenticatedUser) {
     return this.attendanceService.listQrTokens(requireVenueId(user));
+  }
+
+  // Admin: gestione tag NFC
+  @Post('nfc-tags')
+  @Roles(Role.ADMIN)
+  createNfcTag(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateNfcTagDto) {
+    return this.attendanceService.createNfcTag(requireVenueId(user), dto);
+  }
+
+  @Get('nfc-tags')
+  @Roles(Role.ADMIN)
+  listNfcTags(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.listNfcTags(requireVenueId(user));
+  }
+
+  @Delete('nfc-tags/:id')
+  @Roles(Role.ADMIN)
+  removeNfcTag(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.attendanceService.removeNfcTag(requireVenueId(user), id);
   }
 
   // Admin/Manager: consultazione e correzione presenze

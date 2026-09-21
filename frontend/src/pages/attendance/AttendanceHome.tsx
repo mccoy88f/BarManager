@@ -53,6 +53,18 @@ export function AttendanceHome() {
           </CardActionArea>
         </Card>
       </Grid>
+      <Grid item xs={12} sm={6}>
+        <Card>
+          <CardActionArea onClick={() => navigate('/attendance/clock-in-settings')} sx={{ p: 2 }}>
+            <CardContent>
+              <Typography variant="h6">Metodi di timbratura</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Abilita QR, GPS e/o tag NFC per la timbratura verificata
+              </Typography>
+            </CardContent>
+          </CardActionArea>
+        </Card>
+      </Grid>
     </Grid>
   );
 }
