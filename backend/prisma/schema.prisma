@@ -45,6 +45,7 @@ model Venue {
   haccpReports      HaccpReport[]
   menuCategories    MenuCategory[]
   menuItems         MenuItem[]
+  tasks             Task[]
 }
 
 model User {
@@ -65,6 +66,8 @@ model User {
   temperatureReadings     TemperatureReading[]
   auditLogs               AuditLog[]
   notifications           Notification[]
+  tasksAssigned           Task[]              @relation("TaskAssignedTo")
+  tasksCreated            Task[]              @relation("TaskCreatedBy")
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +94,7 @@ model Employee {
 
   attendanceRecords AttendanceRecord[]
   leaveRequests     LeaveRequest[]
+  relatedTasks      Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -275,6 +279,9 @@ model Supplier {
   email        String
   ccEmails     String[] @default([]) // email extra fisse (oltre ai responsabili reparto)
   phone        String?
+  // Giorni della settimana in cui va fatto l'ordine (1=lunedì .. 7=domenica),
+  // impostati dall'admin ("impostazioni"): usati per il promemoria in home.
+  orderDays    Int[]    @default([])
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -413,6 +420,62 @@ model MenuItem {
   updatedAt DateTime @updatedAt
 
   @@index([venueId, categoryId])
+}
+
+// ---------------------------------------------------------------------------
+// Attività e scadenze
+// ---------------------------------------------------------------------------
+
+enum TaskType {
+  GENERIC
+  SUPPLIER_PAYMENT // pagamento fornitori
+  EMPLOYEE_MEDICAL_VISIT // visita medica dipendenti
+  CERTIFICATE_EXPIRY // scadenza attestati/corsi
+  MAINTENANCE // manutenzioni attrezzature
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
+/// Ricorrenza per scadenze periodiche (es. attestato da rinnovare ogni
+/// anno): al completamento viene generata automaticamente l'occorrenza
+/// successiva con la stessa scadenza spostata in avanti.
+enum TaskRecurrence {
+  NONE
+  MONTHLY
+  YEARLY
+}
+
+model Task {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  type        TaskType       @default(GENERIC)
+  status      TaskStatus     @default(OPEN)
+  dueDate     DateTime
+  reminderDaysBefore Int     @default(7) // da quanti giorni prima segnalarla come imminente in home
+  recurrence  TaskRecurrence @default(NONE)
+  completedAt DateTime?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  // Dipendente collegato (es. di chi è la visita medica/l'attestato)
+  relatedEmployeeId String?
+  relatedEmployee   Employee? @relation(fields: [relatedEmployeeId], references: [id])
+
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, status, dueDate])
 }
 
 // ---------------------------------------------------------------------------

@@ -3,8 +3,10 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ThermostatIcon from '@mui/icons-material/Thermostat';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
+import EventNoteIcon from '@mui/icons-material/EventNote';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore, Role } from '../store/authStore';
+import { AdminSummary } from '../components/AdminSummary';
 
 const modules = [
   {
@@ -39,6 +41,14 @@ const modules = [
     path: '/menu/admin',
     roles: ['ADMIN', 'MANAGER'] as Role[],
   },
+  {
+    key: 'tasks',
+    label: 'Attività e scadenze',
+    description: 'Pagamenti, visite mediche, attestati',
+    icon: EventNoteIcon,
+    path: '/tasks',
+    roles: ['ADMIN', 'MANAGER'] as Role[],
+  },
 ];
 
 export function Dashboard() {
@@ -52,9 +62,12 @@ export function Dashboard() {
   }
 
   const visible = modules.filter((m) => !role || m.roles.includes(role));
+  const isAdminOrManager = role === 'ADMIN' || role === 'MANAGER';
 
   return (
     <>
+      {isAdminOrManager && <AdminSummary />}
+
       <Typography variant="h5" fontWeight={700} gutterBottom>
         Moduli disponibili
       </Typography>
@@ -80,4 +93,3 @@ export function Dashboard() {
     </>
   );
 }
-

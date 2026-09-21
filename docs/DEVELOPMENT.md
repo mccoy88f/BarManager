@@ -1,8 +1,8 @@
 # BarManager — Documento di Sviluppo
 
-> Piattaforma **multi-tenant** (un sotto-dominio per locale) per la gestione operativa di bar/ristoranti: presenze dipendenti, controlli HACCP, inventario e ordini fornitori, menù online. Web app installabile come PWA, progettata per essere convertita in app Android nativa (wrapper Capacitor) senza riscrivere il frontend. Pensata per il deploy su **Portainer** o **Coolify**, dietro il loro reverse proxy.
+> Piattaforma **multi-tenant** (un sotto-dominio per locale) per la gestione operativa di bar/ristoranti: presenze dipendenti, controlli HACCP, inventario e ordini fornitori, menù online, attività e scadenze — con una home dell'amministrazione che riepiloga ciò che richiede attenzione ogni giorno. Web app installabile come PWA, progettata per essere convertita in app Android nativa (wrapper Capacitor) senza riscrivere il frontend. Pensata per il deploy su **Portainer** o **Coolify**, dietro il loro reverse proxy.
 
-Versione: 0.2 — Multi-tenant + modulo Menù
+Versione: 0.3 — Attività/scadenze + home amministrazione
 Data: 2026-09-21
 
 ---
@@ -109,11 +109,12 @@ Schema completo in `backend/prisma/schema.prisma`. Entità principali:
 - **TemperatureReading** — rilevazione temperatura, `outOfRange` calcolato, `correctiveAction` obbligatoria se fuori soglia.
 - **HaccpReport** — istanza di report giornaliero generato/stampato/firmato.
 - **Printer** — stampante POS di rete configurata dall'admin di locale (IP, porta, uso: HACCP/ordini).
-- **ProductCategory / Product / Supplier / Order / OrderLine** — catalogo, scorte standard e flusso ordini (invariati rispetto alla v0.1, vedi §5.3).
+- **ProductCategory / Product / Supplier / Order / OrderLine** — catalogo, scorte standard e flusso ordini; `Supplier.orderDays` (interi 1–7, lun–dom) indica i giorni ricorrenti in cui va fatto l'ordine, impostati dall'admin e usati per il promemoria in home (vedi §5.6).
 - **MenuCategory** — categoria del menù online (es. "Antipasti", "Primi", "Vini"), con ordinamento.
 - **MenuItem** — voce di menù: nome, descrizione, prezzo, foto, `allergens` (i 14 allergeni UE, enum), finestra di disponibilità oraria (`LUNCH`/`DINNER`/`ALL_DAY`), `visible` (mostra/nascondi dal menù pubblico), `unavailableUntil` (temporaneamente esaurito fino a una data/ora, calcolato automaticamente come non disponibile finché quel momento non è passato).
+- **Task** — attività/scadenza (es. pagamento fornitore, visita medica dipendente, scadenza attestato): `type` (enum), `dueDate`, `status` (`OPEN/DONE`), `recurrence` (`NONE/MONTHLY/YEARLY`, genera automaticamente l'occorrenza successiva al completamento), `reminderDaysBefore` (da quanti giorni prima segnalarla come imminente in home), collegabile a un `Employee` (`relatedEmployeeId`, es. di chi è la visita medica).
 - **AuditLog** — traccia di ogni operazione sensibile (chi, cosa, quando, prima/dopo), sempre scoperta per `venueId`.
-- **Notification** — notifiche in-app.
+- **Notification** — notifiche in-app (richieste ferie, temperature fuori soglia, ordini inviati, ...), esposte via API (lista/segna come letta) e riprese nella home amministrazione.
 
 Diagramma ER semplificato:
 
@@ -190,15 +191,35 @@ Gestione del menù del locale, consultabile pubblicamente (es. da QR al tavolo) 
 - Voci raggruppate per categoria, filtrate per orario corrente e visibilità; badge allergeni; badge "non disponibile" per le voci temporaneamente esaurite.
 - Nessun dato sensibile esposto: solo le informazioni pubbliche della voce di menù.
 
+### 5.5 Attività e scadenze
+
+Modulo generico per tenere traccia di impegni con una data entro cui vanno fatti, che non rientrano negli altri moduli: pagamento fornitori, visita medica dipendenti, scadenza attestati/corsi obbligatori, manutenzioni.
+
+- Ogni attività ha titolo, descrizione libera, tipo (pagamento fornitore / visita medica / scadenza attestato / manutenzione / generica), scadenza, ed **entro quanti giorni prima** va segnalata come imminente in home (`reminderDaysBefore`, default 7).
+- Può essere collegata a un dipendente (es. "Visita medica — Mario Rossi").
+- **Ricorrenza**: non ricorrente, mensile o annuale — utile per scadenze periodiche come il rinnovo di un attestato. Al completamento di un'attività ricorrente viene creata subito la prossima occorrenza con la scadenza spostata di un mese/anno, così non va reinserita a mano ogni volta.
+- Le attività aperte, evidenziando quelle scadute, alimentano la home dell'amministrazione (§5.6).
+
+### 5.6 Home dell'amministrazione
+
+All'accesso, Admin e Manager vedono in cima alla home un riepilogo di ciò che richiede attenzione **oggi**, prima ancora dei moduli:
+
+- **Richieste dei dipendenti in attesa** (richieste ferie/permessi/malattia non ancora approvate/rifiutate), con approvazione/rifiuto rapido direttamente dalla card, senza dover entrare nel modulo Presenze.
+- **Ordini da fare oggi**: fornitori il cui giorno di ordine ricorrente (impostato in "Fornitori", vedi §5.3) coincide con il giorno corrente (es. ogni lunedì, o lunedì e giovedì), con collegamento diretto al flusso "nuovo ordine" per quel fornitore.
+- **Scadenze imminenti/scadute** dal modulo Attività e scadenze, con conteggio delle scadute e completamento rapido.
+- **Altre notifiche** del giorno (temperature HACCP fuori soglia, ordini inviati, richieste ferie riviste, ...), con possibilità di segnarle come lette.
+
+Se non c'è nulla che richiede attenzione, la sezione lo segnala esplicitamente invece di restare vuota. I moduli operativi restano comunque disponibili come tile sotto il riepilogo, per l'uso normale.
+
 ---
 
 ## 6. Altri moduli utili individuati (proposte)
 
 1. **Gestione turni/pianificazione (shift planning)** — collegata alle presenze: confronto pianificato vs timbrato.
 2. **Ruoli e permessi granulari** — oltre a Admin/Manager/Employee, "responsabile" di una o più categorie/reparti.
-3. **Notifiche** (push via PWA + email): ferie pendenti, temperature fuori soglia, scorte sotto soglia, ordine confermato.
-4. **Scadenzario documenti** — HACCP, contratti, assicurazioni, manutenzioni obbligatorie: alert N giorni prima.
-5. **Manutenzioni attrezzature** — log interventi tecnici (utile anche a giustificare uno sbalzo HACCP).
+3. **Notifiche push** — quelle in-app/email essenziali sono implementate (§5.6); manca l'invio push via PWA per gli avvisi che richiedono attenzione immediata (temperatura fuori soglia, scadenza attività).
+4. ~~Scadenzario documenti~~ — **implementato** come modulo Attività e scadenze (§5.5): copre certificati/attestati, pagamenti, visite mediche, manutenzioni con promemoria in home; resta da aggiungere l'allegato file (es. copia del certificato) alla singola attività.
+5. **Manutenzioni attrezzature** — un log dedicato con interventi/tecnico intervenuto, oltre alla singola attività "manutenzione" già gestibile col modulo Attività e scadenze.
 6. **Gestione fornitori estesa** — listini/prezzi storici, tempi di consegna medi.
 7. **Dashboard analytics** — costo personale, andamento ordini/spesa, non conformità HACCP, assenteismo; per il Super Admin, KPI aggregati su tutti i locali.
 8. **Audit log consultabile** — vista admin "chi ha fatto cosa".
@@ -232,15 +253,21 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 **Fase 0 — Fondamenta (già scaffoldato)**
 - Docker Compose, schema dati Prisma, autenticazione JWT + RBAC, shell frontend Material con routing/tema/PWA, moduli Presenze/HACCP/Inventario end-to-end.
 
-**Fase 0-bis — Multi-tenant + Menù (questo aggiornamento)**
+**Fase 0-bis — Multi-tenant + Menù**
 - Ruolo `SUPER_ADMIN` e modulo gestione locali (creazione locale + primo admin).
 - `TenantMiddleware` per risoluzione sotto-dominio, isolamento dati per `venueId` verificato su ogni servizio.
 - Modulo Menù online completo (categorie, voci, allergeni, disponibilità oraria, visibilità, "non disponibile fino a") + pagina pubblica senza login.
 - Adeguamento Docker Compose/Nginx per deploy dietro il reverse proxy di Portainer/Coolify (nessun Traefik proprio, proxy `/api` same-origin).
 
+**Fase 0-ter — Attività/scadenze + home amministrazione (questo aggiornamento)**
+- Modulo Attività e scadenze (§5.5), con ricorrenza mensile/annuale.
+- Giorni di ordine ricorrenti per fornitore (§5.3) e relativa UI di gestione fornitori.
+- Endpoint notifiche (lista/segna come letta) ed endpoint di riepilogo `/dashboard/admin-summary`.
+- Home dell'amministrazione (§5.6): richieste pendenti con approvazione rapida, ordini del giorno, scadenze imminenti/scadute, notifiche.
+
 **Fase 1 — Rifinitura MVP**
-- UI di amministrazione mancanti (dipendenti, categorie/prodotti/fornitori, stampanti) — oggi disponibili via API.
-- Notifiche essenziali (email) per approvazioni e temperature fuori soglia.
+- UI di amministrazione mancanti (dipendenti, categorie/prodotti, stampanti) — oggi disponibili via API.
+- Notifica push via PWA per gli avvisi urgenti (oggi solo in-app/email), allegati alle attività/scadenze.
 
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
@@ -299,13 +326,18 @@ BarManager/
 │       ├── haccp/
 │       ├── inventory/
 │       ├── menu/               (menù online: categorie, voci, upload foto)
+│       ├── tasks/               (attività e scadenze, con ricorrenza)
+│       ├── notifications/       (lista/segna come letta)
+│       ├── dashboard/           (riepilogo home amministrazione)
 │       ├── printing/            (client ESC/POS)
 │       └── reports/             (PDF/XLS)
 └── frontend/                   (React + MUI PWA)
     └── src/
+        ├── components/AdminSummary.tsx  (riepilogo in home)
         ├── pages/super-admin/
         ├── pages/attendance/
         ├── pages/haccp/
-        ├── pages/inventory/
-        └── pages/menu/          (admin + pagina pubblica)
+        ├── pages/inventory/     (nuovo ordine + fornitori/giorni ordine)
+        ├── pages/menu/          (admin + pagina pubblica)
+        └── pages/tasks/
 ```

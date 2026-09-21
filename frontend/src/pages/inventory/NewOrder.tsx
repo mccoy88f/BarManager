@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -37,7 +38,8 @@ interface Product {
  * dell'invio (email + stampa checklist).
  */
 export function NewOrder() {
-  const [supplierId, setSupplierId] = useState('');
+  const [searchParams] = useSearchParams();
+  const [supplierId, setSupplierId] = useState(searchParams.get('supplierId') ?? '');
   const [stock, setStock] = useState<Record<string, string>>({});
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 

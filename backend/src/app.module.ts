@@ -12,6 +12,9 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { HaccpModule } from './haccp/haccp.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MenuModule } from './menu/menu.module';
+import { TasksModule } from './tasks/tasks.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { PrintingModule } from './printing/printing.module';
 
 @Module({
@@ -28,6 +31,9 @@ import { PrintingModule } from './printing/printing.module';
     HaccpModule,
     InventoryModule,
     MenuModule,
+    TasksModule,
+    NotificationsModule,
+    DashboardModule,
     PrintingModule,
   ],
 })

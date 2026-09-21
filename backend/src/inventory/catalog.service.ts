@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 
 @Injectable()
@@ -30,6 +31,23 @@ export class CatalogService {
 
   listSuppliers(venueId: string) {
     return this.prisma.supplier.findMany({ where: { venueId }, orderBy: { name: 'asc' } });
+  }
+
+  async updateSupplier(venueId: string, supplierId: string, dto: UpdateSupplierDto) {
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier || supplier.venueId !== venueId) {
+      throw new NotFoundException('Fornitore non trovato');
+    }
+    return this.prisma.supplier.update({ where: { id: supplierId }, data: dto });
+  }
+
+  /** Fornitori il cui giorno di ordine ricorrente è oggi (usato in home). */
+  listSuppliersDueToday(venueId: string) {
+    const isoWeekday = ((new Date().getDay() + 6) % 7) + 1; // 1=lun .. 7=dom
+    return this.prisma.supplier.findMany({
+      where: { venueId, orderDays: { has: isoWeekday } },
+      orderBy: { name: 'asc' },
+    });
   }
 
   // Prodotti

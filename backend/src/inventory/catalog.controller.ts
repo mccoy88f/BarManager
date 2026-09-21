@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -11,6 +11,7 @@ import {
 import { CatalogService } from './catalog.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 
 @Controller('inventory')
@@ -38,6 +39,16 @@ export class CatalogController {
   @Get('suppliers')
   listSuppliers(@CurrentUser() user: AuthenticatedUser) {
     return this.catalog.listSuppliers(requireVenueId(user));
+  }
+
+  @Patch('suppliers/:id')
+  @Roles(Role.ADMIN)
+  updateSupplier(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateSupplierDto,
+  ) {
+    return this.catalog.updateSupplier(requireVenueId(user), id, dto);
   }
 
   @Post('products')

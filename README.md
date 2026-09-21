@@ -7,6 +7,8 @@ Piattaforma **multi-tenant** (web, PWA, containerizzata con Docker) per la gesti
 - **Controlli HACCP** — rilevazione temperature frigoriferi, report stampabile su POS Epson, firma.
 - **Inventario e ordini** — categorie/prodotti/fornitori, calcolo automatico quantità da ordinare, invio email e stampa checklist.
 - **Menù online** — categorie, piatti con foto/prezzo/descrizione/allergeni, disponibilità oraria (pranzo/cena/tutto il giorno), visibilità e "temporaneamente non disponibile fino a", pagina pubblica senza login (es. da QR al tavolo).
+- **Attività e scadenze** — pagamenti fornitori, visite mediche dipendenti, scadenza attestati, manutenzioni, anche ricorrenti (mensile/annuale).
+- **Home amministrazione** — riepilogo giornaliero: richieste dipendenti in attesa (approvabili al volo), ordini da fare oggi (in base ai giorni impostati per fornitore), scadenze imminenti/scadute, altre notifiche.
 
 Documento di progettazione completo (stack tecnologico, data model, moduli aggiuntivi proposti, deployment, roadmap): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
@@ -54,4 +56,4 @@ BarManager/
 
 ## Stato del progetto
 
-Multi-tenant (Super Admin + locali per sotto-dominio), autenticazione JWT + RBAC con isolamento dati per locale, e i quattro moduli richiesti (presenze, HACCP, inventario/ordini, menù online) funzionanti end-to-end. Alcune schermate di amministrazione secondarie (gestione dipendenti, categorie/prodotti, stampanti) sono disponibili via API ma non hanno ancora una UI dedicata — vedi §8 del documento di sviluppo per il dettaglio di cosa manca e la roadmap.
+Multi-tenant (Super Admin + locali per sotto-dominio), autenticazione JWT + RBAC con isolamento dati per locale, e i moduli richiesti (presenze, HACCP, inventario/ordini, menù online, attività e scadenze) funzionanti end-to-end, con home dell'amministrazione che aggrega richieste/ordini/scadenze/notifiche del giorno. Alcune schermate di amministrazione secondarie (gestione dipendenti, categorie/prodotti, stampanti) sono disponibili via API ma non hanno ancora una UI dedicata — vedi §8 del documento di sviluppo per il dettaglio di cosa manca e la roadmap.

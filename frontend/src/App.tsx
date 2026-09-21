@@ -8,8 +8,10 @@ import { ClockPage } from './pages/attendance/ClockPage';
 import { LeaveRequests } from './pages/attendance/LeaveRequests';
 import { HaccpHome } from './pages/haccp/HaccpHome';
 import { InventoryHome } from './pages/inventory/InventoryHome';
+import { Suppliers } from './pages/inventory/Suppliers';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { PublicMenu } from './pages/menu/PublicMenu';
+import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { Venues } from './pages/super-admin/Venues';
 
 export default function App() {
@@ -29,7 +31,9 @@ export default function App() {
           <Route path="/haccp" element={<HaccpHome />} />
           <Route element={<ProtectedRoute allow={['ADMIN', 'MANAGER']} />}>
             <Route path="/inventory" element={<InventoryHome />} />
+            <Route path="/inventory/suppliers" element={<Suppliers />} />
             <Route path="/menu/admin" element={<MenuAdmin />} />
+            <Route path="/tasks" element={<TasksAdmin />} />
           </Route>
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
             <Route path="/super-admin/venues" element={<Venues />} />
