@@ -1,0 +1,374 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Core / Auth
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users             User[]
+  employees         Employee[]
+  fridges           Fridge[]
+  printers          Printer[]
+  productCategories ProductCategory[]
+  suppliers         Supplier[]
+  orders            Order[]
+  auditLogs         AuditLog[]
+  qrTokens          QrToken[]
+  haccpReports      HaccpReport[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  employee Employee?
+
+  reviewedLeaveRequests   LeaveRequest[]      @relation("LeaveReviewedBy")
+  temperatureReadings     TemperatureReading[]
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+}
+
+// ---------------------------------------------------------------------------
+// Presenze dipendenti
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  role        String? // mansione (es. "Cameriere", "Cuoco")
+  department  String? // reparto, usato anche per CC ordini/approvazioni
+  email       String? // email di contatto (usata per CC ordini se non ha un account utente)
+  phone       String?
+  hiredAt     DateTime?
+  isManager   Boolean  @default(false) // responsabile di reparto (CC ordini, approvazione ferie del team)
+  active      Boolean  @default(true)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+
+  attendanceRecords AttendanceRecord[]
+  leaveRequests     LeaveRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QrToken {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  label     String // es. "Ingresso cucina"
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  attendanceRecords AttendanceRecord[]
+}
+
+enum AttendanceType {
+  CLOCK_IN
+  CLOCK_OUT
+}
+
+enum AttendanceSource {
+  QR
+  MANUAL
+  CORRECTION
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  type      AttendanceType
+  timestamp DateTime         @default(now())
+  source    AttendanceSource @default(QR)
+  note      String?
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  qrTokenId String?
+  qrToken   QrToken? @relation(fields: [qrTokenId], references: [id])
+
+  correctedById String? // userId dell'admin che ha corretto il record
+  createdAt     DateTime @default(now())
+
+  @@index([employeeId, timestamp])
+}
+
+enum LeaveType {
+  VACATION
+  PERMIT
+  SICKNESS
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LeaveRequest {
+  id         String      @id @default(cuid())
+  type       LeaveType
+  startDate  DateTime
+  endDate    DateTime
+  partialDay Boolean     @default(false)
+  startTime  String? // "HH:mm", solo se partialDay
+  endTime    String? // "HH:mm", solo se partialDay
+  note       String?
+  status     LeaveStatus @default(PENDING)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  reviewedById String?
+  reviewedBy   User?    @relation("LeaveReviewedBy", fields: [reviewedById], references: [id])
+  reviewNote   String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// HACCP
+// ---------------------------------------------------------------------------
+
+model Fridge {
+  id        String  @id @default(cuid())
+  label     String // es. "Frigo 1 - Bancone"
+  location  String?
+  minTemp   Float // soglia minima accettabile (°C)
+  maxTemp   Float // soglia massima accettabile (°C)
+  active    Boolean @default(true)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  readings TemperatureReading[]
+
+  createdAt DateTime @default(now())
+}
+
+model TemperatureReading {
+  id              String   @id @default(cuid())
+  value           Float
+  recordedAt      DateTime @default(now())
+  outOfRange      Boolean  @default(false)
+  correctiveAction String?
+
+  fridgeId String
+  fridge   Fridge @relation(fields: [fridgeId], references: [id])
+
+  recordedById String
+  recordedBy   User   @relation(fields: [recordedById], references: [id])
+
+  @@index([fridgeId, recordedAt])
+}
+
+/// Istanza di report giornaliero HACCP generato/stampato/firmato.
+/// Le temperature del giorno restano comunque in TemperatureReading;
+/// questo modello traccia solo la "chiusura" del report (chi firma, quando).
+model HaccpReport {
+  id           String   @id @default(cuid())
+  reportDate   DateTime // giorno a cui si riferisce il report (senza ora)
+  signedByName String // nome di chi appone la firma
+  signatureImg String? // firma digitale (immagine base64), opzionale
+  printedOnPos Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  @@index([venueId, reportDate])
+}
+
+// ---------------------------------------------------------------------------
+// Stampanti
+// ---------------------------------------------------------------------------
+
+enum PrinterUsage {
+  HACCP
+  ORDERS
+  GENERIC
+}
+
+model Printer {
+  id       String       @id @default(cuid())
+  name     String
+  host     String // IP di rete
+  port     Int          @default(9100)
+  usage    PrinterUsage @default(GENERIC)
+  active   Boolean      @default(true)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Inventario e ordini
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id   String @id @default(cuid())
+  name String
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([venueId, name])
+}
+
+model Supplier {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  ccEmails     String[] @default([]) // email extra fisse (oltre ai responsabili reparto)
+  phone        String?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  products Product[]
+  orders   Order[]
+
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  name        String
+  unit        String // es. "pz", "kg", "cartone da 6"
+  standardQty Float // scorta standard/obiettivo
+  reorderAt   Float? // soglia minima sotto la quale segnalare urgenza
+  supplierCode String? // codice prodotto presso il fornitore
+  active      Boolean @default(true)
+
+  categoryId String
+  category   ProductCategory @relation(fields: [categoryId], references: [id])
+
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  orderLines OrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  CLOSED
+}
+
+model Order {
+  id     String      @id @default(cuid())
+  status OrderStatus @default(DRAFT)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  lines OrderLine[]
+
+  createdById String
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model OrderLine {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  stockOnHand Float // giacenza rilevata al momento dell'ordine
+  suggestedQty Float // calcolata: max(0, standardQty - stockOnHand)
+  orderedQty   Float // quantità effettiva ordinata (editabile dall'utente)
+}
+
+// ---------------------------------------------------------------------------
+// Audit & notifiche
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String // es. "AttendanceRecord", "TemperatureReading"
+  entityId  String
+  action    String // "CREATE" | "UPDATE" | "DELETE"
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+}
+
+enum NotificationType {
+  LEAVE_REQUEST_PENDING
+  LEAVE_REQUEST_REVIEWED
+  TEMPERATURE_OUT_OF_RANGE
+  STOCK_LOW
+  ORDER_SENT
+}
+
+model Notification {
+  id      String           @id @default(cuid())
+  type    NotificationType
+  message String
+  read    Boolean          @default(false)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
