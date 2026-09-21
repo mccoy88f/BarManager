@@ -152,14 +152,12 @@ Modulo trasversale, non legato a un `venueId` (è il Super Admin che li amminist
 
 ### 5.1 Presenze dipendenti
 
-**Flusso timbratura:**
-1. L'admin di locale genera/stampa un QR per ogni postazione di timbratura (es. ingresso). Il QR incapsula un URL tipo `https://locale1.tuodominio.it/clock/{qrToken}`.
-2. Il dipendente inquadra il QR con la fotocamera del telefono → apre la PWA del **proprio** locale.
-3. Se non è loggato, vede la pagina di login; se è già loggato, va dritto alla pagina di timbratura con due grandi pulsanti Material **"Inizio turno" / "Fine turno"**, stato corrente evidenziato.
-4. Il backend registra `AttendanceRecord` con timestamp server-side (mai il timestamp del client), il `qrToken` usato.
-5. Anti-doppio-click: se l'ultimo evento è "inizio" senza "fine", il pulsante mostra solo "Fine turno" e viceversa.
+**Flusso timbratura — due modalità, stesso `AttendanceRecord`:**
+1. **QR di postazione** (anti-frode, presenza fisica): l'admin genera/stampa un QR per ogni postazione (es. ingresso), che incapsula un URL tipo `https://locale1.tuodominio.it/clock/{qrToken}`. Il dipendente lo inquadra → apre la PWA del **proprio** locale già loggata sulla pagina di timbratura. Registrata con `source: QR`.
+2. **Diretta dall'app**: nella home, il dipendente vede lo stato del proprio turno (in corso dalle HH:MM, o fuori turno) e un pulsante **"Inizio turno" / "Fine turno"** che timbra subito, senza QR — utile da smartphone personale o quando non c'è una postazione fisica a portata di mano. Registrata con `source: MANUAL`.
+3. In entrambi i casi: due grandi pulsanti Material, stato corrente evidenziato, timestamp sempre server-side (mai quello del client). Anti-doppio-click: se l'ultimo evento è "inizio" senza "fine", il pulsante mostra solo "Fine turno" e viceversa.
 
-**Amministrazione:** vista tabellare, correzione manuale tracciata in audit log, export XLS/PDF per periodo.
+**Amministrazione:** vista tabellare (storico timbrature) con correzione manuale (data/ora + motivo obbligatorio, `source: CORRECTION`, tracciata in audit log) ed export XLS/PDF per periodo. QR di postazione generabili/scaricabili dalla stessa sezione.
 
 **Richieste assenza (dipendente):** form tipo/giorno intero-parziale/note; **approvazione (admin/responsabile):** coda pendenti, approva/rifiuta con nota.
 
@@ -238,6 +236,7 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 
 - Password hashate con **argon2id**; JWT access token a vita breve (15 min) + refresh token.
 - **RBAC** a livello di endpoint (guard NestJS) e di UI. Il ruolo `SUPER_ADMIN` non ha accesso agli endpoint operativi dei locali (presenze/HACCP/inventario/menù), solo a quelli di gestione `Venue`.
+- **Permessi granulari per modulo** (oltre al ruolo): l'Admin di locale può concedere a ciascun dipendente, indipendentemente dal ruolo Dipendente/Responsabile, l'accesso ai moduli HACCP/Inventario/Menù/Attività (`Employee.allowedModules`, gestito dalla pagina Dipendenti). Verificato lato server ad ogni richiesta da `ModuleAccessGuard` (non solo lato UI); l'Admin non è mai limitato da questo meccanismo. Elenco vuoto = permessi di default del ruolo (Responsabile: tutti; Dipendente: solo HACCP), per compatibilità con i dipendenti già esistenti.
 - **Isolamento tenant**: ogni servizio filtra sempre per `venueId` preso dal JWT, mai da input del client; un tentativo di accedere/modificare una risorsa di un altro `venueId` restituisce 404 (non 403, per non rivelare l'esistenza della risorsa).
 - Il login verifica la coerenza fra sotto-dominio da cui si accede e `venueId` dell'utente (eccetto Super Admin, riservato all'host di amministrazione).
 - Tutte le scritture su presenze/HACCP/ordini passano da **audit log** immutabile (append-only), scoperto per `venueId`.
