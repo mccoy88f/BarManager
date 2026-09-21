@@ -25,8 +25,16 @@ export class OrdersService {
     }
 
     const productIds = dto.lines.map((l) => l.productId);
-    const products = await this.prisma.product.findMany({ where: { id: { in: productIds } } });
-    const productMap = new Map(products.map((p) => [p.id, p]));
+    // include category per verificare che ogni prodotto appartenga al locale
+    // di chi chiama: senza questo controllo, un id di prodotto di un altro
+    // locale (indovinato) finirebbe comunque nell'ordine.
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      include: { category: true },
+    });
+    const productMap = new Map(
+      products.filter((p) => p.category.venueId === venueId).map((p) => [p.id, p]),
+    );
 
     const order = await this.prisma.order.create({
       data: {

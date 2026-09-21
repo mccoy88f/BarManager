@@ -2,7 +2,7 @@
 
 > Piattaforma **multi-tenant** (un sotto-dominio per locale) per la gestione operativa di bar/ristoranti: presenze dipendenti, controlli HACCP, inventario e ordini fornitori, menù online, attività e scadenze — con una home dell'amministrazione che riepiloga ciò che richiede attenzione ogni giorno. Web app installabile come PWA, progettata per essere convertita in app Android nativa (wrapper Capacitor) senza riscrivere il frontend. Pensata per il deploy su **Portainer** o **Coolify**, dietro il loro reverse proxy.
 
-Versione: 0.4 — Compose di produzione pronto per Portainer/Coolify
+Versione: 0.5 — Fase 1 rifinitura MVP completata (UI amministrazione, rate limiting, test, CI)
 Data: 2026-09-21
 
 ---
@@ -42,8 +42,8 @@ Data: 2026-09-21
 | Upload immagini | **multer** (upload) + volume Docker persistente (evolvibile a S3/MinIO) | foto piatti del menù |
 | Reverse proxy | **nessuno gestito da noi** — si usa quello di Portainer/Coolify (Traefik) davanti al container frontend | requisito esplicito: deploy su Portainer/Coolify |
 | Containerizzazione | **Docker Compose**, pensato per essere importato come stack in Portainer o come progetto in Coolify | requisito esplicito |
-| Test | **Vitest/Jest** (backend), **Playwright** (E2E), **React Testing Library** | qualità e non-regressione su moduli critici (calcolo ordini, presenze, isolamento tenant) |
-| CI | GitHub Actions (lint, test, build immagini) | qualità continua |
+| Test | **Jest** (backend, configurato — copertura unitaria sui punti critici: isolamento tenant, calcolo ordini, ricorrenza attività); **Playwright**/**React Testing Library** non ancora introdotti (v2) | qualità e non-regressione su moduli critici |
+| CI | **GitHub Actions** (`.github/workflows/ci.yml`): build + test ad ogni push/PR su backend e frontend | qualità continua |
 
 Alternative scartate e perché: Django/Python (meno naturale per PWA+Capacitor condivisa col mobile), Flutter (richiederebbe due basi di codice), un framework CSS diverso da MUI per il menù pubblico (romperebbe la coerenza Material Design richiesta su tutta l'app).
 
@@ -270,9 +270,18 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 - `docker-compose.yml` passato allo stage `production` dei Dockerfile (era `dev`, non adatto a un deploy reale); `docker-compose.override.yml` aggiunto per mantenere invariata l'esperienza di sviluppo in locale (§9.0).
 - CLI di Prisma spostata tra le dipendenze di runtime, altrimenti assente nell'immagine di produzione (`npm ci --omit=dev`) e `prisma db push` non sarebbe potuto girare all'avvio del container.
 
-**Fase 1 — Rifinitura MVP**
-- UI di amministrazione mancanti (dipendenti, categorie/prodotti, stampanti) — oggi disponibili via API.
-- Notifica push via PWA per gli avvisi urgenti (oggi solo in-app/email), allegati alle attività/scadenze.
+**Fase 1 — Rifinitura MVP (completata)**
+- UI di amministrazione per dipendenti, categorie/prodotti, stampanti (prima disponibili solo via API).
+- Impostazioni locale: fasce orarie pranzo/cena modificabili dall'Admin (prima fisse ai default).
+- Menù: riordino categorie (su/giù) e ritaglio foto prima dell'upload.
+- Presenze: QR generabili/scaricabili per le postazioni di timbratura, export XLS/PDF esposto in UI.
+- HACCP: censimento frigo/congelatori, tabella giornaliera, storico azioni correttive — prima solo via API.
+- Attività: ricorrenza anche settimanale (oltre mensile/annuale), selettore dipendente in creazione.
+- Rate limiting: `ThrottlerGuard` applicato globalmente (era registrato ma mai attivato) + limite più stretto su login/refresh.
+- Isolamento tenant: corretti due punti che non verificavano lato server l'appartenenza al locale di risorse riferite per id (creazione prodotto, creazione ordine).
+- Test automatici (Jest) sui punti critici — isolamento tenant, calcolo quantità ordini, avanzamento ricorrenza attività — e CI GitHub Actions (build + test) ad ogni push/PR.
+
+Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/email), allegati alle attività/scadenze.
 
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
