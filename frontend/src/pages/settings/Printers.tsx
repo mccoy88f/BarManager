@@ -156,7 +156,7 @@ export function Printers() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova stampante</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Nome"
             value={form.name}

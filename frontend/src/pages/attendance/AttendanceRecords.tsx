@@ -236,6 +236,20 @@ export function AttendanceRecords() {
         </Card>
       )}
 
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Timbrature</Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setAddError(null);
+            setAdding(true);
+          }}
+        >
+          Aggiungi timbratura
+        </Button>
+      </Box>
+
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -277,22 +291,10 @@ export function AttendanceRecords() {
             <Button variant="outlined" onClick={() => download('pdf')}>
               Esporta PDF
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              sx={{ ml: 'auto' }}
-              onClick={() => {
-                setAddError(null);
-                setAdding(true);
-              }}
-            >
-              Aggiungi timbratura
-            </Button>
           </Stack>
         </CardContent>
       </Card>
 
-      <Typography variant="h6">Timbrature</Typography>
       <Stack spacing={1}>
         {recordsQuery.data?.map((record) => (
           <Card key={record.id} variant="outlined">
@@ -337,7 +339,7 @@ export function AttendanceRecords() {
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Correggi timbratura</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           {editing && (
             <Typography variant="body2" color="text.secondary">
               {editing.employee.firstName} {editing.employee.lastName} —{' '}
@@ -375,7 +377,7 @@ export function AttendanceRecords() {
 
       <Dialog open={adding} onClose={() => setAdding(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Aggiungi timbratura</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             select
             label="Dipendente"

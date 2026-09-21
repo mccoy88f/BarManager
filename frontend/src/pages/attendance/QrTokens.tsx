@@ -115,7 +115,7 @@ export function QrTokens() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova postazione QR</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Stampa il QR e affiggilo alla postazione (es. ingresso cucina): i dipendenti lo
             inquadrano per timbrare inizio/fine turno.

@@ -379,7 +379,7 @@ export function MenuAdmin() {
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova categoria</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
+        <DialogContent sx={{ pt: 2 }}>
           <TextField
             label="Nome categoria"
             fullWidth
@@ -401,7 +401,7 @@ export function MenuAdmin() {
 
       <Dialog open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova voce di menù</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             label="Nome piatto"
             value={newItem.name}

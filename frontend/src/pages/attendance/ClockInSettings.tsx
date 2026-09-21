@@ -284,51 +284,48 @@ export function ClockInSettings() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="h6">Tag NFC</Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openTagDialog}>
-              Aggiungi
-            </Button>
-          </Box>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Scegli un'etichetta e un testo per ogni tag, poi scrivi lo stesso testo sul tag fisico
-            con un'app di scrittura NFC (es. NFC Tools) — BarManager non scrive sui tag, solo li
-            legge al momento della timbratura.
-          </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">Tag NFC</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openTagDialog}>
+          Aggiungi
+        </Button>
+      </Box>
+      <Typography variant="body2" color="text.secondary">
+        Scegli un'etichetta e un testo per ogni tag, poi scrivi lo stesso testo sul tag fisico con
+        un'app di scrittura NFC (es. NFC Tools) — BarManager non scrive sui tag, solo li legge al
+        momento della timbratura.
+      </Typography>
 
-          <Stack spacing={1} sx={{ mt: 2 }}>
-            {tagsQuery.data?.map((tag) => (
-              <Box
-                key={tag.id}
-                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                <Box>
-                  <Typography variant="body2" fontWeight={600}>
-                    {tag.label}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {tag.value}
-                  </Typography>
-                </Box>
-                <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
+      <Stack spacing={1}>
+        {tagsQuery.data?.map((tag) => (
+          <Card key={tag.id} variant="outlined">
+            <CardContent
+              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  {tag.label}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {tag.value}
+                </Typography>
               </Box>
-            ))}
-            {tagsQuery.data?.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                Nessun tag NFC censito.
-              </Typography>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+              <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </CardContent>
+          </Card>
+        ))}
+        {tagsQuery.data?.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Nessun tag NFC censito.
+          </Typography>
+        )}
+      </Stack>
 
       <Dialog open={tagDialogOpen} onClose={() => setTagDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuovo tag NFC</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Etichetta (es. Ingresso cucina)"
             value={newTagLabel}

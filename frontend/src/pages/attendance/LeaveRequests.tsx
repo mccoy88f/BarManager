@@ -140,7 +140,7 @@ function SelfServiceLeaveRequests() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova richiesta</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField select label="Tipo" value={type} onChange={(e) => setType(e.target.value)}>
             {Object.entries(typeLabels).map(([value, label]) => (
               <MenuItem key={value} value={value}>
@@ -407,7 +407,7 @@ function AdminLeaveRequests() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuova richiesta per un dipendente</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 1 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             select
             label="Dipendente"
