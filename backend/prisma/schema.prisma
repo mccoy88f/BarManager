@@ -117,6 +117,7 @@ model User {
   boardMessages           BoardMessage[]
   kbArticles              KbArticle[]
   ordersCreated           Order[]
+  cleaningLogs            CleaningLog[]
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +354,10 @@ model CleaningTask {
 }
 
 /// Un'esecuzione registrata di una voce di pulizia: chi l'ha fatta e quando.
+/// Chi la registra è sempre un User (come TemperatureReading.recordedBy):
+/// l'Employee è solo un riferimento in più per mostrare nome/cognome quando
+/// c'è, ma admin/responsabili senza una scheda dipendente devono poter
+/// segnare comunque una pulizia come fatta.
 model CleaningLog {
   id          String   @id @default(cuid())
   completedAt DateTime @default(now())
@@ -360,8 +365,14 @@ model CleaningLog {
   taskId String
   task   CleaningTask @relation(fields: [taskId], references: [id])
 
-  employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  // Opzionale per non rompere le righe già registrate prima di questo
+  // campo: le nuove esecuzioni lo impostano sempre (complete() in
+  // cleaning.service.ts).
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
 

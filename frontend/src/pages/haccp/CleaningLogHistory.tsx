@@ -7,7 +7,13 @@ interface CleaningLogRow {
   id: string;
   completedAt: string;
   task: { description: string; location: string };
-  employee: { firstName: string; lastName: string };
+  employee?: { firstName: string; lastName: string };
+  user?: { email: string };
+}
+
+function whoLabel(log: CleaningLogRow): string {
+  if (log.employee) return `${log.employee.firstName} ${log.employee.lastName}`;
+  return log.user?.email ?? 'Sconosciuto';
 }
 
 function daysAgoIso(days: number) {
@@ -59,8 +65,7 @@ export function CleaningLogHistory() {
                 <strong>{log.task.description}</strong> — {log.task.location}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {log.employee.firstName} {log.employee.lastName} —{' '}
-                {new Date(log.completedAt).toLocaleString('it-IT')}
+                {whoLabel(log)} — {new Date(log.completedAt).toLocaleString('it-IT')}
               </Typography>
             </Box>
           ))}

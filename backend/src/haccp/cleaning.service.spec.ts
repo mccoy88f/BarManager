@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { CleaningFrequencyUnit } from '@prisma/client';
 import { CleaningService } from './cleaning.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -79,7 +79,9 @@ describe('CleaningService', () => {
       const log = await service.complete(employeeUser, 'task-1');
 
       expect(prisma.cleaningLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { taskId: 'task-1', employeeId: 'employee-1' } }),
+        expect.objectContaining({
+          data: { taskId: 'task-1', employeeId: 'employee-1', userId: 'user-1' },
+        }),
       );
       expect(log.id).toBe('log-1');
       expect(audit.log).toHaveBeenCalled();
@@ -94,14 +96,19 @@ describe('CleaningService', () => {
       expect(prisma.cleaningLog.create).not.toHaveBeenCalled();
     });
 
-    it("rifiuta se chi chiama non è collegato a un dipendente (es. l'admin)", async () => {
+    it("registra comunque l'esecuzione per chi non è collegato a un dipendente (es. l'admin), tracciata sull'utente", async () => {
       prisma.cleaningTask.findUnique.mockResolvedValue({ id: 'task-1', venueId: 'venue-1' });
       prisma.employee.findUnique.mockResolvedValue(null);
+      prisma.cleaningLog.create.mockResolvedValue({ id: 'log-2', taskId: 'task-1', userId: 'admin-1' });
 
-      await expect(service.complete(admin, 'task-1')).rejects.toBeInstanceOf(
-        BadRequestException,
+      const log = await service.complete(admin, 'task-1');
+
+      expect(prisma.cleaningLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { taskId: 'task-1', employeeId: undefined, userId: 'admin-1' },
+        }),
       );
-      expect(prisma.cleaningLog.create).not.toHaveBeenCalled();
+      expect(log.id).toBe('log-2');
     });
   });
 });

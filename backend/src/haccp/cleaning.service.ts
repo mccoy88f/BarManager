@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CleaningFrequencyUnit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -95,7 +95,13 @@ export class CleaningService {
     );
   }
 
-  /** Il dipendente che chiama segna la voce come fatta ora. */
+  /**
+   * Chi chiama segna la voce come fatta ora. Come per le letture temperature
+   * (TemperatureReading.recordedBy), l'esecuzione è sempre tracciata sullo
+   * User: l'Employee, quando c'è, serve solo a mostrare nome e cognome.
+   * Admin e responsabili senza una scheda dipendente possono quindi
+   * segnare comunque una pulizia come fatta.
+   */
   async complete(user: AuthenticatedUser, taskId: string) {
     const venueId = requireVenueId(user);
     const task = await this.prisma.cleaningTask.findUnique({ where: { id: taskId } });
@@ -104,13 +110,14 @@ export class CleaningService {
     }
 
     const employee = await this.prisma.employee.findUnique({ where: { userId: user.userId } });
-    if (!employee) {
-      throw new BadRequestException('Utente non collegato a un dipendente');
-    }
 
     const log = await this.prisma.cleaningLog.create({
-      data: { taskId, employeeId: employee.id },
-      include: { task: true, employee: { select: { firstName: true, lastName: true } } },
+      data: { taskId, employeeId: employee?.id, userId: user.userId },
+      include: {
+        task: true,
+        employee: { select: { firstName: true, lastName: true } },
+        user: { select: { email: true } },
+      },
     });
 
     await this.audit.log({
@@ -138,7 +145,11 @@ export class CleaningService {
           lte: toDate,
         },
       },
-      include: { task: true, employee: { select: { firstName: true, lastName: true } } },
+      include: {
+        task: true,
+        employee: { select: { firstName: true, lastName: true } },
+        user: { select: { email: true } },
+      },
       orderBy: { completedAt: 'desc' },
     });
   }
