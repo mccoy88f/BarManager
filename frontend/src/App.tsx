@@ -15,6 +15,7 @@ import { HaccpHome } from './pages/haccp/HaccpHome';
 import { InventoryHome } from './pages/inventory/InventoryHome';
 import { Suppliers } from './pages/inventory/Suppliers';
 import { Catalog } from './pages/inventory/Catalog';
+import { OrderHistory } from './pages/inventory/OrderHistory';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/inventory" element={<InventoryHome />} />
             <Route path="/inventory/suppliers" element={<Suppliers />} />
             <Route path="/inventory/catalog" element={<Catalog />} />
+            <Route path="/inventory/orders-history" element={<OrderHistory />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="menu" />}>
             <Route path="/menu/admin" element={<MenuAdmin />} />

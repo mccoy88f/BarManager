@@ -11,6 +11,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   Alert,
@@ -28,6 +29,7 @@ interface Product {
   unit: string;
   standardQty: number;
   supplierId: string;
+  costPerUnit?: number;
   category: { name: string };
 }
 
@@ -63,6 +65,11 @@ export function NewOrder() {
       return { product: p, stockOnHand, suggestedQty };
     });
   }, [productsQuery.data, stock]);
+
+  const estimatedTotal = suggestions.reduce(
+    (sum, s) => sum + (s.product.costPerUnit ?? 0) * s.suggestedQty,
+    0,
+  );
 
   const createMutation = useMutation({
     mutationFn: async () =>
@@ -106,40 +113,54 @@ export function NewOrder() {
       {!!supplierId && (
         <Card>
           <CardContent>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Prodotto</TableCell>
-                  <TableCell>Standard</TableCell>
-                  <TableCell>Giacenza</TableCell>
-                  <TableCell>Da ordinare</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {suggestions.map(({ product, suggestedQty }) => (
-                  <TableRow key={product.id}>
-                    <TableCell>{product.name}</TableCell>
-                    <TableCell>
-                      {product.standardQty} {product.unit}
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        type="number"
-                        size="small"
-                        value={stock[product.id] ?? ''}
-                        onChange={(e) =>
-                          setStock((s) => ({ ...s, [product.id]: e.target.value }))
-                        }
-                        sx={{ width: 90 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {suggestedQty} {product.unit}
-                    </TableCell>
+            <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Prodotto</TableCell>
+                    <TableCell>Standard</TableCell>
+                    <TableCell>Giacenza</TableCell>
+                    <TableCell>Da ordinare</TableCell>
+                    <TableCell>Costo stimato</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {suggestions.map(({ product, suggestedQty }) => (
+                    <TableRow key={product.id}>
+                      <TableCell>{product.name}</TableCell>
+                      <TableCell>
+                        {product.standardQty} {product.unit}
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={stock[product.id] ?? ''}
+                          onChange={(e) =>
+                            setStock((s) => ({ ...s, [product.id]: e.target.value }))
+                          }
+                          sx={{ width: 90 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {suggestedQty} {product.unit}
+                      </TableCell>
+                      <TableCell>
+                        {product.costPerUnit != null
+                          ? `€ ${(product.costPerUnit * suggestedQty).toFixed(2)}`
+                          : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {estimatedTotal > 0 && (
+              <Typography variant="body2" sx={{ mt: 1, textAlign: 'right' }} fontWeight={600}>
+                Totale stimato: € {estimatedTotal.toFixed(2)}
+              </Typography>
+            )}
 
             {!createdOrderId ? (
               <Button

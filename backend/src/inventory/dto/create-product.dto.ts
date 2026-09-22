@@ -18,6 +18,10 @@ export class CreateProductDto {
   @IsString()
   supplierCode?: string;
 
+  @IsOptional()
+  @IsNumber()
+  costPerUnit?: number;
+
   @IsString()
   categoryId: string;
 

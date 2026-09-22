@@ -36,6 +36,7 @@ interface ProductRow {
   standardQty: number;
   reorderAt?: number;
   supplierCode?: string;
+  costPerUnit?: number;
   categoryId: string;
   supplierId: string;
   active: boolean;
@@ -58,6 +59,7 @@ const emptyProductForm = {
   standardQty: '',
   reorderAt: '',
   supplierCode: '',
+  costPerUnit: '',
   categoryId: '',
   supplierId: '',
 };
@@ -110,6 +112,7 @@ export function Catalog() {
           standardQty: Number(productForm.standardQty),
           reorderAt: productForm.reorderAt ? Number(productForm.reorderAt) : undefined,
           supplierCode: productForm.supplierCode.trim() || undefined,
+          costPerUnit: productForm.costPerUnit ? Number(productForm.costPerUnit) : undefined,
           categoryId: productForm.categoryId,
           supplierId: productForm.supplierId,
         })
@@ -190,6 +193,7 @@ export function Catalog() {
                 <Typography variant="caption" color="text.secondary">
                   {product.category.name} — {product.supplier.name} — standard {product.standardQty}{' '}
                   {product.unit}
+                  {product.costPerUnit != null && ` — € ${product.costPerUnit.toFixed(2)}/${product.unit}`}
                 </Typography>
               </Box>
               <Switch
@@ -284,6 +288,13 @@ export function Catalog() {
             label="Codice fornitore (opzionale)"
             value={productForm.supplierCode}
             onChange={(e) => setProductForm((f) => ({ ...f, supplierCode: e.target.value }))}
+          />
+          <TextField
+            label="Costo unitario € (opzionale)"
+            type="number"
+            value={productForm.costPerUnit}
+            onChange={(e) => setProductForm((f) => ({ ...f, costPerUnit: e.target.value }))}
+            helperText="Usato per il totale quando si stampa l'ordine"
           />
           {productError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }}>

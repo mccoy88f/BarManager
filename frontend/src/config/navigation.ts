@@ -114,6 +114,12 @@ export const navigation: NavItem[] = [
         path: '/inventory/catalog',
         icon: Inventory2Icon,
       },
+      {
+        key: 'inventory-orders-history',
+        label: 'Storico ordini',
+        path: '/inventory/orders-history',
+        icon: Inventory2Icon,
+      },
     ],
   },
   {

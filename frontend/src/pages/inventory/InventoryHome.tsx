@@ -1,6 +1,7 @@
 import { Box, Button, Stack } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CategoryIcon from '@mui/icons-material/Category';
+import HistoryIcon from '@mui/icons-material/History';
 import { useNavigate } from 'react-router-dom';
 import { NewOrder } from './NewOrder';
 
@@ -22,6 +23,13 @@ export function InventoryHome() {
           onClick={() => navigate('/inventory/suppliers')}
         >
           Fornitori
+        </Button>
+        <Button
+          size="small"
+          startIcon={<HistoryIcon />}
+          onClick={() => navigate('/inventory/orders-history')}
+        >
+          Storico ordini
         </Button>
       </Stack>
       <NewOrder />

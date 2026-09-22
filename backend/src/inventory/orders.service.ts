@@ -85,10 +85,11 @@ export class OrdersService {
     return order;
   }
 
+  /** Storico ordini: righe incluse per calcolare il totale (se i prodotti hanno un costo). */
   listOrders(venueId: string) {
     return this.prisma.order.findMany({
       where: { venueId },
-      include: { supplier: true },
+      include: { supplier: true, lines: { include: { product: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -126,10 +127,27 @@ export class OrdersService {
       text: `Buongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
     });
 
+    // Se il prodotto ha un costo unitario impostato, la riga mostra anche
+    // prezzo x colli ordinati = subtotale, e in fondo compare il totale.
+    const printLines = onlyOrdered.map((l) => {
+      const base = `${l.product.name.padEnd(24)} x ${l.orderedQty} ${l.product.unit}`;
+      if (l.product.costPerUnit == null) return base;
+      const lineTotal = l.product.costPerUnit * l.orderedQty;
+      return `${base}  €${l.product.costPerUnit.toFixed(2)} = €${lineTotal.toFixed(2)}`;
+    });
+    const grandTotal = onlyOrdered.reduce(
+      (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
+      0,
+    );
+    const footer =
+      grandTotal > 0
+        ? ['Checklist per controllo scarico merce ->', '', `TOTALE: €${grandTotal.toFixed(2)}`]
+        : ['Checklist per controllo scarico merce ->'];
+
     const printResult = await this.printing.printReport(venueId, PrinterUsage.ORDERS, {
       title: `Ordine ${order.supplier.name}`,
-      lines: onlyOrdered.map((l) => `${l.product.name.padEnd(24)} x ${l.orderedQty} ${l.product.unit}`),
-      footer: ['Checklist per controllo scarico merce ->'],
+      lines: printLines,
+      footer,
     });
 
     const updated = await this.prisma.order.update({
