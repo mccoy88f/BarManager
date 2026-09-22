@@ -9,6 +9,9 @@ interface PhotoCropDialogProps {
   onConfirm: (blob: Blob) => void;
 }
 
+/** Le foto vengono poi mostrate solo come miniatura o anteprima ingrandita: non serve salvarle alla risoluzione originale della fotocamera. */
+const MAX_OUTPUT_DIMENSION = 1000;
+
 async function getCroppedBlob(imageSrc: string, cropPixels: Area): Promise<Blob> {
   const image = new Image();
   image.src = imageSrc;
@@ -17,9 +20,13 @@ async function getCroppedBlob(imageSrc: string, cropPixels: Area): Promise<Blob>
     image.onerror = reject;
   });
 
+  const scale = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(cropPixels.width, cropPixels.height));
+  const outputWidth = Math.round(cropPixels.width * scale);
+  const outputHeight = Math.round(cropPixels.height * scale);
+
   const canvas = document.createElement('canvas');
-  canvas.width = cropPixels.width;
-  canvas.height = cropPixels.height;
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas non disponibile');
 
@@ -31,12 +38,12 @@ async function getCroppedBlob(imageSrc: string, cropPixels: Area): Promise<Blob>
     cropPixels.height,
     0,
     0,
-    cropPixels.width,
-    cropPixels.height,
+    outputWidth,
+    outputHeight,
   );
 
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Ritaglio fallito'))), 'image/jpeg', 0.9);
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Ritaglio fallito'))), 'image/jpeg', 0.85);
   });
 }
 

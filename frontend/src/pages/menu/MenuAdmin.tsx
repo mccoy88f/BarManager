@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useDeferredValue, useMemo, useState, type ReactNode, type SyntheticEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
@@ -176,6 +176,9 @@ function SortableCategorySection({
       expanded={expanded}
       onChange={onToggleExpand}
       disableGutters
+      // Categorie chiuse non montano le loro voci (né le foto): con molte
+      // categorie e prodotti evita di caricare tutto in una volta.
+      TransitionProps={{ unmountOnExit: true }}
       sx={{ opacity: isDragging ? 0.5 : 1 }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -448,22 +451,31 @@ export function MenuAdmin() {
     variantForms.length > 0 &&
     variantForms.every((v) => v.price.trim() === '' || Number(v.price) >= 0);
 
-  const isSearchingItems = itemSearch.trim() !== '';
-  const filteredItems = (itemsQuery.data ?? []).filter((item) => {
-    if (!isSearchingItems) return true;
-    const q = itemSearch.trim().toLowerCase();
-    return (
-      item.name.toLowerCase().includes(q) ||
-      (item.description ?? '').toLowerCase().includes(q) ||
-      item.variants.some((v) => v.name.toLowerCase().includes(q))
+  // useDeferredValue: la casella di ricerca resta reattiva a ogni tasto,
+  // il filtro (che ricalcola tutte le sezioni con le foto) si aggiorna un
+  // istante dopo, senza bloccare la digitazione su menù con molte voci.
+  const deferredItemSearch = useDeferredValue(itemSearch);
+  const isSearchingItems = deferredItemSearch.trim() !== '';
+  const filteredItems = useMemo(() => {
+    if (!isSearchingItems) return itemsQuery.data ?? [];
+    const q = deferredItemSearch.trim().toLowerCase();
+    return (itemsQuery.data ?? []).filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.description ?? '').toLowerCase().includes(q) ||
+        item.variants.some((v) => v.name.toLowerCase().includes(q)),
     );
-  });
-  const itemsByCategory = (categoriesQuery.data ?? [])
-    .map((category) => ({
-      category,
-      items: filteredItems.filter((item) => item.categoryId === category.id),
-    }))
-    .filter((group) => !isSearchingItems || group.items.length > 0);
+  }, [itemsQuery.data, isSearchingItems, deferredItemSearch]);
+  const itemsByCategory = useMemo(
+    () =>
+      (categoriesQuery.data ?? [])
+        .map((category) => ({
+          category,
+          items: filteredItems.filter((item) => item.categoryId === category.id),
+        }))
+        .filter((group) => !isSearchingItems || group.items.length > 0),
+    [categoriesQuery.data, filteredItems, isSearchingItems],
+  );
 
   const [lightbox, setLightbox] = useState<string | null>(null);
 

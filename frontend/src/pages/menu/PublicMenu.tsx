@@ -309,6 +309,7 @@ export function PublicMenu() {
             expanded={isSearching || openCategory === category.id}
             onChange={(_e, expanded) => setOpenCategory(expanded ? category.id : false)}
             disableGutters
+            TransitionProps={{ unmountOnExit: true }}
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="h6" fontWeight={700}>
