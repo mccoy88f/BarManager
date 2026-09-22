@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode, type SyntheticEvent } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -19,6 +22,7 @@ import {
   Typography,
   IconButton,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -129,66 +133,99 @@ const allergenLabels: Record<string, string> = {
   MOLLUSCS: 'Molluschi',
 };
 
-function SortableCategoryRow({
+/**
+ * Una categoria con le sue voci direttamente annidate (a fisarmonica),
+ * invece di due liste separate (categorie sopra, voci raggruppate di
+ * nuovo per categoria sotto): l'intestazione si trascina per riordinare,
+ * il corpo mostra le voci di quella categoria.
+ */
+function SortableCategorySection({
   category,
+  items,
   index,
   locked,
+  expanded,
+  onToggleExpand,
   onEdit,
   onDeleteRequest,
   onToggleVisible,
+  renderItem,
 }: {
   category: MenuCategory;
+  items: MenuItemRow[];
   index: number;
   locked: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onEdit: () => void;
   onDeleteRequest: () => void;
   onToggleVisible: (visible: boolean) => void;
+  renderItem: (item: MenuItemRow) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
 
+  const stopPropagation = (e: SyntheticEvent) => e.stopPropagation();
+
   return (
-    <Box
+    <Accordion
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        bgcolor: 'background.paper',
-        opacity: isDragging ? 0.5 : 1,
-        borderRadius: 1,
-      }}
+      expanded={expanded}
+      onChange={onToggleExpand}
+      disableGutters
+      sx={{ opacity: isDragging ? 0.5 : 1 }}
     >
-      <Stack direction="row" alignItems="center" spacing={1}>
-        <IconButton size="small" {...attributes} {...listeners} sx={{ cursor: 'grab', touchAction: 'none' }}>
-          <DragIndicatorIcon fontSize="small" />
-        </IconButton>
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 20 }}>
-          {index + 1}.
-        </Typography>
-        <Typography variant="body2">{category.name}</Typography>
-      </Stack>
-      <Stack direction="row" alignItems="center" spacing={0.5}>
-        <Switch
-          size="small"
-          checked={category.visible}
-          onChange={(e) => onToggleVisible(e.target.checked)}
-          title="Mostra/nascondi dal menù"
-        />
-        {!locked && (
-          <>
-            <IconButton size="small" title="Modifica" onClick={onEdit}>
-              <EditIcon fontSize="small" />
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <IconButton
+              size="small"
+              {...attributes}
+              {...listeners}
+              onClick={stopPropagation}
+              sx={{ cursor: 'grab', touchAction: 'none' }}
+            >
+              <DragIndicatorIcon fontSize="small" />
             </IconButton>
-            <IconButton size="small" title="Elimina" onClick={onDeleteRequest}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </>
+            <Typography variant="body2" color="text.secondary" sx={{ minWidth: 20 }}>
+              {index + 1}.
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={600}>
+              {category.name} ({items.length})
+            </Typography>
+          </Stack>
+          <Stack direction="row" alignItems="center" spacing={0.5} onClick={stopPropagation}>
+            <Switch
+              size="small"
+              checked={category.visible}
+              onChange={(e) => onToggleVisible(e.target.checked)}
+              title="Mostra/nascondi dal menù"
+            />
+            {!locked && (
+              <>
+                <IconButton size="small" title="Modifica" onClick={onEdit}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" title="Elimina" onClick={onDeleteRequest}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </>
+            )}
+          </Stack>
+        </Box>
+      </AccordionSummary>
+      <AccordionDetails>
+        {items.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Nessuna voce in questa categoria.
+          </Typography>
+        ) : (
+          <Stack spacing={2}>{items.map(renderItem)}</Stack>
         )}
-      </Stack>
-    </Box>
+      </AccordionDetails>
+    </Accordion>
   );
 }
 
@@ -210,6 +247,7 @@ export function MenuAdmin() {
   });
   const [variantForms, setVariantForms] = useState<VariantForm[]>([emptyVariant]);
   const [itemSearch, setItemSearch] = useState('');
+  const [openCategory, setOpenCategory] = useState<string | false>(false);
 
   const categoriesQuery = useQuery({
     queryKey: ['menu-categories'],
@@ -509,29 +547,57 @@ export function MenuAdmin() {
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Categorie</Typography>
-            {!locked && (
-              <Button variant="contained" startIcon={<AddIcon />} onClick={openCategoryDialog}>
-                Aggiungi categoria
-              </Button>
-            )}
+            <Typography variant="h6">Menù</Typography>
+            <Stack direction="row" spacing={1}>
+              {!locked && (
+                <Button variant="outlined" startIcon={<AddIcon />} onClick={openCategoryDialog}>
+                  Aggiungi categoria
+                </Button>
+              )}
+              {!locked && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openItemDialog}>
+                  Aggiungi al menù
+                </Button>
+              )}
+            </Stack>
           </Box>
-
           <Typography variant="caption" color="text.secondary">
-            Trascina per riordinare come compaiono nel menù pubblico.
+            Trascina l'intestazione di una categoria per riordinarla come compare nel menù pubblico.
           </Typography>
+
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Cerca per nome, descrizione o formato..."
+            value={itemSearch}
+            onChange={(e) => setItemSearch(e.target.value)}
+            sx={{ mt: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
             <SortableContext
               items={categoriesQuery.data?.map((c) => c.id) ?? []}
               strategy={verticalListSortingStrategy}
             >
-              <Stack spacing={0.5} sx={{ mt: 1 }}>
-                {categoriesQuery.data?.map((category, index) => (
-                  <SortableCategoryRow
+              <Stack spacing={1} sx={{ mt: 2 }}>
+                {itemsByCategory.map(({ category, items }, index) => (
+                  <SortableCategorySection
                     key={category.id}
                     category={category}
+                    items={items}
                     index={index}
                     locked={locked}
+                    expanded={isSearchingItems || openCategory === category.id}
+                    onToggleExpand={() =>
+                      setOpenCategory((current) => (current === category.id ? false : category.id))
+                    }
                     onEdit={() => openEditCategory(category)}
                     onDeleteRequest={() => {
                       setCategoryDeleteError(null);
@@ -540,6 +606,125 @@ export function MenuAdmin() {
                     onToggleVisible={(visible) =>
                       setCategoryVisibilityMutation.mutate({ id: category.id, visible })
                     }
+                    renderItem={(item) => (
+                      <Card key={item.id} variant="outlined">
+                        <Box sx={{ display: 'flex' }}>
+                          {item.photoUrl && (
+                            <CardMedia
+                              component="img"
+                              image={item.photoUrl}
+                              alt={item.name}
+                              onClick={() => setLightbox(item.photoUrl!)}
+                              sx={{ width: 100, height: 100, objectFit: 'cover', cursor: 'zoom-in' }}
+                            />
+                          )}
+                          <CardContent sx={{ flex: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div>
+                                <Typography variant="subtitle1" fontWeight={600}>
+                                  {item.name} — {formatPriceLabel(item.variants)}
+                                </Typography>
+                                {item.variants.length > 1 && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    {item.variants
+                                      .map(
+                                        (v) =>
+                                          `${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`,
+                                      )
+                                      .join(' · ')}
+                                  </Typography>
+                                )}
+                                <Typography variant="body2" color="text.secondary">
+                                  {item.description}
+                                </Typography>
+                                <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                  <Chip size="small" label={availabilityLabels[item.availability]} />
+                                  {item.allergens.map((a) => (
+                                    <Chip key={a} size="small" variant="outlined" label={allergenLabels[a] ?? a} />
+                                  ))}
+                                  {item.unavailableUntil && new Date(item.unavailableUntil) > new Date() && (
+                                    <Chip size="small" color="warning" label="Temporaneamente non disponibile" />
+                                  )}
+                                </Box>
+                              </div>
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                <IconButton
+                                  size="small"
+                                  title={item.featured ? 'Rimuovi dall\'evidenza' : 'Metti in evidenza'}
+                                  color={item.featured ? 'warning' : 'default'}
+                                  onClick={() =>
+                                    toggleFeaturedMutation.mutate({ id: item.id, featured: !item.featured })
+                                  }
+                                >
+                                  {item.featured ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                                </IconButton>
+                                {!locked && (
+                                  <IconButton component="label" size="small" title="Carica foto">
+                                    <PhotoCameraIcon fontSize="small" />
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      hidden
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) startPhotoCrop(item.id, file);
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </IconButton>
+                                )}
+                                {(() => {
+                                  const isUnavailable =
+                                    !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();
+                                  return (
+                                    <IconButton
+                                      size="small"
+                                      color={isUnavailable ? 'warning' : 'default'}
+                                      title={
+                                        isUnavailable
+                                          ? 'Rendi di nuovo disponibile'
+                                          : 'Segna temporaneamente non disponibile (2 ore)'
+                                      }
+                                      onClick={() =>
+                                        setUnavailableMutation.mutate({
+                                          id: item.id,
+                                          until: isUnavailable
+                                            ? null
+                                            : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                                        })
+                                      }
+                                    >
+                                      {isUnavailable ? (
+                                        <EventAvailableIcon fontSize="small" />
+                                      ) : (
+                                        <EventBusyIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  );
+                                })()}
+                                <Switch
+                                  checked={item.visible}
+                                  onChange={(e) =>
+                                    toggleVisibilityMutation.mutate({ id: item.id, visible: e.target.checked })
+                                  }
+                                  title="Mostra/nascondi dal menù"
+                                />
+                                {!locked && (
+                                  <>
+                                    <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </>
+                                )}
+                              </Stack>
+                            </Box>
+                          </CardContent>
+                        </Box>
+                      </Card>
+                    )}
                   />
                 ))}
               </Stack>
@@ -547,162 +732,6 @@ export function MenuAdmin() {
           </DndContext>
         </CardContent>
       </Card>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">Voci di menù</Typography>
-        {!locked && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openItemDialog}>
-            Aggiungi al menù
-          </Button>
-        )}
-      </Box>
-      <TextField
-        size="small"
-        placeholder="Cerca per nome, descrizione o formato..."
-        value={itemSearch}
-        onChange={(e) => setItemSearch(e.target.value)}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          ),
-        }}
-      />
-      {itemsByCategory.map(({ category, items }) => (
-        <Box key={category.id} sx={{ display: 'grid', gap: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            {category.name} ({items.length})
-          </Typography>
-          {items.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Nessuna voce in questa categoria.
-            </Typography>
-          ) : (
-            <Stack spacing={2}>
-              {items.map((item) => (
-                <Card key={item.id} variant="outlined">
-                  <Box sx={{ display: 'flex' }}>
-                    {item.photoUrl && (
-                      <CardMedia
-                        component="img"
-                        image={item.photoUrl}
-                        alt={item.name}
-                        onClick={() => setLightbox(item.photoUrl!)}
-                        sx={{ width: 100, height: 100, objectFit: 'cover', cursor: 'zoom-in' }}
-                      />
-                    )}
-                    <CardContent sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <Typography variant="subtitle1" fontWeight={600}>
-                            {item.name} — {formatPriceLabel(item.variants)}
-                          </Typography>
-                          {item.variants.length > 1 && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                              {item.variants
-                                .map(
-                                  (v) =>
-                                    `${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`,
-                                )
-                                .join(' · ')}
-                            </Typography>
-                          )}
-                          <Typography variant="body2" color="text.secondary">
-                            {item.description}
-                          </Typography>
-                          <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            <Chip size="small" label={availabilityLabels[item.availability]} />
-                            {item.allergens.map((a) => (
-                              <Chip key={a} size="small" variant="outlined" label={allergenLabels[a] ?? a} />
-                            ))}
-                            {item.unavailableUntil && new Date(item.unavailableUntil) > new Date() && (
-                              <Chip size="small" color="warning" label="Temporaneamente non disponibile" />
-                            )}
-                          </Box>
-                        </div>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <IconButton
-                            size="small"
-                            title={item.featured ? 'Rimuovi dall\'evidenza' : 'Metti in evidenza'}
-                            color={item.featured ? 'warning' : 'default'}
-                            onClick={() =>
-                              toggleFeaturedMutation.mutate({ id: item.id, featured: !item.featured })
-                            }
-                          >
-                            {item.featured ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
-                          </IconButton>
-                          {!locked && (
-                            <IconButton component="label" size="small" title="Carica foto">
-                              <PhotoCameraIcon fontSize="small" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                hidden
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) startPhotoCrop(item.id, file);
-                                  e.target.value = '';
-                                }}
-                              />
-                            </IconButton>
-                          )}
-                          {(() => {
-                            const isUnavailable =
-                              !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();
-                            return (
-                              <IconButton
-                                size="small"
-                                color={isUnavailable ? 'warning' : 'default'}
-                                title={
-                                  isUnavailable
-                                    ? 'Rendi di nuovo disponibile'
-                                    : 'Segna temporaneamente non disponibile (2 ore)'
-                                }
-                                onClick={() =>
-                                  setUnavailableMutation.mutate({
-                                    id: item.id,
-                                    until: isUnavailable
-                                      ? null
-                                      : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                                  })
-                                }
-                              >
-                                {isUnavailable ? (
-                                  <EventAvailableIcon fontSize="small" />
-                                ) : (
-                                  <EventBusyIcon fontSize="small" />
-                                )}
-                              </IconButton>
-                            );
-                          })()}
-                          <Switch
-                            checked={item.visible}
-                            onChange={(e) =>
-                              toggleVisibilityMutation.mutate({ id: item.id, visible: e.target.checked })
-                            }
-                            title="Mostra/nascondi dal menù"
-                          />
-                          {!locked && (
-                            <>
-                              <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </>
-                          )}
-                        </Stack>
-                      </Box>
-                    </CardContent>
-                  </Box>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </Box>
-      ))}
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
