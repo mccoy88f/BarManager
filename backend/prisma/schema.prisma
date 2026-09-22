@@ -391,12 +391,15 @@ enum PrinterUsage {
 }
 
 model Printer {
-  id       String       @id @default(cuid())
-  name     String
-  host     String // IP di rete
-  port     Int          @default(9100)
-  usage    PrinterUsage @default(GENERIC)
-  active   Boolean      @default(true)
+  id     String         @id @default(cuid())
+  name   String
+  host   String // IP di rete
+  port   Int            @default(9100)
+  // Una stampante può servire più usi insieme (es. HACCP e ordini sulla
+  // stessa stampante di sala). Migrato da un valore singolo "usage": v.
+  // prisma/scripts/auto-migrate-printer-usages.ts.
+  usages PrinterUsage[] @default([GENERIC])
+  active Boolean        @default(true)
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

@@ -16,7 +16,7 @@ export class PrintingService {
 
   private async getPrinter(venueId: string, usage: PrinterUsage) {
     return this.prisma.printer.findFirst({
-      where: { venueId, usage, active: true },
+      where: { venueId, usages: { has: usage }, active: true },
     });
   }
 

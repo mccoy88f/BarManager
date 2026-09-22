@@ -5,13 +5,18 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   IconButton,
+  InputLabel,
+  ListItemText,
   MenuItem,
+  Select,
   Stack,
   Switch,
   TextField,
@@ -25,26 +30,29 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
+type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
+
 interface PrinterRow {
   id: string;
   name: string;
   host: string;
   port: number;
-  usage: 'HACCP' | 'ORDERS' | 'GENERIC';
+  usages: PrinterUsage[];
   active: boolean;
 }
 
-const usageLabels: Record<string, string> = {
+const usageLabels: Record<PrinterUsage, string> = {
   HACCP: 'Report HACCP',
   ORDERS: 'Checklist ordini',
   GENERIC: 'Generico',
 };
 
-const emptyForm = { name: '', host: '', port: '9100', usage: 'GENERIC' };
+const emptyForm = { name: '', host: '', port: '9100', usages: ['GENERIC'] as PrinterUsage[] };
 
 const testFailureLabels: Record<string, string> = {
   NOT_FOUND: 'Stampante non trovata.',
-  PRINTER_UNREACHABLE: 'Stampante irraggiungibile: verifica indirizzo IP, porta e che sia accesa.',
+  PRINTER_UNREACHABLE:
+    'Stampante irraggiungibile: verifica indirizzo IP, porta e che sia accesa. Se il server di BarManager non è nella stessa rete locale della stampante (es. hosting cloud), serve una VPN che collega il server alla rete del locale: la connessione diretta alla LAN non è possibile da remoto.',
   PRINT_ERROR: "Errore durante l'invio della stampa.",
 };
 
@@ -85,7 +93,7 @@ export function Printers() {
         name: form.name.trim(),
         host: form.host.trim(),
         port: Number(form.port),
-        usage: form.usage,
+        usages: form.usages,
       };
       return editing
         ? (await api.patch(`/printers/${editing.id}`, payload)).data
@@ -145,7 +153,7 @@ export function Printers() {
       name: printer.name,
       host: printer.host,
       port: String(printer.port),
-      usage: printer.usage,
+      usages: printer.usages,
     });
     setError(null);
     setOpen(true);
@@ -186,9 +194,11 @@ export function Printers() {
               sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <Box>
-                <Typography variant="body2" fontWeight={600}>
+                <Typography variant="body2" fontWeight={600} component="div">
                   {printer.name}{' '}
-                  <Chip size="small" label={usageLabels[printer.usage]} sx={{ ml: 1 }} />
+                  {printer.usages.map((usage) => (
+                    <Chip key={usage} size="small" label={usageLabels[usage]} sx={{ ml: 1 }} />
+                  ))}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {printer.host}:{printer.port}
@@ -248,26 +258,39 @@ export function Printers() {
             value={form.port}
             onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
           />
-          <TextField
-            select
-            label="Uso"
-            InputLabelProps={{ shrink: true }}
-            value={form.usage}
-            onChange={(e) => setForm((f) => ({ ...f, usage: e.target.value }))}
-          >
-            {Object.entries(usageLabels).map(([value, label]) => (
-              <MenuItem key={value} value={value}>
-                {label}
-              </MenuItem>
-            ))}
-          </TextField>
+          <FormControl>
+            <InputLabel id="printer-usages-label" shrink>
+              Uso
+            </InputLabel>
+            <Select
+              multiple
+              labelId="printer-usages-label"
+              label="Uso"
+              value={form.usages}
+              onChange={(e) => {
+                const value = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  usages: typeof value === 'string' ? (value.split(',') as PrinterUsage[]) : value,
+                }));
+              }}
+              renderValue={(selected) => selected.map((v) => usageLabels[v]).join(', ')}
+            >
+              {(Object.entries(usageLabels) as [PrinterUsage, string][]).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  <Checkbox checked={form.usages.includes(value)} />
+                  <ListItemText primary={label} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {error && <Alert severity="error">{error}</Alert>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!form.name || !form.host || saveMutation.isPending}
+            disabled={!form.name || !form.host || form.usages.length === 0 || saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
           >
             {editing ? 'Salva' : 'Aggiungi'}

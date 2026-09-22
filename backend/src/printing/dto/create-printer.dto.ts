@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrinterUsage } from '@prisma/client';
 
 export class CreatePrinterDto {
@@ -14,7 +14,10 @@ export class CreatePrinterDto {
   @Max(65535)
   port?: number;
 
+  /** Una stampante può servire più usi insieme (es. HACCP e ordini). */
   @IsOptional()
-  @IsEnum(PrinterUsage)
-  usage?: PrinterUsage;
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsEnum(PrinterUsage, { each: true })
+  usages?: PrinterUsage[];
 }
