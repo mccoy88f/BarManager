@@ -28,10 +28,12 @@
     "axios": "^1.7.4",
     "dayjs": "^1.11.12",
     "jsqr": "^1.4.0",
+    "pdfjs-dist": "^5.4.296",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^6.2.3",
+    "react-pdf": "^10.5.0",
     "react-router-dom": "^6.26.1",
     "zustand": "^4.5.5"
   },

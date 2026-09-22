@@ -1,6 +1,13 @@
-import { Dialog, DialogTitle, DialogContent, IconButton, Stack } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import { Dialog, DialogTitle, DialogContent, IconButton, Stack, Box, CircularProgress, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import CloseIcon from '@mui/icons-material/Close';
+import { Document, Page, pdfjs } from 'react-pdf';
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 interface PdfViewerDialogProps {
   file: { url: string; filename: string } | null;
@@ -8,13 +15,34 @@ interface PdfViewerDialogProps {
 }
 
 /**
- * Anteprima PDF dentro l'app via <iframe>: un link "target=_blank" verso il
- * file grezzo lascia a volte una scheda vuota (browser/webview senza
- * visualizzatore PDF integrato attivo, comune su mobile), mentre l'iframe
- * incorporato in pagina è reso in modo affidabile dai motori dei browser
- * principali indipendentemente da quel comportamento.
+ * Anteprima PDF dentro l'app, resa con PDF.js (react-pdf) su un canvas
+ * invece che con un <iframe>: un iframe punta al visualizzatore PDF
+ * nativo del browser, che su alcuni browser/webview (comune su mobile,
+ * incluse le webview di app native) non è disponibile e lascia
+ * un'anteprima grigia e vuota, anche se il download dello stesso file
+ * funziona sempre (è solo un salvataggio di byte, non un rendering).
+ * Il rendering via PDF.js non dipende da un plugin nativo: funziona
+ * allo stesso modo ovunque.
  */
 export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    setNumPages(null);
+    setLoadError(false);
+  }, [file?.url]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <Dialog open={!!file} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '90vh' } }}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1 }}>
@@ -30,8 +58,38 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
           </IconButton>
         </Stack>
       </DialogTitle>
-      <DialogContent sx={{ p: 0 }}>
-        {file && <iframe src={file.url} title={file.filename} style={{ width: '100%', height: '100%', border: 'none' }} />}
+      <DialogContent ref={containerRef} sx={{ p: 0, overflow: 'auto', bgcolor: 'grey.200' }}>
+        {file && !loadError && (
+          <Document
+            file={file.url}
+            onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+            onLoadError={() => setLoadError(true)}
+            loading={
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            }
+          >
+            {numPages &&
+              containerWidth > 0 &&
+              Array.from({ length: numPages }, (_, i) => (
+                <Page
+                  key={i}
+                  pageNumber={i + 1}
+                  width={containerWidth}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                />
+              ))}
+          </Document>
+        )}
+        {loadError && (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary">
+              Impossibile visualizzare l'anteprima di questo PDF.
+            </Typography>
+          </Box>
+        )}
       </DialogContent>
     </Dialog>
   );
