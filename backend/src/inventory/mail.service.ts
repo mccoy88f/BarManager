@@ -7,7 +7,11 @@ export class MailService {
   private transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
+    // La 465 è SMTPS (connessione TLS diretta), le altre porte (587, 25) usano
+    // STARTTLS: nodemailer non lo deduce da solo dalla porta, va indicato.
+    secure: process.env.SMTP_SECURE
+      ? process.env.SMTP_SECURE === 'true'
+      : Number(process.env.SMTP_PORT) === 465,
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
       : undefined,
