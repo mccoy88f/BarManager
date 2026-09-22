@@ -569,11 +569,25 @@ export function MenuAdmin() {
                               image={item.photoUrl}
                               alt={item.name}
                               onClick={() => setLightbox(item.photoUrl!)}
-                              sx={{ width: 100, height: 100, objectFit: 'cover', cursor: 'zoom-in' }}
+                              sx={{
+                                width: { xs: 72, sm: 100 },
+                                height: { xs: 72, sm: 100 },
+                                objectFit: 'cover',
+                                cursor: 'zoom-in',
+                                flexShrink: 0,
+                              }}
                             />
                           )}
-                          <CardContent sx={{ flex: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <CardContent sx={{ flex: 1, minWidth: 0 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                flexDirection: { xs: 'column', sm: 'row' },
+                                justifyContent: 'space-between',
+                                alignItems: { xs: 'stretch', sm: 'flex-start' },
+                                gap: 1,
+                              }}
+                            >
                               <div>
                                 <Typography variant="subtitle1" fontWeight={600}>
                                   {item.name} — {formatPriceLabel(item.variants)}
@@ -601,7 +615,13 @@ export function MenuAdmin() {
                                   )}
                                 </Box>
                               </div>
-                              <Stack direction="row" alignItems="center" spacing={1}>
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={1}
+                                flexWrap="wrap"
+                                sx={{ justifyContent: { xs: 'flex-end', sm: 'flex-start' }, rowGap: 0.5 }}
+                              >
                                 <IconButton
                                   size="small"
                                   title={item.featured ? 'Rimuovi dall\'evidenza' : 'Metti in evidenza'}

@@ -23,7 +23,9 @@ import HomeIcon from '@mui/icons-material/Home';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { Outlet, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
+import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
 
 const DRAWER_WIDTH = 260;
@@ -36,6 +38,18 @@ export function AppShell() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const venueName = useAuthStore((s) => s.venueName);
+
+  // Il nome mostrato in alto viene aggiornato appena si salva un cambio in
+  // Impostazioni (che invalida questa stessa query): senza, restava quello
+  // di login finché non si usciva e si rientrava. Non per SUPER_ADMIN, che
+  // non ha un locale proprio e per cui l'endpoint non è comunque accessibile.
+  const venueQuery = useQuery({
+    queryKey: ['venue-me'],
+    queryFn: async () => (await api.get<{ name: string }>('/venues/me')).data,
+    enabled: user?.role === 'ADMIN' || user?.role === 'MANAGER',
+    staleTime: 60_000,
+  });
+  const displayVenueName = venueQuery.data?.name ?? venueName;
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(
@@ -133,7 +147,7 @@ export function AppShell() {
             sx={{ flexGrow: 1, cursor: 'pointer' }}
             onClick={() => navigate('/')}
           >
-            {venueName || 'BarManager'}
+            {displayVenueName || 'BarManager'}
           </Typography>
           {user && (
             <>
