@@ -1,0 +1,194 @@
+import { useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../api/client';
+
+type FrequencyUnit = 'DAY' | 'WEEK' | 'MONTH';
+
+interface CleaningTaskRow {
+  id: string;
+  description: string;
+  location: string;
+  frequencyUnit: FrequencyUnit;
+  timesPerUnit: number;
+}
+
+const unitLabels: Record<FrequencyUnit, string> = {
+  DAY: 'giorno',
+  WEEK: 'settimana',
+  MONTH: 'mese',
+};
+
+function frequencyLabel(unit: FrequencyUnit, times: number): string {
+  if (times <= 1) {
+    return unit === 'DAY' ? 'Giornaliera' : unit === 'WEEK' ? 'Settimanale' : 'Mensile';
+  }
+  return `${times} volte al ${unitLabels[unit]}`;
+}
+
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore durante il salvataggio.';
+}
+
+const emptyForm = {
+  description: '',
+  location: '',
+  frequencyUnit: 'DAY' as FrequencyUnit,
+  timesPerUnit: '1',
+};
+
+/** Anagrafica voci di pulizia ricorrenti (admin): descrizione, luogo e frequenza. */
+export function CleaningTasksAdmin() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState<string | null>(null);
+
+  const tasksQuery = useQuery({
+    queryKey: ['cleaning-tasks'],
+    queryFn: async () => (await api.get<CleaningTaskRow[]>('/haccp/cleaning-tasks')).data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post('/haccp/cleaning-tasks', {
+          description: form.description.trim(),
+          location: form.location.trim(),
+          frequencyUnit: form.frequencyUnit,
+          timesPerUnit: Number(form.timesPerUnit),
+        })
+      ).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cleaning-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['cleaning-due'] });
+      setForm(emptyForm);
+      setError(null);
+      setOpen(false);
+    },
+    onError: (err) => setError(extractErrorMessage(err)),
+  });
+
+  const openCreate = () => {
+    setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
+  const canSubmit =
+    form.description.trim() !== '' && form.location.trim() !== '' && Number(form.timesPerUnit) >= 1;
+
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">Voci di pulizia</Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+            Aggiungi
+          </Button>
+        </Box>
+
+        <Stack spacing={1}>
+          {tasksQuery.data?.map((task) => (
+            <Box
+              key={task.id}
+              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  {task.description}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {task.location}
+                </Typography>
+              </Box>
+              <Chip
+                size="small"
+                label={frequencyLabel(task.frequencyUnit, task.timesPerUnit)}
+              />
+            </Box>
+          ))}
+          {tasksQuery.data?.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Nessuna voce di pulizia censita.
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nuova voce di pulizia</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
+          <TextField
+            label="Descrizione (es. Sgrassare friggitrice)"
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          />
+          <TextField
+            label="Luogo (es. Cucina)"
+            value={form.location}
+            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          />
+          <TextField
+            select
+            label="Ogni"
+            InputLabelProps={{ shrink: true }}
+            value={form.frequencyUnit}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, frequencyUnit: e.target.value as FrequencyUnit }))
+            }
+          >
+            <MenuItem value="DAY">Giorno</MenuItem>
+            <MenuItem value="WEEK">Settimana</MenuItem>
+            <MenuItem value="MONTH">Mese</MenuItem>
+          </TextField>
+          <TextField
+            label="Quante volte"
+            type="number"
+            value={form.timesPerUnit}
+            onChange={(e) => setForm((f) => ({ ...f, timesPerUnit: e.target.value }))}
+            helperText="1 = una volta sola nel periodo"
+          />
+          {error && (
+            <Alert severity="error" sx={{ gridColumn: '1 / -1' }}>
+              {error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!canSubmit || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            Aggiungi
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Card>
+  );
+}

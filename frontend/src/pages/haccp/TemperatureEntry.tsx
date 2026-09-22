@@ -13,6 +13,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -135,92 +136,94 @@ export function TemperatureEntry() {
           </Alert>
         )}
 
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Frigo/Congelatore</TableCell>
-              <TableCell>Range</TableCell>
-              <TableCell>Già registrato oggi</TableCell>
-              <TableCell>Valore rilevato</TableCell>
-              <TableCell>Azione correttiva</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {fridgesQuery.data?.map((fridge) => {
-              const value = values[fridge.id] ?? '';
-              const numValue = Number(value);
-              const outOfRange =
-                value !== '' && (numValue < fridge.minTemp || numValue > fridge.maxTemp);
-              const alreadyToday = readingsByFridge.get(fridge.id);
+        <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Frigo/Congelatore</TableCell>
+                <TableCell>Range</TableCell>
+                <TableCell>Già registrato oggi</TableCell>
+                <TableCell>Valore rilevato</TableCell>
+                <TableCell>Azione correttiva</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {fridgesQuery.data?.map((fridge) => {
+                const value = values[fridge.id] ?? '';
+                const numValue = Number(value);
+                const outOfRange =
+                  value !== '' && (numValue < fridge.minTemp || numValue > fridge.maxTemp);
+                const alreadyToday = readingsByFridge.get(fridge.id);
 
-              return (
-                <TableRow key={fridge.id}>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={600}>
-                      {fridge.label}
-                    </Typography>
-                    {fridge.location && (
-                      <Typography variant="caption" color="text.secondary">
-                        {fridge.location}
+                return (
+                  <TableRow key={fridge.id}>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>
+                        {fridge.label}
                       </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {fridge.minTemp}°C / {fridge.maxTemp}°C
-                  </TableCell>
-                  <TableCell>
-                    {alreadyToday ? (
-                      <Chip
-                        size="small"
-                        color={alreadyToday.outOfRange ? 'warning' : 'success'}
-                        label={`${alreadyToday.value}°C`}
-                      />
-                    ) : (
-                      <Chip size="small" variant="outlined" label="Nessuna" />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      label="°C"
-                      type="number"
-                      size="small"
-                      value={value}
-                      onChange={(e) => setValues((v) => ({ ...v, [fridge.id]: e.target.value }))}
-                      sx={{ width: 100 }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {outOfRange && (
+                      {fridge.location && (
+                        <Typography variant="caption" color="text.secondary">
+                          {fridge.location}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {fridge.minTemp}°C / {fridge.maxTemp}°C
+                    </TableCell>
+                    <TableCell>
+                      {alreadyToday ? (
+                        <Chip
+                          size="small"
+                          color={alreadyToday.outOfRange ? 'warning' : 'success'}
+                          label={`${alreadyToday.value}°C`}
+                        />
+                      ) : (
+                        <Chip size="small" variant="outlined" label="Nessuna" />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <TextField
-                        label="Obbligatoria: fuori soglia"
+                        label="°C"
+                        type="number"
                         size="small"
-                        value={corrective[fridge.id] ?? ''}
-                        onChange={(e) =>
-                          setCorrective((c) => ({ ...c, [fridge.id]: e.target.value }))
-                        }
+                        value={value}
+                        onChange={(e) => setValues((v) => ({ ...v, [fridge.id]: e.target.value }))}
+                        sx={{ width: 100 }}
                       />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      disabled={
-                        value === '' ||
-                        (outOfRange && !corrective[fridge.id]) ||
-                        submitMutation.isPending
-                      }
-                      onClick={() => submitMutation.mutate(fridge.id)}
-                    >
-                      Registra
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    </TableCell>
+                    <TableCell>
+                      {outOfRange && (
+                        <TextField
+                          label="Obbligatoria: fuori soglia"
+                          size="small"
+                          value={corrective[fridge.id] ?? ''}
+                          onChange={(e) =>
+                            setCorrective((c) => ({ ...c, [fridge.id]: e.target.value }))
+                          }
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={
+                          value === '' ||
+                          (outOfRange && !corrective[fridge.id]) ||
+                          submitMutation.isPending
+                        }
+                        onClick={() => submitMutation.mutate(fridge.id)}
+                      >
+                        Registra
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
         {fridgesQuery.data?.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Nessun frigorifero censito: aggiungine uno qui sopra.
