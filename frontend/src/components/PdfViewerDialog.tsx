@@ -19,6 +19,19 @@ interface PdfViewerDialogProps {
 }
 
 /**
+ * react-zoom-pan-pinch ingrandisce solo via CSS (transform: scale), senza
+ * mai richiedere a pdf.js un nuovo rendering: ingrandire una pagina
+ * disegnata a risoluzione "1×" restituisce pixel sempre più grossi, non
+ * più dettaglio. Per uno zoom nitido si disegna il canvas più grande del
+ * necessario fin da subito (RENDER_SCALE×) e si forza la sua dimensione
+ * visualizzata (CSS) alla larghezza del contenitore: il browser lo
+ * ridisegna scalato verso il basso, che resta nitido, e lo zoom (fino a
+ * RENDER_SCALE, coerente col maxScale del TransformWrapper) non fa che
+ * riportarlo verso la sua risoluzione nativa, mai oltre.
+ */
+const RENDER_SCALE = 3;
+
+/**
  * Anteprima PDF dentro l'app, resa con PDF.js (react-pdf) su un canvas
  * invece che con un <iframe>: un iframe punta al visualizzatore PDF
  * nativo del browser, che su alcuni browser/webview (comune su mobile,
@@ -55,7 +68,7 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
 
   return (
     <Dialog open={!!file} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '90vh' } }}>
-      <TransformWrapper minScale={0.5} maxScale={4} centerZoomedOut doubleClick={{ mode: 'toggle' }}>
+      <TransformWrapper minScale={0.5} maxScale={RENDER_SCALE} centerZoomedOut doubleClick={{ mode: 'toggle' }}>
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1 }}>
@@ -98,15 +111,35 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
                       }
                     >
                       {numPages &&
-                        Array.from({ length: numPages }, (_, i) => (
-                          <Page
-                            key={i}
-                            pageNumber={i + 1}
-                            width={containerWidth || undefined}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                          />
-                        ))}
+                        Array.from({ length: numPages }, (_, i) =>
+                          containerWidth > 0 ? (
+                            <Box
+                              key={i}
+                              sx={{
+                                width: containerWidth,
+                                overflow: 'hidden',
+                                '& .react-pdf__Page__canvas': {
+                                  width: '100% !important',
+                                  height: 'auto !important',
+                                },
+                              }}
+                            >
+                              <Page
+                                pageNumber={i + 1}
+                                width={containerWidth * RENDER_SCALE}
+                                renderTextLayer={false}
+                                renderAnnotationLayer={false}
+                              />
+                            </Box>
+                          ) : (
+                            <Page
+                              key={i}
+                              pageNumber={i + 1}
+                              renderTextLayer={false}
+                              renderAnnotationLayer={false}
+                            />
+                          ),
+                        )}
                     </Document>
                   </Box>
                 </TransformComponent>
