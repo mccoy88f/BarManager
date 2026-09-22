@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { PdfViewerDialog } from '../../components/PdfViewerDialog';
 
 interface KbArticle {
   id: string;
@@ -23,6 +24,7 @@ export function KbArticleView() {
   const queryClient = useQueryClient();
   const isAdmin = useAuthStore((s) => s.user?.role) === 'ADMIN';
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
 
   const articleQuery = useQuery({
     queryKey: ['kb-article', id],
@@ -38,6 +40,23 @@ export function KbArticleView() {
   });
 
   if (!articleQuery.data) return null;
+
+  /**
+   * Un link "apri" (target=_blank) verso un PDF grezzo, su un browser/webview
+   * senza visualizzatore integrato attivo, scarica il file lasciando la
+   * scheda vuota: per i PDF intercettiamo il click e mostriamo un'anteprima
+   * incorporata (v. PdfViewerDialog), affidabile a prescindere da quel
+   * comportamento. Altri allegati (Word/Excel, che nessun browser sa
+   * mostrare inline) continuano ad aprirsi come link normali.
+   */
+  const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const link = (e.target as HTMLElement).closest('a[target="_blank"]');
+    const href = link?.getAttribute('href');
+    if (link?.closest('.kb-attachment') && href?.toLowerCase().endsWith('.pdf')) {
+      e.preventDefault();
+      setPdfPreview({ url: href, filename: link.textContent?.trim() || 'Allegato' });
+    }
+  };
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
@@ -74,6 +93,7 @@ export function KbArticleView() {
       </Typography>
 
       <Box
+        onClick={handleContentClick}
         sx={{ '& img, & video': { maxWidth: '100%' } }}
         dangerouslySetInnerHTML={{ __html: articleQuery.data.contentHtml }}
       />
@@ -86,6 +106,8 @@ export function KbArticleView() {
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => deleteMutation.mutate()}
       />
+
+      <PdfViewerDialog file={pdfPreview} onClose={() => setPdfPreview(null)} />
     </Box>
   );
 }
