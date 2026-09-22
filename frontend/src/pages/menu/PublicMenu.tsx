@@ -206,12 +206,14 @@ export function PublicMenu() {
               inset: 0,
               display: 'flex',
               alignItems: 'flex-end',
+              justifyContent: 'center',
               background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0) 60%)',
             }}
           >
             <Typography
               variant="h4"
               fontWeight={700}
+              textAlign="center"
               sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
             >
               {venue.name}
