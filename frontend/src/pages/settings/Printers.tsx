@@ -29,6 +29,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { deliverPrintJob, type PrintJobResponse } from '../../printing/qzPrint';
 
 type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
 
@@ -51,9 +52,8 @@ const emptyForm = { name: '', host: '', port: '9100', usages: ['GENERIC'] as Pri
 
 const testFailureLabels: Record<string, string> = {
   NOT_FOUND: 'Stampante non trovata.',
-  PRINTER_UNREACHABLE:
-    'Stampante irraggiungibile: verifica indirizzo IP, porta e che sia accesa. Se il server di BarManager non è nella stessa rete locale della stampante (es. hosting cloud), serve una VPN che collega il server alla rete del locale: la connessione diretta alla LAN non è possibile da remoto.',
-  PRINT_ERROR: "Errore durante l'invio della stampa.",
+  QZ_ERROR:
+    'Impossibile stampare: verifica che QZ Tray sia installato e in esecuzione su questo dispositivo (https://qz.io/download/), e che la stampante sia raggiungibile dalla rete locale.',
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -124,17 +124,16 @@ export function Printers() {
   });
 
   const testMutation = useMutation({
-    mutationFn: async (printer: PrinterRow) => ({
-      printer,
-      result: (await api.post<{ printed: boolean; reason?: string }>(`/printers/${printer.id}/test`))
-        .data,
-    }),
-    onSuccess: ({ printer, result }) =>
+    mutationFn: async (printer: PrinterRow) => {
+      const job = (await api.post<PrintJobResponse>(`/printers/${printer.id}/test`)).data;
+      return { printer, outcome: await deliverPrintJob(job) };
+    },
+    onSuccess: ({ printer, outcome }) =>
       setTestResult({
         printerId: printer.id,
         printerName: printer.name,
-        printed: result.printed,
-        reason: result.reason,
+        printed: outcome.printed,
+        reason: outcome.reason,
       }),
     onError: (_err, printer) =>
       setTestResult({ printerId: printer.id, printerName: printer.name, printed: false }),
@@ -170,7 +169,13 @@ export function Printers() {
         </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Stampanti POS Epson (ESC/POS) raggiungibili in rete sulla porta indicata, usate per il
-          report HACCP giornaliero e la checklist degli ordini fornitori.
+          report HACCP giornaliero e la checklist degli ordini fornitori. La stampa parte dal
+          browser tramite{' '}
+          <a href="https://qz.io/download/" target="_blank" rel="noopener noreferrer">
+            QZ Tray
+          </a>
+          , da installare e avviare sul dispositivo da cui si stampa (nella stessa rete locale
+          della stampante).
         </Typography>
 
         {testResult && (

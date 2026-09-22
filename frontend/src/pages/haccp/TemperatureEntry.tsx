@@ -22,6 +22,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { deliverPrintJob, type PrintJobResponse } from '../../printing/qzPrint';
 import type { Fridge } from './Fridges';
 
 function todayIso() {
@@ -87,19 +88,24 @@ export function TemperatureEntry() {
   });
 
   const printMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/haccp/report/print', {
-          reportDate: today,
-          signedByName: signedByName.trim(),
-        })
-      ).data,
-    onSuccess: (data) => {
+    mutationFn: async () => {
+      const job = (
+        await api.post<PrintJobResponse>('/haccp/report/print-job', { reportDate: today })
+      ).data;
+      const outcome = await deliverPrintJob(job);
+      await api.post('/haccp/report/print', {
+        reportDate: today,
+        signedByName: signedByName.trim(),
+        printedOnPos: outcome.printed,
+      });
+      return outcome;
+    },
+    onSuccess: (outcome) => {
       setPrintError(null);
       setPrintSuccess(
-        data?.print?.printed
+        outcome.printed
           ? 'Report stampato correttamente.'
-          : 'Report registrato e firmato (stampante non disponibile: verifica la configurazione).',
+          : 'Report registrato e firmato (stampa non riuscita: verifica che QZ Tray sia in esecuzione e che la stampante sia raggiungibile).',
       );
       setPrintOpen(false);
       setSignedByName('');

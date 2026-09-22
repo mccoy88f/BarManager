@@ -3,10 +3,19 @@ import { printer as ThermalPrinter, types as PrinterTypes } from 'node-thermal-p
 import { PrismaService } from '../prisma/prisma.service';
 import { PrinterUsage } from '@prisma/client';
 
+export type PrintJob =
+  | { ready: true; host: string; port: number; dataBase64: string }
+  | { ready: false; reason: 'NO_PRINTER_CONFIGURED' | 'NOT_FOUND' };
+
 /**
- * Invia contenuto ESC/POS a una stampante Epson (o compatibile) di rete,
- * raggiunta via TCP diretto sulla porta configurata (default 9100).
- * Le stampanti sono censite dall'admin nel modello `Printer`.
+ * Prepara contenuto ESC/POS per una stampante Epson (o compatibile) di
+ * rete, ma non lo invia: costruisce solo il buffer di comandi. L'invio
+ * effettivo (connessione TCP diretta sulla porta configurata, default
+ * 9100) avviene dal browser tramite QZ Tray (v.
+ * frontend/src/printing/qzPrint.ts), non da qui — il server spesso non è
+ * sulla stessa rete locale della stampante (es. hosting cloud, v.
+ * docs/DEVELOPMENT.md §9.2), mentre il browser di chi stampa sì. Le
+ * stampanti sono censite dall'admin nel modello `Printer`.
  */
 @Injectable()
 export class PrintingService {
@@ -28,89 +37,74 @@ export class PrintingService {
     });
   }
 
-  /** Stampa una ricevuta di prova su una stampante specifica, per verificarne la configurazione. */
-  async printTest(
-    venueId: string,
-    printerId: string,
-  ): Promise<{ printed: boolean; reason?: string }> {
+  /** Prepara una ricevuta di prova per una stampante specifica, per verificarne la configurazione. */
+  async buildTestJob(venueId: string, printerId: string): Promise<PrintJob> {
     const printerConfig = await this.prisma.printer.findUnique({ where: { id: printerId } });
     if (!printerConfig || printerConfig.venueId !== venueId) {
-      return { printed: false, reason: 'NOT_FOUND' };
+      return { ready: false, reason: 'NOT_FOUND' };
     }
 
     const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println('Test di stampa');
+    printer.bold(false);
+    printer.drawLine();
+    printer.alignLeft();
+    printer.println(`Stampante: ${printerConfig.name}`);
+    printer.println(`Data: ${new Date().toLocaleString('it-IT')}`);
+    printer.newLine();
+    printer.alignCenter();
+    printer.println('Se leggi questo messaggio,');
+    printer.println('la stampante è configurata correttamente.');
+    printer.cut();
 
-    try {
-      const isConnected = await printer.isPrinterConnected();
-      if (!isConnected) {
-        return { printed: false, reason: 'PRINTER_UNREACHABLE' };
-      }
-
-      printer.alignCenter();
-      printer.bold(true);
-      printer.println('Test di stampa');
-      printer.bold(false);
-      printer.drawLine();
-      printer.alignLeft();
-      printer.println(`Stampante: ${printerConfig.name}`);
-      printer.println(`Data: ${new Date().toLocaleString('it-IT')}`);
-      printer.newLine();
-      printer.alignCenter();
-      printer.println('Se leggi questo messaggio,');
-      printer.println('la stampante è configurata correttamente.');
-      printer.cut();
-      await printer.execute();
-      return { printed: true };
-    } catch (err) {
-      this.logger.error(`Errore di stampa (test): ${(err as Error).message}`);
-      return { printed: false, reason: 'PRINT_ERROR' };
-    }
+    return {
+      ready: true,
+      host: printerConfig.host,
+      port: printerConfig.port,
+      dataBase64: printer.getBuffer().toString('base64'),
+    };
   }
 
   /**
-   * Stampa un report tabellare semplice (righe di testo pre-formattate)
-   * usata sia per il report HACCP giornaliero sia per la checklist ordini.
+   * Prepara un report tabellare semplice (righe di testo pre-formattate),
+   * usato sia per il report HACCP giornaliero sia per la checklist ordini.
    */
-  async printReport(
+  async buildReportJob(
     venueId: string,
     usage: PrinterUsage,
     opts: { title: string; lines: string[]; footer?: string[] },
-  ): Promise<{ printed: boolean; reason?: string }> {
+  ): Promise<PrintJob> {
     const printerConfig = await this.getPrinter(venueId, usage);
     if (!printerConfig) {
       this.logger.warn(`Nessuna stampante configurata per uso=${usage} venue=${venueId}`);
-      return { printed: false, reason: 'NO_PRINTER_CONFIGURED' };
+      return { ready: false, reason: 'NO_PRINTER_CONFIGURED' };
     }
 
     const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
-
-    try {
-      const isConnected = await printer.isPrinterConnected();
-      if (!isConnected) {
-        return { printed: false, reason: 'PRINTER_UNREACHABLE' };
-      }
-
-      printer.alignCenter();
-      printer.bold(true);
-      printer.println(opts.title);
-      printer.bold(false);
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println(opts.title);
+    printer.bold(false);
+    printer.drawLine();
+    printer.alignLeft();
+    for (const line of opts.lines) {
+      printer.println(line);
+    }
+    if (opts.footer?.length) {
       printer.drawLine();
-      printer.alignLeft();
-      for (const line of opts.lines) {
+      for (const line of opts.footer) {
         printer.println(line);
       }
-      if (opts.footer?.length) {
-        printer.drawLine();
-        for (const line of opts.footer) {
-          printer.println(line);
-        }
-      }
-      printer.cut();
-      await printer.execute();
-      return { printed: true };
-    } catch (err) {
-      this.logger.error(`Errore di stampa: ${(err as Error).message}`);
-      return { printed: false, reason: 'PRINT_ERROR' };
     }
+    printer.cut();
+
+    return {
+      ready: true,
+      host: printerConfig.host,
+      port: printerConfig.port,
+      dataBase64: printer.getBuffer().toString('base64'),
+    };
   }
 }

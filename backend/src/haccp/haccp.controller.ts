@@ -69,10 +69,14 @@ export class HaccpController {
     return this.haccpService.listReadings(requireVenueId(user), from, to);
   }
 
-  /** Stampa il report giornaliero su stampante POS Epson e registra la firma. */
-  @Post('report/print')
+  /**
+   * Prepara il contenuto ESC/POS del report giornaliero: va poi inviato
+   * alla stampante dal browser (QZ Tray), non da qui — v.
+   * frontend/src/printing/qzPrint.ts.
+   */
+  @Post('report/print-job')
   @Roles(Role.ADMIN, Role.MANAGER)
-  async printReport(
+  async printJob(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { reportDate: string; signedByName: string },
   ) {
@@ -84,19 +88,32 @@ export class HaccpController {
         `${r.fridge.label.padEnd(20)} ${r.value}°C ${r.outOfRange ? '[FUORI SOGLIA]' : ''} - ${r.recordedAt.toLocaleTimeString('it-IT')}`,
     );
 
-    const result = await this.printing.printReport(venueId, PrinterUsage.HACCP, {
+    return this.printing.buildReportJob(venueId, PrinterUsage.HACCP, {
       title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
       lines,
       footer: [`Firmato da: ${body.signedByName}`, '', '_________________________'],
     });
+  }
 
+  /**
+   * Registra la firma del report giornaliero. `printedOnPos` riflette
+   * l'esito della stampa già tentata dal browser (v. `report/print-job`),
+   * non uno stato deciso qui.
+   */
+  @Post('report/print')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  async printReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { reportDate: string; signedByName: string; printedOnPos: boolean },
+  ) {
+    const venueId = requireVenueId(user);
     const report = await this.haccpService.signReport(venueId, {
       reportDate: body.reportDate,
       signedByName: body.signedByName,
-      printedOnPos: result.printed,
+      printedOnPos: body.printedOnPos,
     });
 
-    return { report, print: result };
+    return { report };
   }
 
   /** Alternativa 100% digitale: PDF con firma a video (immagine base64). */

@@ -29,6 +29,7 @@
     "dayjs": "^1.11.12",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
+    "qz-tray": "^2.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^6.2.3",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",
+    "@types/qz-tray": "^2.2.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

@@ -111,7 +111,10 @@ export class OrdersService {
 
   /**
    * Conferma e invia l'ordine: email al fornitore (in CC i responsabili di
-   * reparto/categoria configurati) + stampa checklist su stampante POS.
+   * reparto/categoria configurati). La stampa della checklist POS non è
+   * più fatta da qui: il frontend, dopo l'invio, prepara e invia il
+   * lavoro di stampa dal browser (v. buildPrintJob e
+   * frontend/src/printing/qzPrint.ts).
    */
   async sendOrder(user: AuthenticatedUser, orderId: string) {
     const venueId = requireVenueId(user);
@@ -142,12 +145,6 @@ export class OrdersService {
       text: `Buongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
     });
 
-    const printResult = await this.printing.printReport(
-      venueId,
-      PrinterUsage.ORDERS,
-      this.buildPrintPayload(order),
-    );
-
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: OrderStatus.SENT, sentAt: new Date() },
@@ -164,7 +161,7 @@ export class OrdersService {
       after: updated,
     });
 
-    return { order: updated, email: emailResult, print: printResult };
+    return { order: updated, email: emailResult };
   }
 
   /**
@@ -194,10 +191,14 @@ export class OrdersService {
     return { title: `Ordine ${order.supplier.name}`, lines, footer };
   }
 
-  /** Ristampa la checklist ordine su richiesta, dallo storico, in qualsiasi momento dopo l'invio. */
-  async printAgain(venueId: string, orderId: string) {
+  /**
+   * Prepara la checklist ordine per la stampa (all'invio o su richiesta
+   * dallo storico, in qualsiasi momento dopo l'invio): il browser la
+   * inoltra poi alla stampante via QZ Tray.
+   */
+  async buildPrintJob(venueId: string, orderId: string) {
     const order = await this.getOrder(venueId, orderId);
-    return this.printing.printReport(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
+    return this.printing.buildReportJob(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
   }
 
   /** PDF dell'ordine: fornitore, data, autore, righe con importi singoli e totale. */

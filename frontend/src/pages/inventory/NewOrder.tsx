@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { deliverPrintJob, type PrintJobResponse, type PrintOutcome } from '../../printing/qzPrint';
 
 interface Supplier {
   id: string;
@@ -127,7 +128,12 @@ export function NewOrder() {
     ) ?? 0;
 
   const sendMutation = useMutation({
-    mutationFn: async () => (await api.post(`/inventory/orders/${createdOrderId}/send`)).data,
+    mutationFn: async (): Promise<PrintOutcome> => {
+      await api.post(`/inventory/orders/${createdOrderId}/send`);
+      const job = (await api.post<PrintJobResponse>(`/inventory/orders/${createdOrderId}/print`))
+        .data;
+      return deliverPrintJob(job);
+    },
   });
 
   return (
@@ -272,8 +278,10 @@ export function NewOrder() {
                   Invia ordine (email + stampa)
                 </Button>
                 {sendMutation.isSuccess && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    Ordine inviato.
+                  <Alert severity={sendMutation.data.printed ? 'success' : 'warning'} sx={{ mt: 2 }}>
+                    {sendMutation.data.printed
+                      ? 'Ordine inviato e stampato.'
+                      : 'Ordine inviato (stampa non riuscita: verifica che QZ Tray sia in esecuzione e che la stampante sia raggiungibile).'}
                   </Alert>
                 )}
               </Box>

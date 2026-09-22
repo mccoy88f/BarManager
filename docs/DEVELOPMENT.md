@@ -316,10 +316,11 @@ Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/ema
 
 ### 9.2 Stampanti di rete
 
-Le stampanti Epson POS via Ethernet devono essere raggiungibili dal container backend sulla porta **9100/TCP**:
+La stampa (report HACCP, checklist ordini, test da Impostazioni) non parte più dal server: il backend prepara solo il contenuto ESC/POS (`PrintingService.buildTestJob`/`buildReportJob`, che restituiscono `{host, port, dataBase64}` senza aprire alcuna connessione) e il **browser** lo consegna alla stampante tramite [QZ Tray](https://qz.io/), raggiungendola in TCP diretto sulla porta **9100** dalla propria rete locale (`frontend/src/printing/qzPrint.ts`).
 
-- **Locale con server on-premise** (mini-PC nel bar che fa da host Docker): nessun problema, stessa LAN — configurazione consigliata.
-- **Deploy cloud** (VPS con Portainer/Coolify): serve una VPN/agente locale (es. WireGuard/Tailscale) che esponga le stampanti della LAN al backend cloud.
+- Su ogni PC/dispositivo da cui si stampa va installato e avviato **QZ Tray** (https://qz.io/download/), sulla stessa LAN delle stampanti. Al primo utilizzo QZ Tray mostra un popup di autorizzazione per il sito: va accettato (facoltativo "ricorda la decisione" per non richiederlo ogni volta). Le connessioni non sono firmate con un certificato: per un'installazione senza quel popup occasionale, si può aggiungere la firma via `qz.security.setCertificatePromise`/`setSignaturePromise` (v. `qzPrint.ts`), tenendo la chiave privata solo lato server.
+- Questo funziona a prescindere da dove sia ospitato il backend (on-premise o cloud), perché la connessione alla stampante parte sempre dalla LAN del locale, non dal server.
+- Alternativa se non si vuole installare QZ Tray su ogni postazione: una VPN/agente locale (es. WireGuard/Tailscale) che esponga le stampanti della LAN al backend, tornando alla vecchia stampa lato server — richiederebbe però di ripristinare l'esecuzione (`execute()`) in `PrintingService`, oggi rimossa.
 
 ---
 

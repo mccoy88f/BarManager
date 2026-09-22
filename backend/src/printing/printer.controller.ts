@@ -62,12 +62,15 @@ export class PrinterController {
     return { success: true };
   }
 
-  /** Stampa una ricevuta di prova per verificare che la stampante sia raggiungibile e configurata. */
+  /**
+   * Prepara una ricevuta di prova: il contenuto va poi inviato alla
+   * stampante dal browser (QZ Tray), non da qui.
+   */
   @Post(':id/test')
   async test(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     const venueId = requireVenueId(user);
     await this.assertOwnership(venueId, id);
-    return this.printing.printTest(venueId, id);
+    return this.printing.buildTestJob(venueId, id);
   }
 
   private async assertOwnership(venueId: string, printerId: string) {

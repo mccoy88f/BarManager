@@ -135,9 +135,9 @@ describe('OrdersService.updateLineQty', () => {
   });
 });
 
-describe('OrdersService.printAgain / exportPdf', () => {
+describe('OrdersService.buildPrintJob / exportPdf', () => {
   let prisma: { order: { findUnique: jest.Mock } };
-  let printing: { printReport: jest.Mock };
+  let printing: { buildReportJob: jest.Mock };
   let pdf: { buildDocument: jest.Mock };
   let service: OrdersService;
 
@@ -156,7 +156,7 @@ describe('OrdersService.printAgain / exportPdf', () => {
 
   beforeEach(() => {
     prisma = { order: { findUnique: jest.fn().mockResolvedValue(order) } };
-    printing = { printReport: jest.fn().mockResolvedValue({ printed: true }) };
+    printing = { buildReportJob: jest.fn().mockResolvedValue({ ready: true }) };
     pdf = {
       buildDocument: jest.fn(async (build) => {
         const calls: string[] = [];
@@ -181,10 +181,10 @@ describe('OrdersService.printAgain / exportPdf', () => {
     );
   });
 
-  it('ristampa la checklist con le sole righe ordinate (quantità > 0)', async () => {
-    await service.printAgain('venue-1', 'order-1');
+  it('prepara la checklist con le sole righe ordinate (quantità > 0)', async () => {
+    await service.buildPrintJob('venue-1', 'order-1');
 
-    expect(printing.printReport).toHaveBeenCalledWith('venue-1', 'ORDERS', {
+    expect(printing.buildReportJob).toHaveBeenCalledWith('venue-1', 'ORDERS', {
       title: 'Ordine Fornitore SRL',
       lines: [`${'Birra'.padEnd(24)} x 3 cassa  €10.00 = €30.00`],
       footer: ['Checklist per controllo scarico merce ->', '', 'TOTALE: €30.00'],
