@@ -26,15 +26,18 @@ export function MenuPublicLink() {
         Menù
       </Button>
 
-      <Card>
+      <Box>
+        <Typography variant="h5" fontWeight={700}>
+          Link e QR code del menù pubblico
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          I clienti possono vedere il menù, senza login, a questo indirizzo o scansionando il QR
+          code.
+        </Typography>
+      </Box>
+
+      <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Link e QR code del menù pubblico
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            I clienti possono vedere il menù, senza login, a questo indirizzo o scansionando il
-            QR code:
-          </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
             <Stack spacing={1} sx={{ flexGrow: 1, width: '100%' }}>
               <TextField
