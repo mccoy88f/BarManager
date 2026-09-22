@@ -16,7 +16,11 @@
     "seed": "ts-node --transpile-only --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" prisma/seed.ts"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
@@ -50,6 +54,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sanitize-html": "^2.13.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   },
@@ -65,6 +70,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/pdfkit": "^0.13.4",
     "@types/qrcode": "^1.5.5",
+    "@types/sanitize-html": "^2.13.0",
     "jest": "^30.5.2",
     "ts-jest": "^29.4.12"
   }

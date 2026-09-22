@@ -9,6 +9,8 @@ async function bootstrap() {
 
   const uploadsDir = process.env.UPLOADS_DIR || './uploads';
   mkdirSync(`${uploadsDir}/menu`, { recursive: true });
+  mkdirSync(`${uploadsDir}/board`, { recursive: true });
+  mkdirSync(`${uploadsDir}/kb`, { recursive: true });
   app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
 
   app.setGlobalPrefix('api');

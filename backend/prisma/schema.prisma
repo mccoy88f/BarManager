@@ -67,6 +67,8 @@ model Venue {
   menuCategories    MenuCategory[]
   menuItems         MenuItem[]
   tasks             Task[]
+  boardMessages     BoardMessage[]
+  kbArticles        KbArticle[]
 }
 
 model User {
@@ -89,6 +91,8 @@ model User {
   notifications           Notification[]
   tasksAssigned           Task[]              @relation("TaskAssignedTo")
   tasksCreated            Task[]              @relation("TaskCreatedBy")
+  boardMessages           BoardMessage[]
+  kbArticles              KbArticle[]
 }
 
 // ---------------------------------------------------------------------------
@@ -609,6 +613,55 @@ model AuditLog {
   user   User   @relation(fields: [userId], references: [id])
 
   @@index([entity, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Bacheca
+// ---------------------------------------------------------------------------
+
+/// Messaggio di bacheca creato dall'admin: se pinnato compare subito in home,
+/// altrimenti solo nell'elenco completo. Foto opzionale, ingrandibile in un
+/// modale al click.
+model BoardMessage {
+  id       String  @id @default(cuid())
+  text     String
+  photoUrl String?
+  pinned   Boolean @default(false)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, pinned, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// KBpedia
+// ---------------------------------------------------------------------------
+
+/// Articolo della knowledge base interna: testo ricco (HTML sanificato lato
+/// server) con foto e/o video incorporati, scritto dall'admin e visibile a
+/// tutti i dipendenti del locale.
+model KbArticle {
+  id          String @id @default(cuid())
+  title       String
+  contentHtml String
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, createdAt])
 }
 
 enum NotificationType {

@@ -18,6 +18,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PrintingModule } from './printing/printing.module';
 import { HealthModule } from './health/health.module';
+import { BoardModule } from './board/board.module';
+import { KbModule } from './kb/kb.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { HealthModule } from './health/health.module';
     DashboardModule,
     PrintingModule,
     HealthModule,
+    BoardModule,
+    KbModule,
   ],
   providers: [
     // ThrottlerModule era registrato ma mai applicato: senza questo guard
