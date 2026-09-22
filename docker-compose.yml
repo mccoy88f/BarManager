@@ -81,7 +81,16 @@ services:
     # avvio/deploy. Va bene per questa fase del progetto; prima di andare
     # live con dati reali conviene passare a migrazioni versionate
     # ("prisma migrate deploy", vedi docs/DEVELOPMENT.md §10).
-    command: sh -c "npx prisma db push && node dist/main"
+    #
+    # "npm run prisma:auto-migrate" gira prima e non fa nulla su un
+    # database già aggiornato: esiste solo per lo storico passaggio da un
+    # prezzo unico per voce di menù a più varianti, che "db push" da solo
+    # applicherebbe perdendo i prezzi già salvati (v. commenti nello
+    # script). Da qui in avanti "db push" gira con --accept-data-loss
+    # perché quel passaggio lo rende sicuro; resta comunque prudente
+    # rivedere il diff di schema.prisma prima di un deploy che tocca
+    # colonne con dati importanti.
+    command: sh -c "npm run prisma:auto-migrate && npx prisma db push --accept-data-loss && node dist/main"
     # GET /api/health verifica anche la connessione al database (§health
     # in backend/src/health): se Postgres diventa irraggiungibile dopo
     # l'avvio, il container viene segnalato "unhealthy". Node invece di
