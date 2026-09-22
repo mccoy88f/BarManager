@@ -9,6 +9,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   Chip,
@@ -105,7 +106,8 @@ export function Venues() {
       </Card>
 
       <Typography variant="h6">Locali</Typography>
-      <Table size="small">
+      <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+        <Table size="small">
         <TableHead>
           <TableRow>
             <TableCell>Nome</TableCell>
@@ -139,7 +141,8 @@ export function Venues() {
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </TableContainer>
     </Box>
   );
 }
