@@ -50,10 +50,15 @@ function printContent(content: { title: string; lines: string[]; footer?: string
   <head>
     <meta charset="utf-8" />
     <style>
-      @page { margin: 4mm; }
+      /* Altezza fissa (non "auto"): con "auto" alcuni browser scartano la
+         dimensione personalizzata e tornano a un foglio A4/Letter intero.
+         Una stampante termica taglia comunque il rotolo dove finisce il
+         contenuto, quindi un'altezza "esagerata" non stampa pagine vuote. */
+      @page { size: 80mm 2000mm; margin: 0; }
       body {
-        width: 72mm;
-        margin: 0 auto;
+        margin: 0;
+        padding: 3mm;
+        width: 74mm;
         font-family: 'Courier New', monospace;
         font-size: 12px;
         white-space: pre-wrap;
