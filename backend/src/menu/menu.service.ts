@@ -10,9 +10,29 @@ import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 export class MenuService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Con l'integrazione Loyverse attiva il catalogo (categorie, voci,
+   * prezzi) è gestito esclusivamente da lì: qui blocchiamo le modifiche
+   * manuali "di contenuto". Restano sempre permesse le operazioni di sola
+   * presentazione (visibilità, disponibilità, riordino categorie, foto),
+   * che sync.ts (motore di sincronizzazione) non tocca mai.
+   */
+  private async assertNotLoyverseManaged(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { loyverseIntegrationEnabled: true },
+    });
+    if (venue?.loyverseIntegrationEnabled) {
+      throw new BadRequestException(
+        "Il menù è gestito da Loyverse: modifica prodotti, prezzi e categorie da lì. Qui puoi solo decidere cosa mostrare online.",
+      );
+    }
+  }
+
   // ---- Categorie ------------------------------------------------------
 
   async createCategory(venueId: string, dto: CreateMenuCategoryDto) {
+    await this.assertNotLoyverseManaged(venueId);
     let { sortOrder } = dto;
     if (sortOrder === undefined) {
       const last = await this.prisma.menuCategory.findFirst({
@@ -62,6 +82,7 @@ export class MenuService {
   }
 
   async updateCategory(venueId: string, categoryId: string, dto: UpdateMenuCategoryDto) {
+    await this.assertNotLoyverseManaged(venueId);
     const category = await this.prisma.menuCategory.findUnique({ where: { id: categoryId } });
     if (!category || category.venueId !== venueId) {
       throw new NotFoundException('Categoria non trovata');
@@ -70,6 +91,7 @@ export class MenuService {
   }
 
   async removeCategory(venueId: string, categoryId: string) {
+    await this.assertNotLoyverseManaged(venueId);
     const category = await this.prisma.menuCategory.findUnique({
       where: { id: categoryId },
       include: { items: true },
@@ -88,21 +110,53 @@ export class MenuService {
 
   // ---- Voci di menù (amministrazione) ------------------------------------
 
-  createItem(venueId: string, dto: CreateMenuItemDto) {
-    return this.prisma.menuItem.create({ data: { ...dto, venueId } });
+  async createItem(venueId: string, dto: CreateMenuItemDto) {
+    await this.assertNotLoyverseManaged(venueId);
+    const { variants, ...item } = dto;
+    return this.prisma.menuItem.create({
+      data: {
+        ...item,
+        venueId,
+        variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
+      },
+      include: { variants: true },
+    });
   }
 
   listItems(venueId: string, categoryId?: string) {
     return this.prisma.menuItem.findMany({
       where: { venueId, categoryId },
       orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
-      include: { category: true },
+      include: { category: true, variants: { orderBy: { sortOrder: 'asc' } } },
     });
   }
 
+  /**
+   * Le varianti si sostituiscono sempre tutte insieme quando arrivano nel
+   * corpo della richiesta: il form admin invia l'elenco completo a ogni
+   * salvataggio, non serve una patch riga-per-riga.
+   */
   async updateItem(venueId: string, itemId: string, dto: UpdateMenuItemDto) {
     await this.assertOwnership(venueId, itemId);
-    return this.prisma.menuItem.update({ where: { id: itemId }, data: dto });
+    if (dto.name !== undefined || dto.categoryId !== undefined || dto.variants !== undefined) {
+      await this.assertNotLoyverseManaged(venueId);
+    }
+    const { variants, ...item } = dto;
+    return this.prisma.$transaction(async (tx) => {
+      if (variants) {
+        await tx.menuItemVariant.deleteMany({ where: { menuItemId: itemId } });
+      }
+      return tx.menuItem.update({
+        where: { id: itemId },
+        data: {
+          ...item,
+          ...(variants && {
+            variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
+          }),
+        },
+        include: { variants: true },
+      });
+    });
   }
 
   async setVisibility(venueId: string, itemId: string, visible: boolean) {
@@ -125,6 +179,7 @@ export class MenuService {
 
   async deleteItem(venueId: string, itemId: string) {
     await this.assertOwnership(venueId, itemId);
+    await this.assertNotLoyverseManaged(venueId);
     return this.prisma.menuItem.delete({ where: { id: itemId } });
   }
 
@@ -186,6 +241,7 @@ export class MenuService {
         items: {
           where: { visible: true, availability: { in: allowedAvailabilities } },
           orderBy: { sortOrder: 'asc' },
+          include: { variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } } },
         },
       },
     });
@@ -209,7 +265,7 @@ export class MenuService {
             id: item.id,
             name: item.name,
             description: item.description,
-            price: item.price,
+            variants: item.variants.map((v) => ({ id: v.id, name: v.name, price: v.price })),
             photoUrl: item.photoUrl,
             allergens: item.allergens,
             available: !item.unavailableUntil || item.unavailableUntil <= now,

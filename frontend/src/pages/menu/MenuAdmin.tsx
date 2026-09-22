@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -35,17 +36,37 @@ interface MenuCategory {
   id: string;
   name: string;
 }
+interface MenuItemVariant {
+  id: string;
+  name: string;
+  price: number;
+}
 interface MenuItemRow {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  variants: MenuItemVariant[];
   photoUrl?: string;
   allergens: string[];
   availability: 'LUNCH' | 'DINNER' | 'ALL_DAY';
   visible: boolean;
   unavailableUntil?: string;
   categoryId: string;
+}
+
+interface VariantForm {
+  name: string;
+  price: string;
+}
+
+const emptyVariant: VariantForm = { name: '', price: '' };
+
+/** "€ 3.50" con una sola riga, "da € 3.50" quando ce ne sono più. */
+function formatPriceLabel(variants: MenuItemVariant[]): string {
+  if (variants.length === 0) return '';
+  if (variants.length === 1) return `€ ${variants[0].price.toFixed(2)}`;
+  const min = Math.min(...variants.map((v) => v.price));
+  return `da € ${min.toFixed(2)}`;
 }
 
 const availabilityLabels: Record<string, string> = {
@@ -92,11 +113,11 @@ export function MenuAdmin() {
   const [itemToDelete, setItemToDelete] = useState<MenuItemRow | null>(null);
   const [newItem, setNewItem] = useState({
     name: '',
-    price: '',
     categoryId: '',
     description: '',
     availability: 'ALL_DAY',
   });
+  const [variantForms, setVariantForms] = useState<VariantForm[]>([emptyVariant]);
 
   const categoriesQuery = useQuery({
     queryKey: ['menu-categories'],
@@ -107,6 +128,12 @@ export function MenuAdmin() {
     queryKey: ['menu-items'],
     queryFn: async () => (await api.get<MenuItemRow[]>('/menu/items')).data,
   });
+
+  const loyverseStatusQuery = useQuery({
+    queryKey: ['loyverse-status'],
+    queryFn: async () => (await api.get<{ enabled: boolean }>('/loyverse/status')).data,
+  });
+  const locked = loyverseStatusQuery.data?.enabled === true;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['menu-items'] });
 
@@ -141,14 +168,18 @@ export function MenuAdmin() {
 
   const saveItemMutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...newItem, price: Number(newItem.price) };
+      const payload = {
+        ...newItem,
+        variants: variantForms.map((v) => ({ name: v.name.trim(), price: Number(v.price) })),
+      };
       return editingItem
         ? (await api.patch(`/menu/items/${editingItem.id}`, payload)).data
         : (await api.post('/menu/items', payload)).data;
     },
     onSuccess: () => {
       invalidate();
-      setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+      setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+      setVariantForms([emptyVariant]);
       setItemDialogOpen(false);
       setEditingItem(null);
     },
@@ -221,7 +252,8 @@ export function MenuAdmin() {
 
   const openItemDialog = () => {
     setEditingItem(null);
-    setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+    setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+    setVariantForms([emptyVariant]);
     setItemDialogOpen(true);
   };
 
@@ -229,13 +261,29 @@ export function MenuAdmin() {
     setEditingItem(item);
     setNewItem({
       name: item.name,
-      price: String(item.price),
       categoryId: item.categoryId,
       description: item.description ?? '',
       availability: item.availability,
     });
+    setVariantForms(
+      item.variants.length > 0
+        ? item.variants.map((v) => ({ name: v.name, price: String(v.price) }))
+        : [emptyVariant],
+    );
     setItemDialogOpen(true);
   };
+
+  const addVariantForm = () => setVariantForms((rows) => [...rows, emptyVariant]);
+  const removeVariantForm = (index: number) =>
+    setVariantForms((rows) => rows.filter((_, i) => i !== index));
+  const updateVariantForm = (index: number, patch: Partial<VariantForm>) =>
+    setVariantForms((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  const canSubmitItem =
+    !!newItem.name &&
+    !!newItem.categoryId &&
+    variantForms.length > 0 &&
+    variantForms.every((v) => v.price.trim() !== '' && Number(v.price) >= 0);
 
   const publicMenuUrl = `${window.location.origin}/menu`;
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -298,13 +346,23 @@ export function MenuAdmin() {
         </CardContent>
       </Card>
 
+      {locked && (
+        <Alert severity="info">
+          Il menù è sincronizzato da Loyverse: categorie, prodotti e prezzi si gestiscono da lì.
+          Qui puoi ancora decidere cosa mostrare online (visibilità, disponibilità, foto) — per
+          disattivare la sincronizzazione vai in Impostazioni locale.
+        </Alert>
+      )}
+
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">Categorie</Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCategoryDialog}>
-              Aggiungi categoria
-            </Button>
+            {!locked && (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={openCategoryDialog}>
+                Aggiungi categoria
+              </Button>
+            )}
           </Box>
 
           <Stack spacing={0.5} sx={{ mt: 2 }}>
@@ -334,19 +392,23 @@ export function MenuAdmin() {
                   >
                     <ArrowDownwardIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" title="Modifica" onClick={() => openEditCategory(category)}>
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    title="Elimina"
-                    onClick={() => {
-                      setCategoryDeleteError(null);
-                      setCategoryToDelete(category);
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                  {!locked && (
+                    <>
+                      <IconButton size="small" title="Modifica" onClick={() => openEditCategory(category)}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Elimina"
+                        onClick={() => {
+                          setCategoryDeleteError(null);
+                          setCategoryToDelete(category);
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </>
+                  )}
                 </Stack>
               </Box>
             ))}
@@ -356,9 +418,11 @@ export function MenuAdmin() {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6">Voci di menù</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openItemDialog}>
-          Aggiungi al menù
-        </Button>
+        {!locked && (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openItemDialog}>
+            Aggiungi al menù
+          </Button>
+        )}
       </Box>
       <Stack spacing={2}>
         {itemsQuery.data?.map((item) => (
@@ -376,8 +440,13 @@ export function MenuAdmin() {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <Typography variant="subtitle1" fontWeight={600}>
-                      {item.name} — € {item.price.toFixed(2)}
+                      {item.name} — {formatPriceLabel(item.variants)}
                     </Typography>
+                    {item.variants.length > 1 && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {item.variants.map((v) => `${v.name || 'Standard'}: € ${v.price.toFixed(2)}`).join(' · ')}
+                      </Typography>
+                    )}
                     <Typography variant="body2" color="text.secondary">
                       {item.description}
                     </Typography>
@@ -441,12 +510,16 @@ export function MenuAdmin() {
                       }
                       title="Mostra/nascondi dal menù"
                     />
-                    <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {!locked && (
+                      <>
+                        <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </>
+                    )}
                   </Stack>
                 </Box>
               </CardContent>
@@ -503,12 +576,6 @@ export function MenuAdmin() {
             onChange={(e) => setNewItem((v) => ({ ...v, name: e.target.value }))}
           />
           <TextField
-            label="Prezzo (€)"
-            type="number"
-            value={newItem.price}
-            onChange={(e) => setNewItem((v) => ({ ...v, price: e.target.value }))}
-          />
-          <TextField
             select
             label="Categoria"
             value={newItem.categoryId}
@@ -541,14 +608,49 @@ export function MenuAdmin() {
             onChange={(e) => setNewItem((v) => ({ ...v, description: e.target.value }))}
             sx={{ gridColumn: '1 / -1' }}
           />
+
+          <Box sx={{ gridColumn: '1 / -1' }}>
+            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              Prezzo
+            </Typography>
+            <Stack spacing={1}>
+              {variantForms.map((variant, index) => (
+                <Stack key={index} direction="row" spacing={1} alignItems="center">
+                  {variantForms.length > 1 && (
+                    <TextField
+                      label="Formato (es. Piccola)"
+                      size="small"
+                      value={variant.name}
+                      onChange={(e) => updateVariantForm(index, { name: e.target.value })}
+                      sx={{ flex: 1 }}
+                    />
+                  )}
+                  <TextField
+                    label="Prezzo (€)"
+                    type="number"
+                    size="small"
+                    value={variant.price}
+                    onChange={(e) => updateVariantForm(index, { price: e.target.value })}
+                    sx={{ width: variantForms.length > 1 ? 120 : '100%' }}
+                  />
+                  {variantForms.length > 1 && (
+                    <IconButton size="small" title="Rimuovi formato" onClick={() => removeVariantForm(index)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+            <Button size="small" startIcon={<AddIcon />} sx={{ mt: 1 }} onClick={addVariantForm}>
+              Aggiungi formato (es. piccola/grande)
+            </Button>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setItemDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={
-              !newItem.name || !newItem.price || !newItem.categoryId || saveItemMutation.isPending
-            }
+            disabled={!canSubmitItem || saveItemMutation.isPending}
             onClick={() => saveItemMutation.mutate()}
           >
             {editingItem ? 'Salva' : 'Aggiungi al menù'}

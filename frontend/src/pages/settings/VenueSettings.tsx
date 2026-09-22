@@ -6,12 +6,28 @@ import {
   Button,
   Card,
   CardContent,
+  FormControlLabel,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import SyncIcon from '@mui/icons-material/Sync';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+
+interface LoyverseStatus {
+  enabled: boolean;
+  hasToken: boolean;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+}
+interface LoyverseSyncResult {
+  categories: number;
+  items: number;
+  imagesDownloaded: number;
+  imagesSkipped: boolean;
+}
 
 interface VenueHours {
   id: string;
@@ -115,6 +131,53 @@ export function VenueSettings() {
       return (await api.post('/venues/me/menu-cover', form)).data;
     },
     onSuccess: menuQueryInvalidate,
+  });
+
+  const [loyverseToken, setLoyverseToken] = useState('');
+  const [loyverseError, setLoyverseError] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<LoyverseSyncResult | null>(null);
+
+  const loyverseStatusQuery = useQuery({
+    queryKey: ['loyverse-status'],
+    queryFn: async () => (await api.get<LoyverseStatus>('/loyverse/status')).data,
+  });
+
+  const loyverseInvalidate = () => queryClient.invalidateQueries({ queryKey: ['loyverse-status'] });
+
+  const toggleLoyverseMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      (await api.patch('/loyverse/settings', { enabled })).data,
+    onSuccess: () => {
+      loyverseInvalidate();
+      setLoyverseError(null);
+    },
+    onError: (err) => setLoyverseError(extractErrorMessage(err)),
+  });
+
+  const saveLoyverseTokenMutation = useMutation({
+    mutationFn: async () => (await api.patch('/loyverse/settings', { accessToken: loyverseToken })).data,
+    onSuccess: () => {
+      loyverseInvalidate();
+      setLoyverseToken('');
+      setLoyverseError(null);
+    },
+    onError: (err) => setLoyverseError(extractErrorMessage(err)),
+  });
+
+  const syncLoyverseMutation = useMutation({
+    mutationFn: async () => (await api.post<LoyverseSyncResult>('/loyverse/sync')).data,
+    onSuccess: (data) => {
+      setSyncResult(data);
+      setLoyverseError(null);
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['menu-items'] });
+      loyverseInvalidate();
+    },
+    onError: (err) => {
+      setSyncResult(null);
+      setLoyverseError(extractErrorMessage(err));
+      loyverseInvalidate();
+    },
   });
 
   return (
@@ -261,6 +324,90 @@ export function VenueSettings() {
             onClick={() => saveMenuSettingsMutation.mutate()}
           >
             Salva
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Integrazione Loyverse
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Quando attiva, categorie, prodotti, prezzi e immagini del menù arrivano da Loyverse:
+            qui si gestisce solo cosa mostrare online (visibilità, disponibilità, solo pranzo/cena).
+          </Typography>
+
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Switch
+                checked={loyverseStatusQuery.data?.enabled ?? false}
+                disabled={toggleLoyverseMutation.isPending}
+                onChange={(e) => toggleLoyverseMutation.mutate(e.target.checked)}
+              />
+            }
+            label={loyverseStatusQuery.data?.enabled ? 'Integrazione attiva' : 'Integrazione disattivata'}
+          />
+
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mt: 2, maxWidth: 500 }}>
+            <TextField
+              label={
+                loyverseStatusQuery.data?.hasToken
+                  ? 'Nuovo token di accesso Loyverse (lascia vuoto per non cambiarlo)'
+                  : 'Token di accesso Loyverse'
+              }
+              type="password"
+              fullWidth
+              value={loyverseToken}
+              onChange={(e) => setLoyverseToken(e.target.value)}
+              helperText="Generato dal Back Office Loyverse (Impostazioni > Punti vendita > API token)."
+            />
+            <Button
+              variant="outlined"
+              sx={{ flexShrink: 0 }}
+              disabled={!loyverseToken || saveLoyverseTokenMutation.isPending}
+              onClick={() => saveLoyverseTokenMutation.mutate()}
+            >
+              Salva token
+            </Button>
+          </Box>
+
+          {loyverseStatusQuery.data?.lastSyncAt && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+              Ultima sincronizzazione: {new Date(loyverseStatusQuery.data.lastSyncAt).toLocaleString('it-IT')}
+            </Typography>
+          )}
+          {loyverseStatusQuery.data?.lastSyncError && (
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              Ultima sincronizzazione non riuscita: {loyverseStatusQuery.data.lastSyncError}
+            </Alert>
+          )}
+          {loyverseError && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setLoyverseError(null)}>
+              {loyverseError}
+            </Alert>
+          )}
+          {syncResult && (
+            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setSyncResult(null)}>
+              Sincronizzate {syncResult.categories} categorie e {syncResult.items} voci di menù.
+              {syncResult.imagesSkipped
+                ? ' Nessuna immagine trovata su Loyverse per questi prodotti.'
+                : ` ${syncResult.imagesDownloaded} nuove immagini scaricate.`}
+            </Alert>
+          )}
+
+          <Button
+            variant="contained"
+            startIcon={<SyncIcon />}
+            sx={{ mt: 2 }}
+            disabled={!loyverseStatusQuery.data?.enabled || syncLoyverseMutation.isPending}
+            onClick={() => {
+              setSyncResult(null);
+              syncLoyverseMutation.mutate();
+            }}
+          >
+            Sincronizza ora
           </Button>
         </CardContent>
       </Card>

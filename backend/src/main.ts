@@ -8,19 +8,26 @@ import { AppModule } from './app.module';
  * auth.service.ts/jwt.strategy.ts ricadono su un segreto di sviluppo
  * fisso quando JWT_ACCESS_SECRET/JWT_REFRESH_SECRET non sono impostati:
  * comodo in locale, ma se dimenticato in produzione chiunque potrebbe
- * forgiare token validi. Meglio bloccare l'avvio che scoprirlo dopo.
+ * forgiare token validi. SECRET_ENCRYPTION_KEY cifra invece le credenziali
+ * di integrazioni esterne (es. token Loyverse) salvate su database: senza,
+ * common/crypto/secret-crypto.ts non può funzionare affatto (mai un
+ * fallback silenzioso per una cifratura). Meglio bloccare l'avvio che
+ * scoprirlo dopo.
  */
-function assertJwtSecretsConfigured() {
+function assertSecretsConfigured() {
   if (process.env.NODE_ENV !== 'production') return;
   if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
     throw new Error(
       'JWT_ACCESS_SECRET e JWT_REFRESH_SECRET devono essere impostati in produzione (NODE_ENV=production).',
     );
   }
+  if (!process.env.SECRET_ENCRYPTION_KEY) {
+    throw new Error('SECRET_ENCRYPTION_KEY deve essere impostata in produzione (NODE_ENV=production).');
+  }
 }
 
 async function bootstrap() {
-  assertJwtSecretsConfigured();
+  assertSecretsConfigured();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const uploadsDir = process.env.UPLOADS_DIR || './uploads';

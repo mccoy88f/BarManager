@@ -46,6 +46,17 @@ model Venue {
   menuFacebookUrl   String?
   menuWebsiteUrl    String?
 
+  // Integrazione Loyverse: quando attiva, categorie/voci/prezzi/immagini del
+  // menù arrivano da Loyverse (fonte unica per il catalogo) e in BarManager
+  // si gestisce solo la visibilità/disponibilità online — niente aggiunte o
+  // modifiche manuali di categorie/voci (v. menu.service.ts). Il token è
+  // sempre cifrato (v. common/crypto/secret-crypto.ts), mai in chiaro come
+  // le altre impostazioni.
+  loyverseIntegrationEnabled Boolean   @default(false)
+  loyverseAccessTokenEnc     String?
+  loyverseLastSyncAt         DateTime?
+  loyverseLastSyncError      String?
+
   // Metodi di timbratura verificata abilitati dall'admin (più di uno può
   // essere attivo insieme): QR di postazione, posizione GPS entro un raggio
   // dal locale, tag NFC fisico. Se nessuno è abilitato, resta disponibile la
@@ -509,6 +520,10 @@ model MenuCategory {
   name      String
   sortOrder Int    @default(0)
 
+  // Popolata solo dal sync Loyverse: chiave per aggiornare la categoria
+  // senza duplicarla ai sync successivi, mai impostata a mano.
+  loyverseCategoryId String?
+
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
@@ -517,13 +532,13 @@ model MenuCategory {
   createdAt DateTime @default(now())
 
   @@unique([venueId, name])
+  @@unique([venueId, loyverseCategoryId])
 }
 
 model MenuItem {
   id          String   @id @default(cuid())
   name        String
   description String?
-  price       Float
   photoUrl    String?
   allergens   Allergen[] @default([])
 
@@ -534,16 +549,47 @@ model MenuItem {
 
   sortOrder Int @default(0)
 
+  // Popolata solo dal sync Loyverse: raggruppa le varianti di uno stesso
+  // prodotto Loyverse sotto questa voce di menù, mai impostata a mano.
+  loyverseItemId String?
+
   categoryId String
   category   MenuCategory @relation(fields: [categoryId], references: [id])
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
+  variants MenuItemVariant[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([venueId, categoryId])
+  @@unique([venueId, loyverseItemId])
+}
+
+/// Prezzo di una voce di menù: quasi sempre una sola riga ("" come nome,
+/// prezzo unico), più righe quando il prodotto ha formati/taglie diverse
+/// (es. "Piccola" €3.50 / "Grande" €5.00) — a mano o sincronizzate da una
+/// voce Loyverse con più varianti.
+model MenuItemVariant {
+  id     String @id @default(cuid())
+  name   String @default("")
+  price  Float
+  active Boolean @default(true)
+
+  sortOrder Int @default(0)
+
+  // Popolata solo dal sync Loyverse.
+  loyverseVariantId String?
+
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([menuItemId, loyverseVariantId])
 }
 
 // ---------------------------------------------------------------------------

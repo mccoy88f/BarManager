@@ -1,5 +1,15 @@
 import { Allergen, MenuAvailability } from '@prisma/client';
-import { IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { MenuItemVariantDto } from './menu-item-variant.dto';
 
 export class CreateMenuItemDto {
   @IsString()
@@ -9,8 +19,12 @@ export class CreateMenuItemDto {
   @IsString()
   description?: string;
 
-  @IsNumber()
-  price: number;
+  /** Quasi sempre una sola riga; più righe per formati/taglie diverse. */
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => MenuItemVariantDto)
+  variants: MenuItemVariantDto[];
 
   @IsString()
   categoryId: string;

@@ -24,11 +24,16 @@ import FacebookIcon from '@mui/icons-material/Facebook';
 import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 
+interface PublicMenuVariant {
+  id: string;
+  name: string;
+  price: number;
+}
 interface PublicMenuItem {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  variants: PublicMenuVariant[];
   photoUrl?: string;
   allergens: string[];
   available: boolean;
@@ -70,7 +75,18 @@ const allergenLabels: Record<string, string> = {
 function matches(item: PublicMenuItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return item.name.toLowerCase().includes(q) || (item.description ?? '').toLowerCase().includes(q);
+  return (
+    item.name.toLowerCase().includes(q) ||
+    (item.description ?? '').toLowerCase().includes(q) ||
+    item.variants.some((v) => v.name.toLowerCase().includes(q))
+  );
+}
+
+/** "€ 3.50" con un solo formato, "da € 3.50" quando ce ne sono più. */
+function priceLabel(variants: PublicMenuVariant[]): string {
+  if (variants.length === 0) return '';
+  if (variants.length === 1) return `€ ${variants[0].price.toFixed(2)}`;
+  return `da € ${Math.min(...variants.map((v) => v.price)).toFixed(2)}`;
 }
 
 function MenuItemCard({ item }: { item: PublicMenuItem }) {
@@ -91,13 +107,20 @@ function MenuItemCard({ item }: { item: PublicMenuItem }) {
               {item.name}
             </Typography>
             <Typography variant="subtitle1" fontWeight={600}>
-              € {item.price.toFixed(2)}
+              {priceLabel(item.variants)}
             </Typography>
           </Box>
           {item.description && (
             <Typography variant="body2" color="text.secondary">
               {item.description}
             </Typography>
+          )}
+          {item.variants.length > 1 && (
+            <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {item.variants.map((v) => (
+                <Chip key={v.id} size="small" label={`${v.name || 'Standard'}: € ${v.price.toFixed(2)}`} />
+              ))}
+            </Box>
           )}
           <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
             {item.allergens.map((a) => (

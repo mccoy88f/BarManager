@@ -20,6 +20,7 @@ import { PrintingModule } from './printing/printing.module';
 import { HealthModule } from './health/health.module';
 import { BoardModule } from './board/board.module';
 import { KbModule } from './kb/kb.module';
+import { LoyverseModule } from './loyverse/loyverse.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { KbModule } from './kb/kb.module';
     HealthModule,
     BoardModule,
     KbModule,
+    LoyverseModule,
   ],
   providers: [
     // ThrottlerModule era registrato ma mai applicato: senza questo guard
