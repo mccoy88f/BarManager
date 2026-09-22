@@ -1,13 +1,15 @@
 /**
  * Client minimale per le API pubbliche di Loyverse (https://api.loyverse.com/v1.0).
  *
- * I nomi dei campi qui sotto (item_name, category_id, variant_id,
- * default_price, cursor) vengono da fonti di terze parti (SDK open source,
- * community Loyverse) perché la documentazione ufficiale non è stata
- * raggiungibile durante lo sviluppo: da verificare con un account reale
- * alla prima sincronizzazione vera. Il parsing è scritto in modo
- * defensivo (campi opzionali, niente eccezioni su un campo mancante) così
- * un nome sbagliato degrada a "dato assente", non a un sync che si rompe.
+ * Nomi dei campi verificati contro la documentazione ufficiale
+ * (developer.loyverse.com/docs) incollata dall'utente, non più da fonti di
+ * terze parti. In particolare: le varianti NON hanno un nome libero
+ * ("variant_name" non esiste) — il nome è la combinazione dei valori
+ * "option1_value"/"option2_value"/"option3_value" della variante, mentre
+ * l'item porta i nomi di quelle opzioni in "option1_name" ecc. Il prezzo
+ * "default_price" esiste solo quando "default_pricing_type" della
+ * variante è "FIXED"; con "VARIABLE" il prezzo si decide in cassa e non
+ * c'è nulla da sincronizzare per quella variante.
  */
 
 const BASE_URL = 'https://api.loyverse.com/v1.0';
@@ -20,8 +22,11 @@ export interface LoyverseCategory {
 
 export interface LoyverseVariant {
   variant_id: string;
-  default_price?: number;
-  variant_name?: string;
+  default_pricing_type?: 'FIXED' | 'VARIABLE';
+  default_price?: number | null;
+  option1_value?: string;
+  option2_value?: string;
+  option3_value?: string;
 }
 
 export interface LoyverseItem {
@@ -30,10 +35,14 @@ export interface LoyverseItem {
   category_id?: string | null;
   variants?: LoyverseVariant[];
   deleted_at?: string | null;
-  // Nome del campo immagine non confermato: proviamo le varianti più
-  // comuni viste in altre API POS.
   image_url?: string;
-  images?: { url?: string }[];
+}
+
+/** Nome variante per BarManager: i valori delle opzioni Loyverse uniti (es. "Piccola" o "Piccola, Rosso"). */
+export function variantDisplayName(variant: LoyverseVariant): string {
+  return [variant.option1_value, variant.option2_value, variant.option3_value]
+    .filter((v): v is string => !!v)
+    .join(', ');
 }
 
 export class LoyverseApiError extends Error {
@@ -46,7 +55,7 @@ export class LoyverseApiError extends Error {
 }
 
 function extractImageUrl(item: LoyverseItem): string | undefined {
-  return item.image_url || item.images?.[0]?.url || undefined;
+  return item.image_url || undefined;
 }
 
 async function fetchAllPages<T>(

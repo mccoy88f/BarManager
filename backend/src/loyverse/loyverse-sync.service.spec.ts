@@ -5,12 +5,12 @@ import { encryptSecret } from '../common/crypto/secret-crypto';
 import { loyverseClient } from './loyverse-client';
 
 jest.mock('./loyverse-client', () => ({
+  ...jest.requireActual('./loyverse-client'),
   loyverseClient: {
     listCategories: jest.fn(),
     listItems: jest.fn(),
     extractImageUrl: jest.fn(() => undefined),
   },
-  LoyverseApiError: class LoyverseApiError extends Error {},
 }));
 
 describe('LoyverseSyncService', () => {
@@ -62,7 +62,7 @@ describe('LoyverseSyncService', () => {
         id: 'item-ext-1',
         item_name: 'Birra',
         category_id: 'cat-ext-1',
-        variants: [{ variant_id: 'var-ext-1', default_price: 4.5 }],
+        variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 4.5 }],
       },
     ]);
     prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
@@ -106,6 +106,61 @@ describe('LoyverseSyncService', () => {
     (loyverseClient.listItems as jest.Mock).mockResolvedValue([
       { id: 'item-ext-1', item_name: 'Orfano', category_id: 'cat-mai-vista', variants: [] },
     ]);
+
+    const summary = await service.sync('venue-1');
+
+    expect(prisma.menuItem.create).not.toHaveBeenCalled();
+    expect(summary.items).toBe(1);
+  });
+
+  it('costruisce il nome variante dai valori delle opzioni Loyverse quando ce ne sono più di una', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Pizze' }]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+      {
+        id: 'item-ext-1',
+        item_name: 'Margherita',
+        category_id: 'cat-ext-1',
+        option1_name: 'Formato',
+        variants: [
+          { variant_id: 'var-s', default_pricing_type: 'FIXED', default_price: 6, option1_value: 'Piccola' },
+          { variant_id: 'var-l', default_pricing_type: 'FIXED', default_price: 9, option1_value: 'Grande' },
+        ],
+      },
+    ]);
+    prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
+    prisma.menuItem.create.mockResolvedValue({ id: 'item-local-1' });
+
+    await service.sync('venue-1');
+
+    expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
+      data: { name: 'Piccola', price: 6, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-s' },
+    });
+    expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
+      data: { name: 'Grande', price: 9, sortOrder: 1, menuItemId: 'item-local-1', loyverseVariantId: 'var-l' },
+    });
+  });
+
+  it('salta una voce le cui varianti sono tutte a prezzo variabile (deciso in cassa)', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Bevande' }]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+      {
+        id: 'item-ext-1',
+        item_name: 'Offerta libera',
+        category_id: 'cat-ext-1',
+        variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'VARIABLE', default_price: null }],
+      },
+    ]);
+    prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
 
     const summary = await service.sync('venue-1');
 

@@ -4,7 +4,7 @@ import { writeFile } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret } from '../common/crypto/secret-crypto';
 import { safeExtension } from '../common/upload/safe-extension';
-import { loyverseClient, LoyverseApiError, LoyverseItem } from './loyverse-client';
+import { loyverseClient, LoyverseApiError, LoyverseItem, LoyverseVariant, variantDisplayName } from './loyverse-client';
 
 export interface LoyverseSyncSummary {
   categories: number;
@@ -132,6 +132,16 @@ export class LoyverseSyncService {
       return false;
     }
 
+    const usableVariants = (remote.variants ?? []).filter(
+      (v) => v.default_pricing_type !== 'VARIABLE' && v.default_price != null,
+    );
+    if (usableVariants.length === 0) {
+      this.logger.warn(
+        `Voce Loyverse "${remote.item_name}" senza nessuna variante a prezzo fisso (tutte "VARIABLE"): saltata, il prezzo va deciso in cassa e non c'è nulla da sincronizzare.`,
+      );
+      return false;
+    }
+
     const existing = await this.prisma.menuItem.findFirst({
       where: { venueId, loyverseItemId: remote.id },
       include: { variants: true },
@@ -159,7 +169,7 @@ export class LoyverseSyncService {
       menuItemId = created.id;
     }
 
-    await this.syncVariants(menuItemId, remote.variants ?? [], existing?.variants ?? []);
+    await this.syncVariants(menuItemId, usableVariants, existing?.variants ?? []);
 
     let downloadedImage = false;
     if (!existing?.photoUrl) {
@@ -176,16 +186,16 @@ export class LoyverseSyncService {
     return downloadedImage;
   }
 
+  /** "usableVariants" è già filtrata alle sole varianti a prezzo fisso (v. syncItem). */
   private async syncVariants(
     menuItemId: string,
-    remoteVariants: { variant_id: string; default_price?: number; variant_name?: string }[],
+    usableVariants: LoyverseVariant[],
     existingVariants: { id: string; loyverseVariantId: string | null }[],
   ) {
-    const usable = remoteVariants.filter((v) => v.default_price != null);
-    for (const [index, remote] of usable.entries()) {
+    for (const [index, remote] of usableVariants.entries()) {
       const found = existingVariants.find((v) => v.loyverseVariantId === remote.variant_id);
       const data = {
-        name: usable.length > 1 ? remote.variant_name ?? '' : '',
+        name: usableVariants.length > 1 ? variantDisplayName(remote) : '',
         price: remote.default_price as number,
         sortOrder: index,
       };
@@ -198,10 +208,11 @@ export class LoyverseSyncService {
       }
     }
 
-    // Varianti rimosse in Loyverse: disattivate, non eliminate (nessuna
-    // dipendenza le referenzia oggi, ma teniamo lo storico coerente con lo
-    // stesso criterio usato altrove nell'app).
-    const remoteIds = new Set(usable.map((v) => v.variant_id));
+    // Varianti rimosse in Loyverse (o diventate "VARIABLE" senza prezzo
+    // fisso): disattivate, non eliminate (nessuna dipendenza le referenzia
+    // oggi, ma teniamo lo storico coerente con lo stesso criterio usato
+    // altrove nell'app).
+    const remoteIds = new Set(usableVariants.map((v) => v.variant_id));
     for (const variant of existingVariants) {
       if (variant.loyverseVariantId && !remoteIds.has(variant.loyverseVariantId)) {
         await this.prisma.menuItemVariant.update({ where: { id: variant.id }, data: { active: false } });
