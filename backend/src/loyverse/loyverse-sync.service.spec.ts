@@ -167,6 +167,36 @@ describe('LoyverseSyncService', () => {
     });
   });
 
+  it('sanifica la descrizione richtext di Loyverse in testo semplice, senza tag né formattazioni', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Bevande' }]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+      {
+        id: 'item-ext-1',
+        item_name: 'Birra',
+        description: '<p>Birra <b>artigianale</b> alla spina</p><p>Servita fredda</p>',
+        category_id: 'cat-ext-1',
+        variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 4.5 }],
+      },
+    ]);
+    prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
+    prisma.menuItem.create.mockResolvedValue({ id: 'item-local-1' });
+
+    await service.sync('venue-1');
+
+    expect(prisma.menuItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          description: 'Birra artigianale alla spina\nServita fredda',
+        }),
+      }),
+    );
+  });
+
   it('non modifica la visibilità di una voce già sincronizzata quando nulla è cambiato su Loyverse', async () => {
     prisma.venue.findUnique.mockResolvedValue({
       id: 'venue-1',

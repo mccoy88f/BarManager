@@ -1,11 +1,29 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { writeFile } from 'fs/promises';
+import sanitizeHtml from 'sanitize-html';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret } from '../common/crypto/secret-crypto';
 import { safeExtension } from '../common/upload/safe-extension';
 import { loyverseClient, LoyverseApiError, LoyverseItem, LoyverseVariant, variantDisplayName } from './loyverse-client';
+
+/**
+ * Le descrizioni Loyverse arrivano come richtext HTML (es. "<p>...</p>").
+ * Nel menù online vogliamo solo testo semplice, senza formattazioni: qui
+ * i tag di blocco diventano a capo, il resto viene rimosso.
+ */
+export function richTextToPlainText(html: string | null | undefined): string | null {
+  if (!html) return null;
+  const withBreaks = html.replace(/<\s*\/(p|div|li|h[1-6])\s*>|<\s*br\s*\/?>/gi, '\n');
+  const plain = sanitizeHtml(withBreaks, { allowedTags: [], allowedAttributes: {} });
+  const trimmed = plain
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+  return trimmed || null;
+}
 
 export interface LoyverseSyncSummary {
   categories: number;
@@ -234,7 +252,7 @@ export class LoyverseSyncService {
       include: { variants: true },
     });
 
-    const description = remote.description ?? null;
+    const description = richTextToPlainText(remote.description);
 
     let menuItemId: string;
     if (existing) {
