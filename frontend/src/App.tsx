@@ -12,6 +12,8 @@ import { NfcTags } from './pages/attendance/NfcTags';
 import { ClockInSettings } from './pages/attendance/ClockInSettings';
 import { AttendanceRecords } from './pages/attendance/AttendanceRecords';
 import { HaccpHome } from './pages/haccp/HaccpHome';
+import { HaccpTemperature } from './pages/haccp/HaccpTemperature';
+import { HaccpCleaning } from './pages/haccp/HaccpCleaning';
 import { InventoryHome } from './pages/inventory/InventoryHome';
 import { Suppliers } from './pages/inventory/Suppliers';
 import { Catalog } from './pages/inventory/Catalog';
@@ -67,6 +69,8 @@ export default function App() {
               l'Admin ha sempre accesso, Manager/Dipendente in base al permesso. */}
           <Route element={<ProtectedRoute moduleKey="haccp" />}>
             <Route path="/haccp" element={<HaccpHome />} />
+            <Route path="/haccp/temperature" element={<HaccpTemperature />} />
+            <Route path="/haccp/cleaning" element={<HaccpCleaning />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="inventory" />}>
             <Route path="/inventory" element={<InventoryHome />} />

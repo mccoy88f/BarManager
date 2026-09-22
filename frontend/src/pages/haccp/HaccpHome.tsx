@@ -1,44 +1,33 @@
-import { useState } from 'react';
-import { Box, Tab, Tabs } from '@mui/material';
-import { Fridges } from './Fridges';
-import { TemperatureEntry } from './TemperatureEntry';
-import { ReadingsHistory } from './ReadingsHistory';
-import { CleaningTasksAdmin } from './CleaningTasksAdmin';
-import { CleaningToday } from './CleaningToday';
-import { CleaningLogHistory } from './CleaningLogHistory';
+import { Card, CardActionArea, CardContent, Typography, Grid } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { navigation, canSeeNavItem } from '../../config/navigation';
 
+const haccpItem = navigation.find((item) => item.key === 'haccp')!;
+
+/** Sotto-sezioni di Controlli HACCP: Temperature e Pulizie, come pagine
+ * separate invece di tab interne (stesso schema di Presenze/Inventario). */
 export function HaccpHome() {
-  const [tab, setTab] = useState(0);
-  const isAdmin = useAuthStore((s) => s.user?.role) === 'ADMIN';
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const items = (haccpItem.children ?? []).filter((item) => canSeeNavItem(user, item));
 
   return (
-    <Box sx={{ display: 'grid', gap: 3 }}>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-        <Tab label="Temperature" />
-        <Tab label="Pulizie" />
-      </Tabs>
-
-      {tab === 0 && (
-        <Box sx={{ display: 'grid', gap: 3 }}>
-          <Fridges />
-          <TemperatureEntry />
-          <ReadingsHistory />
-        </Box>
-      )}
-
-      {tab === 1 && (
-        <Box sx={{ display: 'grid', gap: 3 }}>
-          {isAdmin ? (
-            <>
-              <CleaningTasksAdmin />
-              <CleaningLogHistory />
-            </>
-          ) : (
-            <CleaningToday />
-          )}
-        </Box>
-      )}
-    </Box>
+    <Grid container spacing={2}>
+      {items.map((item) => (
+        <Grid item xs={12} sm={6} key={item.key}>
+          <Card>
+            <CardActionArea onClick={() => navigate(item.path)} sx={{ p: 2 }}>
+              <CardContent>
+                <Typography variant="h6">{item.label}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {item.description}
+                </Typography>
+              </CardContent>
+            </CardActionArea>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
   );
 }

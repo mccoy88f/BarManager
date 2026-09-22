@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import type { SvgIconProps } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ThermostatIcon from '@mui/icons-material/Thermostat';
+import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import EventNoteIcon from '@mui/icons-material/EventNote';
@@ -109,6 +110,22 @@ export const navigation: NavItem[] = [
     icon: ThermostatIcon,
     description: 'Temperature frigoriferi, report',
     moduleKey: 'haccp',
+    children: [
+      {
+        key: 'haccp-temperature',
+        label: 'Temperature',
+        path: '/haccp/temperature',
+        icon: ThermostatIcon,
+        description: 'Frigoriferi, rilevazioni giornaliere e storico',
+      },
+      {
+        key: 'haccp-cleaning',
+        label: 'Pulizie',
+        path: '/haccp/cleaning',
+        icon: CleaningServicesIcon,
+        description: 'Attività di pulizia e sanificazione',
+      },
+    ],
   },
   {
     key: 'inventory',
