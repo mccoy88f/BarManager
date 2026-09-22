@@ -108,6 +108,15 @@ export class MenuController {
     return this.menuService.setVisibility(requireVenueId(user), id, visible);
   }
 
+  @Patch('items/:id/featured')
+  setFeatured(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('featured') featured: boolean,
+  ) {
+    return this.menuService.setFeatured(requireVenueId(user), id, featured);
+  }
+
   @Patch('items/:id/unavailable')
   setUnavailable(
     @CurrentUser() user: AuthenticatedUser,

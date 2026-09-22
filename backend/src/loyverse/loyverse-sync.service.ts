@@ -60,8 +60,11 @@ export class LoyverseSyncService {
         if (loyverseClient.extractImageUrl(item)) sawAnyImageField = true;
       }
 
+      // Creata al bisogno, una sola volta per sync, solo se davvero serve.
+      const fallbackCategory: { id?: string } = {};
+
       for (const item of remoteItems.filter((i) => !i.deleted_at)) {
-        const result = await this.syncItem(venueId, item, categoryIdMap, warnings);
+        const result = await this.syncItem(venueId, item, categoryIdMap, fallbackCategory, warnings);
         if (result.synced) itemsSynced++;
         if (result.downloadedImage) imagesDownloaded++;
       }
@@ -149,6 +152,37 @@ export class LoyverseSyncService {
   }
 
   /**
+   * Categoria di riserva per le voci Loyverse la cui categoria non esiste
+   * più (eliminata su Loyverse, ma l'articolo è rimasto agganciato al
+   * vecchio id): mai saltarle, altrimenti sparirebbero senza che l'admin
+   * se ne accorga. Creata una sola volta per locale — mentre l'integrazione
+   * è attiva è l'unica categoria senza "loyverseCategoryId", perché tutte
+   * le altre arrivano da Loyverse e attivare l'integrazione svuota sempre
+   * il menù precedente (v. LoyverseService.updateSettings).
+   */
+  private async getOrCreateFallbackCategory(venueId: string): Promise<string> {
+    const existing = await this.prisma.menuCategory.findFirst({
+      where: { venueId, loyverseCategoryId: null, name: 'Altri prodotti' },
+    });
+    if (existing) return existing.id;
+
+    const last = await this.prisma.menuCategory.findFirst({
+      where: { venueId },
+      orderBy: { sortOrder: 'desc' },
+    });
+    const created = await this.prisma.menuCategory.create({
+      data: {
+        venueId,
+        name: 'Altri prodotti',
+        loyverseCategoryId: null,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+        visible: false,
+      },
+    });
+    return created.id;
+  }
+
+  /**
    * Voci sincronizzate in precedenza il cui prodotto Loyverse non esiste
    * più (rimosso o marcato deleted_at): eliminate anche in BarManager,
    * varianti a cascata. Non tocca in alcun modo la visibilità delle voci
@@ -177,25 +211,23 @@ export class LoyverseSyncService {
     venueId: string,
     remote: LoyverseItem,
     categoryIdMap: Map<string, string>,
+    fallbackCategory: { id?: string },
     warnings: string[],
   ): Promise<{ synced: boolean; downloadedImage: boolean }> {
-    const categoryId = remote.category_id ? categoryIdMap.get(remote.category_id) : undefined;
+    let categoryId = remote.category_id ? categoryIdMap.get(remote.category_id) : undefined;
     if (!categoryId) {
-      const message = `"${remote.item_name}" saltata: categoria non mappata (categoria Loyverse eliminata o non ancora sincronizzata).`;
+      if (!fallbackCategory.id) {
+        fallbackCategory.id = await this.getOrCreateFallbackCategory(venueId);
+      }
+      categoryId = fallbackCategory.id;
+      const message = `"${remote.item_name}" inserita in "Altri prodotti": categoria Loyverse non trovata (eliminata, o mai assegnata). Assegna una categoria valida in Loyverse per spostarla al prossimo sync.`;
       this.logger.warn(message);
       warnings.push(message);
-      return { synced: false, downloadedImage: false };
     }
 
-    const usableVariants = (remote.variants ?? []).filter(
-      (v) => v.default_pricing_type !== 'VARIABLE' && v.default_price != null,
-    );
-    if (usableVariants.length === 0) {
-      const message = `"${remote.item_name}" saltata: nessuna variante a prezzo fisso (il prezzo si decide in cassa in Loyverse, non c'è nulla da sincronizzare).`;
-      this.logger.warn(message);
-      warnings.push(message);
-      return { synced: false, downloadedImage: false };
-    }
+    // Nessuna variante scartata: quelle a prezzo variabile (deciso in cassa
+    // o a peso) restano nel menù senza importo, non spariscono.
+    const remoteVariants = remote.variants && remote.variants.length > 0 ? remote.variants : [{ variant_id: '' }];
 
     const existing = await this.prisma.menuItem.findFirst({
       where: { venueId, loyverseItemId: remote.id },
@@ -231,7 +263,7 @@ export class LoyverseSyncService {
       menuItemId = created.id;
     }
 
-    await this.syncVariants(menuItemId, usableVariants, existing?.variants ?? []);
+    await this.syncVariants(menuItemId, remoteVariants, existing?.variants ?? []);
 
     let downloadedImage = false;
     if (!existing?.photoUrl) {
@@ -248,17 +280,26 @@ export class LoyverseSyncService {
     return { synced: true, downloadedImage };
   }
 
-  /** "usableVariants" è già filtrata alle sole varianti a prezzo fisso (v. syncItem). */
+  /**
+   * Tutte le varianti dell'item vengono sincronizzate, nessuna scartata:
+   * quelle a prezzo variabile (default_pricing_type "VARIABLE", o senza
+   * default_price) prendono price: null, mostrata come "prezzo variabile"
+   * invece che con un importo.
+   */
   private async syncVariants(
     menuItemId: string,
-    usableVariants: LoyverseVariant[],
+    remoteVariants: LoyverseVariant[],
     existingVariants: { id: string; loyverseVariantId: string | null }[],
   ) {
-    for (const [index, remote] of usableVariants.entries()) {
+    for (const [index, remote] of remoteVariants.entries()) {
       const found = existingVariants.find((v) => v.loyverseVariantId === remote.variant_id);
+      const price =
+        remote.default_pricing_type !== 'VARIABLE' && remote.default_price != null
+          ? remote.default_price
+          : null;
       const data = {
-        name: usableVariants.length > 1 ? variantDisplayName(remote) : '',
-        price: remote.default_price as number,
+        name: remoteVariants.length > 1 ? variantDisplayName(remote) : '',
+        price,
         sortOrder: index,
       };
       if (found) {
@@ -270,11 +311,10 @@ export class LoyverseSyncService {
       }
     }
 
-    // Varianti rimosse in Loyverse (o diventate "VARIABLE" senza prezzo
-    // fisso): disattivate, non eliminate (nessuna dipendenza le referenzia
-    // oggi, ma teniamo lo storico coerente con lo stesso criterio usato
-    // altrove nell'app).
-    const remoteIds = new Set(usableVariants.map((v) => v.variant_id));
+    // Varianti rimosse in Loyverse: disattivate, non eliminate (nessuna
+    // dipendenza le referenzia oggi, ma teniamo lo storico coerente con lo
+    // stesso criterio usato altrove nell'app).
+    const remoteIds = new Set(remoteVariants.map((v) => v.variant_id));
     for (const variant of existingVariants) {
       if (variant.loyverseVariantId && !remoteIds.has(variant.loyverseVariantId)) {
         await this.prisma.menuItemVariant.update({ where: { id: variant.id }, data: { active: false } });

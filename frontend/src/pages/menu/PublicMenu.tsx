@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
+import StarIcon from '@mui/icons-material/Star';
 import PhoneIcon from '@mui/icons-material/Phone';
 import InstagramIcon from '@mui/icons-material/Instagram';
 import FacebookIcon from '@mui/icons-material/Facebook';
@@ -27,7 +28,8 @@ import { api } from '../../api/client';
 interface PublicMenuVariant {
   id: string;
   name: string;
-  price: number;
+  /** null = prezzo variabile (deciso in cassa, o a peso). */
+  price: number | null;
 }
 interface PublicMenuItem {
   id: string;
@@ -36,6 +38,7 @@ interface PublicMenuItem {
   variants: PublicMenuVariant[];
   photoUrl?: string;
   allergens: string[];
+  featured: boolean;
   available: boolean;
 }
 interface PublicMenuCategory {
@@ -82,11 +85,15 @@ function matches(item: PublicMenuItem, query: string): boolean {
   );
 }
 
-/** "€ 3.50" con un solo formato, "da € 3.50" quando ce ne sono più. */
+/** "€ 3.50" con un solo formato, "da € 3.50" quando ce ne sono più, "Prezzo variabile" senza importi fissi. */
 function priceLabel(variants: PublicMenuVariant[]): string {
   if (variants.length === 0) return '';
-  if (variants.length === 1) return `€ ${variants[0].price.toFixed(2)}`;
-  return `da € ${Math.min(...variants.map((v) => v.price)).toFixed(2)}`;
+  if (variants.length === 1) {
+    return variants[0].price != null ? `€ ${variants[0].price.toFixed(2)}` : 'Prezzo variabile';
+  }
+  const priced = variants.filter((v) => v.price != null);
+  if (priced.length === 0) return 'Prezzo variabile';
+  return `da € ${Math.min(...priced.map((v) => v.price as number)).toFixed(2)}`;
 }
 
 function MenuItemCard({ item }: { item: PublicMenuItem }) {
@@ -118,7 +125,11 @@ function MenuItemCard({ item }: { item: PublicMenuItem }) {
           {item.variants.length > 1 && (
             <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
               {item.variants.map((v) => (
-                <Chip key={v.id} size="small" label={`${v.name || 'Standard'}: € ${v.price.toFixed(2)}`} />
+                <Chip
+                  key={v.id}
+                  size="small"
+                  label={`${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`}
+                />
               ))}
             </Box>
           )}
@@ -169,6 +180,13 @@ export function PublicMenu() {
     return menuQuery.data.categories
       .map((category) => ({ ...category, items: category.items.filter((i) => matches(i, search)) }))
       .filter((category) => category.items.length > 0);
+  }, [menuQuery.data, search, isSearching]);
+
+  /** In evidenza: le stesse voci restano anche nella propria categoria qui sotto. */
+  const featuredItems = useMemo(() => {
+    if (!menuQuery.data) return [];
+    const all = menuQuery.data.categories.flatMap((c) => c.items).filter((i) => i.featured);
+    return isSearching ? all.filter((i) => matches(i, search)) : all;
   }, [menuQuery.data, search, isSearching]);
 
   if (menuQuery.isLoading) {
@@ -255,6 +273,22 @@ export function PublicMenu() {
       </Box>
 
       <Box sx={{ p: 2 }}>
+        {featuredItems.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1.5 }}>
+              <StarIcon color="warning" fontSize="small" />
+              <Typography variant="h6" fontWeight={700}>
+                In evidenza
+              </Typography>
+            </Stack>
+            <Stack spacing={2}>
+              {featuredItems.map((item) => (
+                <MenuItemCard key={item.id} item={item} />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
         {filteredCategories.map((category) => (
           <Accordion
             key={category.id}
@@ -277,7 +311,7 @@ export function PublicMenu() {
           </Accordion>
         ))}
 
-        {filteredCategories.length === 0 && (
+        {filteredCategories.length === 0 && featuredItems.length === 0 && (
           <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 4 }}>
             Nessun piatto trovato.
           </Typography>

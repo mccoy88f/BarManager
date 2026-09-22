@@ -551,6 +551,8 @@ model MenuItem {
 
   visible         Boolean   @default(true) // mostra/nascondi dal menù pubblico
   unavailableUntil DateTime? // "esaurito fino a": nel menù ma non ordinabile finché non passa
+  // In evidenza in cima al menù pubblico, in aggiunta alla propria categoria.
+  featured Boolean @default(false)
 
   sortOrder Int @default(0)
 
@@ -580,7 +582,9 @@ model MenuItem {
 model MenuItemVariant {
   id     String @id @default(cuid())
   name   String @default("")
-  price  Float
+  // null = prezzo variabile (deciso manualmente in cassa, o a peso): la
+  // voce resta comunque nel menù, mostrata senza importo.
+  price  Float?
   active Boolean @default(true)
 
   sortOrder Int @default(0)

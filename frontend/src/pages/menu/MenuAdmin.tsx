@@ -11,6 +11,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  InputAdornment,
   MenuItem as MuiMenuItem,
   Stack,
   Switch,
@@ -25,6 +26,9 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import SearchIcon from '@mui/icons-material/Search';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 import {
   DndContext,
   closestCenter,
@@ -55,7 +59,8 @@ interface MenuCategory {
 interface MenuItemVariant {
   id: string;
   name: string;
-  price: number;
+  /** null = prezzo variabile (deciso in cassa, o a peso). */
+  price: number | null;
 }
 interface MenuItemRow {
   id: string;
@@ -66,22 +71,28 @@ interface MenuItemRow {
   allergens: string[];
   availability: 'LUNCH' | 'DINNER' | 'ALL_DAY';
   visible: boolean;
+  featured: boolean;
   unavailableUntil?: string;
   categoryId: string;
 }
 
 interface VariantForm {
   name: string;
+  /** Stringa vuota = prezzo variabile. */
   price: string;
 }
 
 const emptyVariant: VariantForm = { name: '', price: '' };
 
-/** "€ 3.50" con una sola riga, "da € 3.50" quando ce ne sono più. */
+/** "€ 3.50" con una sola riga, "da € 3.50" quando ce ne sono più, "Prezzo variabile" se nessuna ha un importo fisso. */
 function formatPriceLabel(variants: MenuItemVariant[]): string {
   if (variants.length === 0) return '';
-  if (variants.length === 1) return `€ ${variants[0].price.toFixed(2)}`;
-  const min = Math.min(...variants.map((v) => v.price));
+  if (variants.length === 1) {
+    return variants[0].price != null ? `€ ${variants[0].price.toFixed(2)}` : 'Prezzo variabile';
+  }
+  const priced = variants.filter((v) => v.price != null);
+  if (priced.length === 0) return 'Prezzo variabile';
+  const min = Math.min(...priced.map((v) => v.price as number));
   return `da € ${min.toFixed(2)}`;
 }
 
@@ -197,6 +208,7 @@ export function MenuAdmin() {
     availability: 'ALL_DAY',
   });
   const [variantForms, setVariantForms] = useState<VariantForm[]>([emptyVariant]);
+  const [itemSearch, setItemSearch] = useState('');
 
   const categoriesQuery = useQuery({
     queryKey: ['menu-categories'],
@@ -271,7 +283,10 @@ export function MenuAdmin() {
     mutationFn: async () => {
       const payload = {
         ...newItem,
-        variants: variantForms.map((v) => ({ name: v.name.trim(), price: Number(v.price) })),
+        variants: variantForms.map((v) => ({
+          name: v.name.trim(),
+          price: v.price.trim() === '' ? null : Number(v.price),
+        })),
       };
       return editingItem
         ? (await api.patch(`/menu/items/${editingItem.id}`, payload)).data
@@ -297,6 +312,12 @@ export function MenuAdmin() {
   const toggleVisibilityMutation = useMutation({
     mutationFn: async ({ id, visible }: { id: string; visible: boolean }) =>
       (await api.patch(`/menu/items/${id}/visibility`, { visible })).data,
+    onSuccess: invalidate,
+  });
+
+  const toggleFeaturedMutation = useMutation({
+    mutationFn: async ({ id, featured }: { id: string; featured: boolean }) =>
+      (await api.patch(`/menu/items/${id}/featured`, { featured })).data,
     onSuccess: invalidate,
   });
 
@@ -368,7 +389,7 @@ export function MenuAdmin() {
     });
     setVariantForms(
       item.variants.length > 0
-        ? item.variants.map((v) => ({ name: v.name, price: String(v.price) }))
+        ? item.variants.map((v) => ({ name: v.name, price: v.price != null ? String(v.price) : '' }))
         : [emptyVariant],
     );
     setItemDialogOpen(true);
@@ -384,7 +405,24 @@ export function MenuAdmin() {
     !!newItem.name &&
     !!newItem.categoryId &&
     variantForms.length > 0 &&
-    variantForms.every((v) => v.price.trim() !== '' && Number(v.price) >= 0);
+    variantForms.every((v) => v.price.trim() === '' || Number(v.price) >= 0);
+
+  const isSearchingItems = itemSearch.trim() !== '';
+  const filteredItems = (itemsQuery.data ?? []).filter((item) => {
+    if (!isSearchingItems) return true;
+    const q = itemSearch.trim().toLowerCase();
+    return (
+      item.name.toLowerCase().includes(q) ||
+      (item.description ?? '').toLowerCase().includes(q) ||
+      item.variants.some((v) => v.name.toLowerCase().includes(q))
+    );
+  });
+  const itemsByCategory = (categoriesQuery.data ?? [])
+    .map((category) => ({
+      category,
+      items: filteredItems.filter((item) => item.categoryId === category.id),
+    }))
+    .filter((group) => !isSearchingItems || group.items.length > 0);
 
   const publicMenuUrl = `${window.location.origin}/menu`;
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -505,109 +543,150 @@ export function MenuAdmin() {
           </Button>
         )}
       </Box>
-      <Stack spacing={2}>
-        {itemsQuery.data?.map((item) => (
-          <Card key={item.id} variant="outlined">
-            <Box sx={{ display: 'flex' }}>
-              {item.photoUrl && (
-                <CardMedia
-                  component="img"
-                  image={item.photoUrl}
-                  alt={item.name}
-                  sx={{ width: 100, height: 100, objectFit: 'cover' }}
-                />
-              )}
-              <CardContent sx={{ flex: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      {item.name} — {formatPriceLabel(item.variants)}
-                    </Typography>
-                    {item.variants.length > 1 && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        {item.variants.map((v) => `${v.name || 'Standard'}: € ${v.price.toFixed(2)}`).join(' · ')}
-                      </Typography>
-                    )}
-                    <Typography variant="body2" color="text.secondary">
-                      {item.description}
-                    </Typography>
-                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={availabilityLabels[item.availability]} />
-                      {item.allergens.map((a) => (
-                        <Chip key={a} size="small" variant="outlined" label={allergenLabels[a] ?? a} />
-                      ))}
-                      {item.unavailableUntil && new Date(item.unavailableUntil) > new Date() && (
-                        <Chip size="small" color="warning" label="Temporaneamente non disponibile" />
-                      )}
-                    </Box>
-                  </div>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <IconButton component="label" size="small" title="Carica foto">
-                      <PhotoCameraIcon fontSize="small" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) startPhotoCrop(item.id, file);
-                          e.target.value = '';
-                        }}
+      <TextField
+        size="small"
+        placeholder="Cerca per nome, descrizione o formato..."
+        value={itemSearch}
+        onChange={(e) => setItemSearch(e.target.value)}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+      {itemsByCategory.map(({ category, items }) => (
+        <Box key={category.id} sx={{ display: 'grid', gap: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            {category.name} ({items.length})
+          </Typography>
+          {items.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Nessuna voce in questa categoria.
+            </Typography>
+          ) : (
+            <Stack spacing={2}>
+              {items.map((item) => (
+                <Card key={item.id} variant="outlined">
+                  <Box sx={{ display: 'flex' }}>
+                    {item.photoUrl && (
+                      <CardMedia
+                        component="img"
+                        image={item.photoUrl}
+                        alt={item.name}
+                        sx={{ width: 100, height: 100, objectFit: 'cover' }}
                       />
-                    </IconButton>
-                    {(() => {
-                      const isUnavailable =
-                        !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();
-                      return (
-                        <IconButton
-                          size="small"
-                          color={isUnavailable ? 'warning' : 'default'}
-                          title={
-                            isUnavailable
-                              ? 'Rendi di nuovo disponibile'
-                              : 'Segna temporaneamente non disponibile (2 ore)'
-                          }
-                          onClick={() =>
-                            setUnavailableMutation.mutate({
-                              id: item.id,
-                              until: isUnavailable
-                                ? null
-                                : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                            })
-                          }
-                        >
-                          {isUnavailable ? (
-                            <EventAvailableIcon fontSize="small" />
-                          ) : (
-                            <EventBusyIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      );
-                    })()}
-                    <Switch
-                      checked={item.visible}
-                      onChange={(e) =>
-                        toggleVisibilityMutation.mutate({ id: item.id, visible: e.target.checked })
-                      }
-                      title="Mostra/nascondi dal menù"
-                    />
-                    {!locked && (
-                      <>
-                        <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </>
                     )}
-                  </Stack>
-                </Box>
-              </CardContent>
-            </Box>
-          </Card>
-        ))}
-      </Stack>
+                    <CardContent sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <Typography variant="subtitle1" fontWeight={600}>
+                            {item.name} — {formatPriceLabel(item.variants)}
+                          </Typography>
+                          {item.variants.length > 1 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              {item.variants
+                                .map(
+                                  (v) =>
+                                    `${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`,
+                                )
+                                .join(' · ')}
+                            </Typography>
+                          )}
+                          <Typography variant="body2" color="text.secondary">
+                            {item.description}
+                          </Typography>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            <Chip size="small" label={availabilityLabels[item.availability]} />
+                            {item.allergens.map((a) => (
+                              <Chip key={a} size="small" variant="outlined" label={allergenLabels[a] ?? a} />
+                            ))}
+                            {item.unavailableUntil && new Date(item.unavailableUntil) > new Date() && (
+                              <Chip size="small" color="warning" label="Temporaneamente non disponibile" />
+                            )}
+                          </Box>
+                        </div>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <IconButton
+                            size="small"
+                            title={item.featured ? 'Rimuovi dall\'evidenza' : 'Metti in evidenza'}
+                            color={item.featured ? 'warning' : 'default'}
+                            onClick={() =>
+                              toggleFeaturedMutation.mutate({ id: item.id, featured: !item.featured })
+                            }
+                          >
+                            {item.featured ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                          </IconButton>
+                          <IconButton component="label" size="small" title="Carica foto">
+                            <PhotoCameraIcon fontSize="small" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              hidden
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) startPhotoCrop(item.id, file);
+                                e.target.value = '';
+                              }}
+                            />
+                          </IconButton>
+                          {(() => {
+                            const isUnavailable =
+                              !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();
+                            return (
+                              <IconButton
+                                size="small"
+                                color={isUnavailable ? 'warning' : 'default'}
+                                title={
+                                  isUnavailable
+                                    ? 'Rendi di nuovo disponibile'
+                                    : 'Segna temporaneamente non disponibile (2 ore)'
+                                }
+                                onClick={() =>
+                                  setUnavailableMutation.mutate({
+                                    id: item.id,
+                                    until: isUnavailable
+                                      ? null
+                                      : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                                  })
+                                }
+                              >
+                                {isUnavailable ? (
+                                  <EventAvailableIcon fontSize="small" />
+                                ) : (
+                                  <EventBusyIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            );
+                          })()}
+                          <Switch
+                            checked={item.visible}
+                            onChange={(e) =>
+                              toggleVisibilityMutation.mutate({ id: item.id, visible: e.target.checked })
+                            }
+                            title="Mostra/nascondi dal menù"
+                          />
+                          {!locked && (
+                            <>
+                              <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </>
+                          )}
+                        </Stack>
+                      </Box>
+                    </CardContent>
+                  </Box>
+                </Card>
+              ))}
+            </Stack>
+          )}
+        </Box>
+      ))}
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
@@ -712,6 +791,8 @@ export function MenuAdmin() {
                     size="small"
                     value={variant.price}
                     onChange={(e) => updateVariantForm(index, { price: e.target.value })}
+                    placeholder="Variabile"
+                    helperText={variantForms.length === 1 ? 'Vuoto = prezzo variabile (in cassa o a peso)' : undefined}
                     sx={{ width: variantForms.length > 1 ? 120 : '100%' }}
                   />
                   {variantForms.length > 1 && (

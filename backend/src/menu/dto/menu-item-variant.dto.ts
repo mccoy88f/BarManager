@@ -6,7 +6,9 @@ export class MenuItemVariantDto {
   @IsString()
   name?: string;
 
+  /** Assente/null = prezzo variabile (deciso in cassa, o a peso). */
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  price: number;
+  price?: number | null;
 }

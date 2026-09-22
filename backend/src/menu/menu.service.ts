@@ -164,6 +164,16 @@ export class MenuService {
     return this.prisma.menuItem.update({ where: { id: itemId }, data: { visible } });
   }
 
+  /**
+   * "In evidenza": pura presentazione (come la visibilità), permessa anche
+   * con l'integrazione Loyverse attiva. Non toglie la voce dalla sua
+   * categoria: la aggiunge anche alla sezione in evidenza del menù pubblico.
+   */
+  async setFeatured(venueId: string, itemId: string, featured: boolean) {
+    await this.assertOwnership(venueId, itemId);
+    return this.prisma.menuItem.update({ where: { id: itemId }, data: { featured } });
+  }
+
   async setUnavailableUntil(venueId: string, itemId: string, until: string | null | undefined) {
     await this.assertOwnership(venueId, itemId);
     return this.prisma.menuItem.update({
@@ -268,6 +278,7 @@ export class MenuService {
             variants: item.variants.map((v) => ({ id: v.id, name: v.name, price: v.price })),
             photoUrl: item.photoUrl,
             allergens: item.allergens,
+            featured: item.featured,
             available: !item.unavailableUntil || item.unavailableUntil <= now,
           })),
         })),

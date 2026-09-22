@@ -68,6 +68,19 @@ describe('MenuService varianti', () => {
     expect(data.name).toBe('Nuovo nome');
   });
 
+  it('crea una variante a prezzo variabile quando il prezzo è omesso (in cassa, o a peso)', async () => {
+    prisma.menuItem.create.mockResolvedValue({ id: 'item-1' });
+
+    await service.createItem('venue-1', {
+      name: 'Trancio pizza al taglio',
+      categoryId: 'cat-1',
+      variants: [{ price: null }],
+    } as never);
+
+    const data = prisma.menuItem.create.mock.calls[0][0].data;
+    expect(data.variants.create).toEqual([{ price: null, sortOrder: 0 }]);
+  });
+
   it('con integrazione Loyverse attiva rifiuta la creazione manuale di una voce', async () => {
     prisma.venue.findUnique.mockResolvedValue({ loyverseIntegrationEnabled: true });
 
@@ -144,6 +157,35 @@ describe('MenuService categorie', () => {
       where: { id: 'cat-1' },
       data: { visible: false },
     });
+  });
+});
+
+describe('MenuService.setFeatured', () => {
+  let prisma: { menuItem: { findUnique: jest.Mock; update: jest.Mock } };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = { menuItem: { findUnique: jest.fn(), update: jest.fn() } };
+    service = new MenuService(prisma as unknown as PrismaService);
+  });
+
+  it('metta in evidenza una voce, permesso anche con integrazione Loyverse attiva', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({ id: 'item-1', featured: true });
+
+    await service.setFeatured('venue-1', 'item-1', true);
+
+    expect(prisma.menuItem.update).toHaveBeenCalledWith({
+      where: { id: 'item-1' },
+      data: { featured: true },
+    });
+  });
+
+  it('rifiuta di mettere in evidenza una voce di un altro locale', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-2' });
+
+    await expect(service.setFeatured('venue-1', 'item-1', true)).rejects.toThrow();
+    expect(prisma.menuItem.update).not.toHaveBeenCalled();
   });
 });
 
