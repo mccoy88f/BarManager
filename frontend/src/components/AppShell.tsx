@@ -27,6 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
+import { APP_VERSION } from '../version';
 
 const DRAWER_WIDTH = 260;
 
@@ -65,7 +66,8 @@ export function AppShell() {
   };
 
   const drawerContent = (
-    <List sx={{ pt: 1 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 }}>
+    <List sx={{ pt: 1, flexGrow: 1, overflowY: 'auto' }}>
       <ListItemButton selected={location.pathname === '/'} onClick={() => goTo('/')}>
         <ListItemIcon>
           <HomeIcon />
@@ -122,6 +124,18 @@ export function AppShell() {
         );
       })}
     </List>
+    <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {APP_VERSION}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block">
+        Crediti: creato da{' '}
+        <MuiLink href="https://github.com/mccoy88f" target="_blank" rel="noopener noreferrer">
+          Mccoy88f
+        </MuiLink>
+      </Typography>
+    </Box>
+    </Box>
   );
 
   return (
