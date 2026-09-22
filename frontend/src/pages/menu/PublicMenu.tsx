@@ -192,17 +192,36 @@ export function PublicMenu() {
 
   return (
     <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-      <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
-        {venue.name}
-      </Typography>
-
-      {venue.coverUrl && (
-        <Box
-          component="img"
-          src={venue.coverUrl}
-          alt={venue.name}
-          sx={{ width: '100%', height: { xs: 160, sm: 220 }, objectFit: 'cover', display: 'block', mb: 2 }}
-        />
+      {venue.coverUrl ? (
+        <Box sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220 } }}>
+          <Box
+            component="img"
+            src={venue.coverUrl}
+            alt={venue.name}
+            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'flex-end',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0) 60%)',
+            }}
+          >
+            <Typography
+              variant="h4"
+              fontWeight={700}
+              sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
+            >
+              {venue.name}
+            </Typography>
+          </Box>
+        </Box>
+      ) : (
+        <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
+          {venue.name}
+        </Typography>
       )}
 
       <Box
