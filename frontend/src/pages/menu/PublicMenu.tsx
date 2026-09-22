@@ -192,18 +192,18 @@ export function PublicMenu() {
 
   return (
     <Box sx={{ maxWidth: 640, mx: 'auto' }}>
+      <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
+        {venue.name}
+      </Typography>
+
       {venue.coverUrl && (
         <Box
           component="img"
           src={venue.coverUrl}
           alt={venue.name}
-          sx={{ width: '100%', height: { xs: 160, sm: 220 }, objectFit: 'cover', display: 'block' }}
+          sx={{ width: '100%', height: { xs: 160, sm: 220 }, objectFit: 'cover', display: 'block', mb: 2 }}
         />
       )}
-
-      <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
-        {venue.name}
-      </Typography>
 
       <Box
         sx={{

@@ -146,3 +146,93 @@ describe('MenuService categorie', () => {
     });
   });
 });
+
+describe('MenuService.getPublicMenu', () => {
+  let prisma: {
+    venue: { findUnique: jest.Mock };
+    menuCategory: { findMany: jest.Mock };
+  };
+  let service: MenuService;
+
+  const baseVenue = {
+    id: 'venue-1',
+    active: true,
+    name: 'Bar Demo',
+    menuCoverUrl: null,
+    menuPhone: null,
+    menuInstagramUrl: null,
+    menuFacebookUrl: null,
+    menuWebsiteUrl: null,
+    lunchStart: '00:00',
+    lunchEnd: '23:59',
+    dinnerStart: '00:00',
+    dinnerEnd: '23:59',
+  };
+
+  beforeEach(() => {
+    prisma = {
+      venue: { findUnique: jest.fn().mockResolvedValue(baseVenue) },
+      menuCategory: { findMany: jest.fn() },
+    };
+    service = new MenuService(prisma as unknown as PrismaService);
+  });
+
+  it('include una voce importata da Loyverse dopo che admin l\'ha resa visibile (categoria e voce)', async () => {
+    // Simula quello che il database restituirebbe filtrando "visible: true"
+    // sia sulla categoria che sulla voce, dopo che l'admin ha pubblicato
+    // (con l'integrazione attiva) una voce arrivata nascosta dal sync.
+    prisma.menuCategory.findMany.mockResolvedValue([
+      {
+        id: 'cat-1',
+        name: 'Bevande',
+        items: [
+          {
+            id: 'item-1',
+            name: 'Birra',
+            description: null,
+            photoUrl: null,
+            allergens: [],
+            unavailableUntil: null,
+            variants: [{ id: 'var-1', name: '', price: 4.5 }],
+          },
+        ],
+      },
+    ]);
+
+    const result = await service.getPublicMenu('venue-1');
+
+    expect(prisma.menuCategory.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { venueId: 'venue-1', visible: true } }),
+    );
+    const itemsWhere = prisma.menuCategory.findMany.mock.calls[0][0].include.items.where;
+    expect(itemsWhere.visible).toBe(true);
+    expect(result.categories).toEqual([
+      {
+        id: 'cat-1',
+        name: 'Bevande',
+        items: [
+          {
+            id: 'item-1',
+            name: 'Birra',
+            description: null,
+            variants: [{ id: 'var-1', name: '', price: 4.5 }],
+            photoUrl: null,
+            allergens: [],
+            available: true,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('non mostra una categoria le cui voci sono ancora tutte nascoste (default post-sync)', async () => {
+    // Categoria resa visibile ma nessuna voce al suo interno ancora
+    // pubblicata: il database la restituirebbe con items: [] perché il
+    // "where: { visible: true }" sulle voci non trova nulla.
+    prisma.menuCategory.findMany.mockResolvedValue([{ id: 'cat-1', name: 'Bevande', items: [] }]);
+
+    const result = await service.getPublicMenu('venue-1');
+
+    expect(result.categories).toEqual([]);
+  });
+});

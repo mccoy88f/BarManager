@@ -29,6 +29,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 interface LoyverseSyncSummary {
   categories: number;
   items: number;
+  itemsRemoved: number;
+  categoriesRemoved: number;
   imagesDownloaded: number;
   imagesSkipped: boolean;
   warnings: string[];
@@ -415,6 +417,9 @@ export function VenueSettings() {
               {loyverseStatusQuery.data.lastSyncSummary.imagesSkipped
                 ? ' Nessuna immagine trovata su Loyverse per questi prodotti.'
                 : ` ${loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} nuove immagini scaricate.`}
+              {(loyverseStatusQuery.data.lastSyncSummary.categoriesRemoved > 0 ||
+                loyverseStatusQuery.data.lastSyncSummary.itemsRemoved > 0) &&
+                ` ${loyverseStatusQuery.data.lastSyncSummary.categoriesRemoved} categorie e ${loyverseStatusQuery.data.lastSyncSummary.itemsRemoved} voci rimosse perché non più su Loyverse.`}
               {loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 &&
                 ` ${loyverseStatusQuery.data.lastSyncSummary.warnings.length} voci saltate, vedi il log.`}
             </Alert>
@@ -460,6 +465,9 @@ export function VenueSettings() {
                 {loyverseStatusQuery.data.lastSyncSummary.categories} categorie,{' '}
                 {loyverseStatusQuery.data.lastSyncSummary.items} voci sincronizzate,{' '}
                 {loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} immagini scaricate.
+                {(loyverseStatusQuery.data.lastSyncSummary.categoriesRemoved > 0 ||
+                  loyverseStatusQuery.data.lastSyncSummary.itemsRemoved > 0) &&
+                  ` ${loyverseStatusQuery.data.lastSyncSummary.categoriesRemoved} categorie e ${loyverseStatusQuery.data.lastSyncSummary.itemsRemoved} voci rimosse perché non più su Loyverse.`}
               </Typography>
               {loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 ? (
                 <List dense>

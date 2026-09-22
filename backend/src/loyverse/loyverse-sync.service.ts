@@ -10,6 +10,8 @@ import { loyverseClient, LoyverseApiError, LoyverseItem, LoyverseVariant, varian
 export interface LoyverseSyncSummary {
   categories: number;
   items: number;
+  itemsRemoved: number;
+  categoriesRemoved: number;
   imagesDownloaded: number;
   imagesSkipped: boolean;
   /** Voci Loyverse saltate durante il sync e il motivo (es. senza categoria mappata). */
@@ -46,7 +48,10 @@ export class LoyverseSyncService {
         loyverseClient.listItems(accessToken),
       ]);
 
-      const categoryIdMap = await this.syncCategories(venueId, remoteCategories);
+      const { idMap: categoryIdMap, removed: categoriesRemoved } = await this.syncCategories(
+        venueId,
+        remoteCategories,
+      );
 
       let imagesDownloaded = 0;
       let itemsSynced = 0;
@@ -61,9 +66,13 @@ export class LoyverseSyncService {
         if (result.downloadedImage) imagesDownloaded++;
       }
 
+      const itemsRemoved = await this.removeStaleItems(venueId, remoteItems);
+
       const summary: LoyverseSyncSummary = {
         categories: categoryIdMap.size,
         items: itemsSynced,
+        itemsRemoved,
+        categoriesRemoved,
         imagesDownloaded,
         imagesSkipped: !sawAnyImageField,
         warnings,
@@ -95,8 +104,8 @@ export class LoyverseSyncService {
   private async syncCategories(
     venueId: string,
     remoteCategories: { id: string; name: string; deleted_at?: string | null }[],
-  ): Promise<Map<string, string>> {
-    const map = new Map<string, string>();
+  ): Promise<{ idMap: Map<string, string>; removed: number }> {
+    const idMap = new Map<string, string>();
     const existing = await this.prisma.menuCategory.findMany({ where: { venueId } });
     let nextSortOrder = existing.reduce((max, c) => Math.max(max, c.sortOrder), -1) + 1;
 
@@ -106,7 +115,7 @@ export class LoyverseSyncService {
         if (found.name !== remote.name) {
           await this.prisma.menuCategory.update({ where: { id: found.id }, data: { name: remote.name } });
         }
-        map.set(remote.id, found.id);
+        idMap.set(remote.id, found.id);
       } else {
         const created = await this.prisma.menuCategory.create({
           data: {
@@ -117,22 +126,50 @@ export class LoyverseSyncService {
             visible: false, // nascosta finché l'admin non la rivede e la pubblica, come le voci
           },
         });
-        map.set(remote.id, created.id);
+        idMap.set(remote.id, created.id);
       }
     }
 
     // Categorie rimosse in Loyverse: eliminate solo se rimaste vuote, per
-    // non perdere voci di menù ancora presenti per qualche disallineamento.
+    // non perdere voci di menù ancora presenti per qualche disallineamento
+    // (si puliranno da sole al sync successivo, una volta svuotate anche
+    // le loro voci da removeStaleItems).
+    let removed = 0;
     const remoteIds = new Set(remoteCategories.filter((c) => !c.deleted_at).map((c) => c.id));
     for (const category of existing) {
       if (!category.loyverseCategoryId || remoteIds.has(category.loyverseCategoryId)) continue;
       const itemCount = await this.prisma.menuItem.count({ where: { categoryId: category.id } });
       if (itemCount === 0) {
         await this.prisma.menuCategory.delete({ where: { id: category.id } });
+        removed++;
       }
     }
 
-    return map;
+    return { idMap, removed };
+  }
+
+  /**
+   * Voci sincronizzate in precedenza il cui prodotto Loyverse non esiste
+   * più (rimosso o marcato deleted_at): eliminate anche in BarManager,
+   * varianti a cascata. Non tocca in alcun modo la visibilità delle voci
+   * ancora presenti — questo è il solo modo in cui un sync successivo
+   * rimuove contenuto, mai per un cambio di preferenza dell'admin.
+   */
+  private async removeStaleItems(venueId: string, remoteItems: { id: string; deleted_at?: string | null }[]) {
+    const activeRemoteIds = new Set(remoteItems.filter((i) => !i.deleted_at).map((i) => i.id));
+    const existing = await this.prisma.menuItem.findMany({
+      where: { venueId, loyverseItemId: { not: null } },
+      select: { id: true, loyverseItemId: true },
+    });
+
+    let removed = 0;
+    for (const item of existing) {
+      if (item.loyverseItemId && !activeRemoteIds.has(item.loyverseItemId)) {
+        await this.prisma.menuItem.delete({ where: { id: item.id } });
+        removed++;
+      }
+    }
+    return removed;
   }
 
   /** Una voce Loyverse (con le sue varianti) → un MenuItem con le sue MenuItemVariant. */

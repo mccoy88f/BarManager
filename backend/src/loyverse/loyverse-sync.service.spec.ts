@@ -17,7 +17,14 @@ describe('LoyverseSyncService', () => {
   let prisma: {
     venue: { findUnique: jest.Mock; update: jest.Mock };
     menuCategory: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
-    menuItem: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; count: jest.Mock };
+    menuItem: {
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+      count: jest.Mock;
+    };
     menuItemVariant: { create: jest.Mock; update: jest.Mock };
   };
   let service: LoyverseSyncService;
@@ -34,8 +41,10 @@ describe('LoyverseSyncService', () => {
       },
       menuItem: {
         findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
       },
       menuItemVariant: { create: jest.fn(), update: jest.fn() },
@@ -101,6 +110,8 @@ describe('LoyverseSyncService', () => {
         loyverseLastSyncSummary: {
           categories: 1,
           items: 1,
+          itemsRemoved: 0,
+          categoriesRemoved: 0,
           imagesDownloaded: 0,
           imagesSkipped: true,
           warnings: [],
@@ -147,6 +158,58 @@ describe('LoyverseSyncService', () => {
         description: 'Nuova descrizione aggiornata da Loyverse',
       },
     });
+  });
+
+  it('non modifica la visibilità di una voce già sincronizzata quando nulla è cambiato su Loyverse', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    prisma.menuCategory.findMany.mockResolvedValue([
+      { id: 'cat-local-1', venueId: 'venue-1', loyverseCategoryId: 'cat-ext-1', name: 'Bevande', sortOrder: 0 },
+    ]);
+    // L'admin ha già pubblicato questa voce (visible: true): il secondo
+    // sync non deve in alcun modo rimetterla nascosta.
+    prisma.menuItem.findFirst.mockResolvedValue({
+      id: 'item-local-1',
+      name: 'Birra',
+      description: 'Birra artigianale alla spina',
+      categoryId: 'cat-local-1',
+      visible: true,
+      photoUrl: '/uploads/menu/existing.jpg',
+      variants: [{ id: 'var-local-1', loyverseVariantId: 'var-ext-1' }],
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Bevande' }]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+      {
+        id: 'item-ext-1',
+        item_name: 'Birra',
+        description: 'Birra artigianale alla spina',
+        category_id: 'cat-ext-1',
+        variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 4.5 }],
+      },
+    ]);
+
+    await service.sync('venue-1');
+
+    expect(prisma.menuItem.update).not.toHaveBeenCalled();
+  });
+
+  it('elimina una voce già sincronizzata il cui prodotto non esiste più su Loyverse', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([]); // rimosso da Loyverse
+    prisma.menuItem.findMany.mockResolvedValue([{ id: 'item-local-1', loyverseItemId: 'item-ext-1' }]);
+
+    const summary = await service.sync('venue-1');
+
+    expect(prisma.menuItem.delete).toHaveBeenCalledWith({ where: { id: 'item-local-1' } });
+    expect(summary.itemsRemoved).toBe(1);
   });
 
   it('salta una voce Loyverse la cui categoria non è mappata, senza far fallire il sync', async () => {
