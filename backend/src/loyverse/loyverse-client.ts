@@ -10,6 +10,12 @@
  * "default_price" esiste solo quando "default_pricing_type" della
  * variante è "FIXED"; con "VARIABLE" il prezzo si decide in cassa e non
  * c'è nulla da sincronizzare per quella variante.
+ *
+ * Ogni variante ha anche uno "stores[]" con override di prezzo per singolo
+ * punto vendita ({store_id, pricing_type, price, ...}), volutamente non
+ * letto qui: BarManager assume un account Loyverse a punto vendita unico
+ * per locale (confermato in fase di analisi), quindi "default_price" è
+ * sempre il prezzo giusto da sincronizzare.
  */
 
 const BASE_URL = 'https://api.loyverse.com/v1.0';
