@@ -65,6 +65,21 @@ describe('KbService', () => {
     expect(prisma.kbArticle.update).not.toHaveBeenCalled();
   });
 
+  it('mantiene intatta la card di un allegato incorporato (link, download, stile)', async () => {
+    prisma.kbArticle.create.mockResolvedValue({ id: 'art-1' });
+    const attachmentHtml =
+      '<div class="kb-attachment" style="display:inline-flex;gap:10px;">' +
+      '<a href="/uploads/kb/x.pdf" target="_blank" rel="noopener noreferrer">manuale.pdf</a>' +
+      '<a href="/uploads/kb/x.pdf" download="manuale.pdf" style="font-size:0.85em;">Scarica</a>' +
+      '</div>';
+    await service.create(admin, { title: 'Manuale', contentHtml: attachmentHtml });
+    const data = prisma.kbArticle.create.mock.calls[0][0].data;
+    expect(data.contentHtml).toContain('class="kb-attachment"');
+    expect(data.contentHtml).toContain('href="/uploads/kb/x.pdf"');
+    expect(data.contentHtml).toContain('download="manuale.pdf"');
+    expect(data.contentHtml).toContain('style="font-size:0.85em"');
+  });
+
   it('list restituisce solo i campi di anteprima, non il contenuto completo', async () => {
     prisma.kbArticle.findMany.mockResolvedValue([]);
     await service.list('venue-1');

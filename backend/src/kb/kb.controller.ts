@@ -27,6 +27,10 @@ import { KbService } from './kb.service';
 import { CreateKbArticleDto } from './dto/create-kb-article.dto';
 import { UpdateKbArticleDto } from './dto/update-kb-article.dto';
 
+/** Immagini, video brevi e allegati (PDF, documenti Office) incorporabili in un articolo. */
+const ALLOWED_MEDIA_MIME =
+  /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg)|application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|application\/vnd\.ms-(excel|powerpoint))$/;
+
 // Nessun ModuleAccessGuard/RequireModule: la KBpedia è sempre visibile a
 // tutti gli utenti del locale, non è un modulo concedibile per dipendente.
 @Controller('kb')
@@ -66,7 +70,7 @@ export class KbController {
     return this.kbService.remove(requireVenueId(user), id);
   }
 
-  /** Carica un'immagine o un breve video da incorporare nel testo dell'articolo. */
+  /** Carica un'immagine, un breve video o un allegato (PDF/documento) da incorporare nel testo dell'articolo. */
   @Post('media')
   @Roles(Role.ADMIN)
   @UseInterceptors(
@@ -75,16 +79,18 @@ export class KbController {
         destination: `${process.env.UPLOADS_DIR || './uploads'}/kb`,
         filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 }, // 25MB, per brevi clip video
+      limits: { fileSize: 25 * 1024 * 1024 }, // 25MB, per brevi clip video e documenti
       fileFilter: (_req, file, cb) => {
-        cb(null, /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg))$/.test(file.mimetype));
+        cb(null, ALLOWED_MEDIA_MIME.test(file.mimetype));
       },
     }),
   )
   uploadMedia(@UploadedFile() file: Express.Multer.File) {
-    return {
-      url: `/uploads/kb/${file.filename}`,
-      kind: file.mimetype.startsWith('video/') ? 'video' : 'image',
-    };
+    const kind = file.mimetype.startsWith('video/')
+      ? 'video'
+      : file.mimetype.startsWith('image/')
+        ? 'image'
+        : 'file';
+    return { url: `/uploads/kb/${file.filename}`, kind };
   }
 }
