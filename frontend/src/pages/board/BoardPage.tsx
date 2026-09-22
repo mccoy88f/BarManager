@@ -27,6 +27,7 @@ import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ImageLightbox } from '../../components/ImageLightbox';
+import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 
 interface BoardMessageRow {
   id: string;
@@ -53,6 +54,7 @@ export function BoardPage() {
   const [text, setText] = useState('');
   const [pinned, setPinned] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<BoardMessageRow | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -122,6 +124,17 @@ export function BoardPage() {
     setPhoto(null);
     setError(null);
     setOpen(true);
+  };
+
+  const startPhotoCrop = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setCropImageSrc(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const confirmPhotoCrop = (blob: Blob) => {
+    setPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+    setCropImageSrc(null);
   };
 
   return (
@@ -230,7 +243,11 @@ export function BoardPage() {
               type="file"
               accept="image/*"
               hidden
-              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) startPhotoCrop(file);
+                e.target.value = '';
+              }}
             />
           </Button>
           <FormControlLabel
@@ -286,6 +303,13 @@ export function BoardPage() {
       </Dialog>
 
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
+
+      <PhotoCropDialog
+        open={!!cropImageSrc}
+        imageSrc={cropImageSrc}
+        onCancel={() => setCropImageSrc(null)}
+        onConfirm={confirmPhotoCrop}
+      />
     </Box>
   );
 }
