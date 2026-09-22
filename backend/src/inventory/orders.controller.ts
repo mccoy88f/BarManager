@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -11,6 +11,8 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
+import { SendOrdersBatchDto } from './dto/send-orders-batch.dto';
 import { UpdateOrderLineDto } from './dto/update-order-line.dto';
 
 // Niente @Roles(ADMIN, MANAGER) qui: l'accesso al modulo Inventario è
@@ -25,6 +27,37 @@ export class OrdersController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrderDto) {
     return this.ordersService.createOrder(user, dto);
+  }
+
+  /** Un ordine per categoria: diviso in un ordine per fornitore. */
+  @Post('by-category')
+  createByCategory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateOrdersByCategoryDto,
+  ) {
+    return this.ordersService.createOrdersByCategory(user, dto);
+  }
+
+  /** Invia più ordini (uno per fornitore) in un colpo, dopo una creazione per categoria. */
+  @Post('send-batch')
+  sendBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: SendOrdersBatchDto) {
+    return this.ordersService.sendOrders(user, dto.orderIds);
+  }
+
+  /** PDF di più ordini, una pagina per fornitore. */
+  @Get('export/pdf-batch')
+  async exportBatchPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('ids') ids: string,
+    @Res() res: Response,
+  ) {
+    const orderIds = ids.split(',').filter(Boolean);
+    const buffer = await this.ordersService.exportBatchPdf(requireVenueId(user), orderIds);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename="ordini.pdf"',
+    });
+    res.send(buffer);
   }
 
   @Get()

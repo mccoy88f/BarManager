@@ -87,6 +87,137 @@ describe('OrdersService.createOrder', () => {
   });
 });
 
+describe('OrdersService.createOrdersByCategory', () => {
+  let prisma: {
+    productCategory: { findUnique: jest.Mock };
+    product: { findMany: jest.Mock };
+    order: { create: jest.Mock };
+  };
+  let audit: { log: jest.Mock };
+  let service: OrdersService;
+
+  beforeEach(() => {
+    prisma = {
+      productCategory: { findUnique: jest.fn() },
+      product: { findMany: jest.fn() },
+      order: {
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({ id: `order-${data.supplierId}`, ...data }),
+        ),
+      },
+    };
+    audit = { log: jest.fn() };
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      {} as unknown as MailService,
+      {} as unknown as PrintingService,
+      {} as unknown as PdfService,
+    );
+  });
+
+  it('divide le righe di una categoria in un ordine per ciascun fornitore coinvolto', async () => {
+    prisma.productCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-1' });
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', supplierId: 'sup-1', standardQty: 10, categoryId: 'cat-1', category: { venueId: 'venue-1' } },
+      { id: 'p2', supplierId: 'sup-2', standardQty: 5, categoryId: 'cat-1', category: { venueId: 'venue-1' } },
+    ]);
+
+    const orders = await service.createOrdersByCategory(adminUser, {
+      categoryId: 'cat-1',
+      lines: [
+        { productId: 'p1', stockOnHand: 2 },
+        { productId: 'p2', stockOnHand: 1 },
+      ],
+    });
+
+    expect(orders).toHaveLength(2);
+    expect(prisma.order.create).toHaveBeenCalledTimes(2);
+    const supplierIds = prisma.order.create.mock.calls.map((c) => c[0].data.supplierId);
+    expect(new Set(supplierIds)).toEqual(new Set(['sup-1', 'sup-2']));
+  });
+
+  it('rifiuta una categoria di un altro locale', async () => {
+    prisma.productCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-2' });
+
+    await expect(
+      service.createOrdersByCategory(adminUser, {
+        categoryId: 'cat-1',
+        lines: [{ productId: 'p1', stockOnHand: 0 }],
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
+  it('rifiuta se nessuna riga corrisponde a un prodotto della categoria', async () => {
+    prisma.productCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-1' });
+    prisma.product.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.createOrdersByCategory(adminUser, {
+        categoryId: 'cat-1',
+        lines: [{ productId: 'p-non-in-categoria', stockOnHand: 0 }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('OrdersService.sendOrders', () => {
+  let prisma: { order: { findUnique: jest.Mock; update: jest.Mock }; employee: { findMany: jest.Mock } };
+  let mail: { sendOrderEmail: jest.Mock };
+  let service: OrdersService;
+
+  const draftOrder = (id: string, supplierName: string) => ({
+    id,
+    venueId: 'venue-1',
+    status: 'DRAFT',
+    lines: [{ orderedQty: 2, product: { name: 'Prodotto', unit: 'pz' } }],
+    supplier: { name: supplierName, email: `${supplierName}@test.it`, ccEmails: [] },
+  });
+
+  beforeEach(() => {
+    prisma = {
+      order: { findUnique: jest.fn(), update: jest.fn() },
+      employee: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    mail = { sendOrderEmail: jest.fn().mockResolvedValue({ sent: true }) };
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      { log: jest.fn() } as unknown as AuditService,
+      mail as unknown as MailService,
+      {} as unknown as PrintingService,
+      {} as unknown as PdfService,
+    );
+  });
+
+  it('invia ogni ordine e riporta il risultato per fornitore', async () => {
+    prisma.order.findUnique
+      .mockResolvedValueOnce(draftOrder('order-1', 'Fornitore A'))
+      .mockResolvedValueOnce(draftOrder('order-2', 'Fornitore B'));
+    prisma.order.update.mockImplementation(({ where, data }) =>
+      Promise.resolve({ ...draftOrder(where.id, 'x'), ...data, supplier: { name: 'x' } }),
+    );
+
+    const results = await service.sendOrders(adminUser, ['order-1', 'order-2']);
+
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.sent)).toBe(true);
+    expect(mail.sendOrderEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it('un fornitore che fallisce non blocca gli altri', async () => {
+    prisma.order.findUnique
+      .mockResolvedValueOnce({ ...draftOrder('order-1', 'Fornitore A'), status: 'SENT' }) // già inviato -> errore
+      .mockResolvedValueOnce(draftOrder('order-2', 'Fornitore B'));
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore B' } });
+
+    const results = await service.sendOrders(adminUser, ['order-1', 'order-2']);
+
+    expect(results[0].sent).toBe(false);
+    expect(results[1].sent).toBe(true);
+  });
+});
+
 describe('OrdersService.updateLineQty', () => {
   let prisma: {
     orderLine: { findUnique: jest.Mock; update: jest.Mock };
@@ -199,5 +330,37 @@ describe('OrdersService.buildPrintJob / exportPdf', () => {
     expect(text).toContain('Autore: admin@venue1.test');
     expect(text).toContain('Totale: € 30.00');
     expect(text).not.toContain('Non ordinato');
+  });
+
+  it('genera un PDF con una pagina per ordine nel batch', async () => {
+    const otherOrder = { ...order, id: 'order-2', supplier: { name: 'Altro Fornitore' } };
+    prisma.order.findUnique
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce(otherOrder);
+    let addPageCalls = 0;
+    pdf.buildDocument.mockImplementationOnce(async (build) => {
+      const calls: string[] = [];
+      const doc: Record<string, jest.Mock> = {};
+      const chain = () => doc as unknown as PDFKit.PDFDocument;
+      doc.fontSize = jest.fn(chain);
+      doc.moveDown = jest.fn(chain);
+      doc.addPage = jest.fn(() => {
+        addPageCalls += 1;
+        return chain();
+      });
+      doc.text = jest.fn((t: string) => {
+        calls.push(t);
+        return chain();
+      });
+      build(doc as unknown as PDFKit.PDFDocument);
+      return Buffer.from(calls.join('\n'));
+    });
+
+    const buffer = await service.exportBatchPdf('venue-1', ['order-1', 'order-2']);
+    const text = buffer.toString();
+
+    expect(addPageCalls).toBe(1); // una pagina nuova tra i due ordini, non prima del primo
+    expect(text).toContain('Fornitore: Fornitore SRL');
+    expect(text).toContain('Fornitore: Altro Fornitore');
   });
 });

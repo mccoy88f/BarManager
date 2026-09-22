@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsNumber, IsString, ValidateNested } from 'class-validator';
 
-class OrderLineInput {
+export class OrderLineInput {
   @IsString()
   productId: string;
 

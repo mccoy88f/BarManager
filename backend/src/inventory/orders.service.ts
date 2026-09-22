@@ -3,7 +3,8 @@ import { OrderStatus, PrinterUsage, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderDto, OrderLineInput } from './dto/create-order.dto';
+import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
 import { MailService } from './mail.service';
 import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
@@ -33,8 +34,56 @@ export class OrdersService {
     if (!supplier || supplier.venueId !== venueId) {
       throw new NotFoundException('Fornitore non trovato');
     }
+    return this.createOrderForSupplier(user, venueId, dto.supplierId, dto.lines);
+  }
+
+  /**
+   * Un ordine "per categoria" raccoglie prodotti di quella categoria che
+   * possono appartenere a fornitori diversi: qui si dividono le righe per
+   * fornitore e si crea un ordine (bozza) per ciascuno, esattamente come se
+   * fossero stati creati uno alla volta con createOrder.
+   */
+  async createOrdersByCategory(user: AuthenticatedUser, dto: CreateOrdersByCategoryDto) {
+    const venueId = requireVenueId(user);
+    const category = await this.prisma.productCategory.findUnique({
+      where: { id: dto.categoryId },
+    });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
 
     const productIds = dto.lines.map((l) => l.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, categoryId: dto.categoryId },
+    });
+    const productSupplierOf = new Map(products.map((p) => [p.id, p.supplierId]));
+
+    const linesBySupplier = new Map<string, OrderLineInput[]>();
+    for (const line of dto.lines) {
+      const supplierId = productSupplierOf.get(line.productId);
+      if (!supplierId) continue; // prodotto non trovato o di un'altra categoria: ignorato
+      const bucket = linesBySupplier.get(supplierId) ?? [];
+      bucket.push(line);
+      linesBySupplier.set(supplierId, bucket);
+    }
+    if (linesBySupplier.size === 0) {
+      throw new BadRequestException('Nessun prodotto valido per questa categoria');
+    }
+
+    const orders = [];
+    for (const [supplierId, lines] of linesBySupplier) {
+      orders.push(await this.createOrderForSupplier(user, venueId, supplierId, lines));
+    }
+    return orders;
+  }
+
+  private async createOrderForSupplier(
+    user: AuthenticatedUser,
+    venueId: string,
+    supplierId: string,
+    lines: OrderLineInput[],
+  ) {
+    const productIds = lines.map((l) => l.productId);
     // include category per verificare che ogni prodotto appartenga al locale
     // di chi chiama: senza questo controllo, un id di prodotto di un altro
     // locale (indovinato) finirebbe comunque nell'ordine.
@@ -49,10 +98,10 @@ export class OrdersService {
     const order = await this.prisma.order.create({
       data: {
         venueId,
-        supplierId: dto.supplierId,
+        supplierId,
         createdById: user.userId,
         lines: {
-          create: dto.lines.map((line) => {
+          create: lines.map((line) => {
             const product = productMap.get(line.productId);
             if (!product) throw new BadRequestException(`Prodotto ${line.productId} non trovato`);
             const suggestedQty = Math.max(0, product.standardQty - line.stockOnHand);
@@ -165,6 +214,29 @@ export class OrdersService {
   }
 
   /**
+   * Invia più ordini in sequenza (uno per fornitore, dopo una creazione
+   * "per categoria"): un fornitore il cui invio fallisce non blocca gli
+   * altri, l'esito di ciascuno è riportato separatamente.
+   */
+  async sendOrders(user: AuthenticatedUser, orderIds: string[]) {
+    const results = [];
+    for (const orderId of orderIds) {
+      try {
+        const { order, email } = await this.sendOrder(user, orderId);
+        results.push({ orderId, supplierName: order.supplier.name, sent: true, email });
+      } catch (err) {
+        results.push({
+          orderId,
+          supplierName: null,
+          sent: false,
+          error: err instanceof Error ? err.message : 'Invio fallito',
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
    * Righe/piè di pagina della checklist POS: condiviso tra l'invio
    * dell'ordine e una ristampa richiesta più avanti dallo storico.
    */
@@ -201,39 +273,56 @@ export class OrdersService {
     return this.printing.buildReportJob(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
   }
 
-  /** PDF dell'ordine: fornitore, data, autore, righe con importi singoli e totale. */
-  async exportPdf(venueId: string, orderId: string): Promise<Buffer> {
-    const order = await this.getOrder(venueId, orderId);
+  /** Sezione PDF di un ordine: fornitore, data, autore, righe con importi singoli e totale. */
+  private renderOrderSection(doc: PDFKit.PDFDocument, order: OrderWithDetails) {
     const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
     const grandTotal = onlyOrdered.reduce(
       (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
       0,
     );
 
+    doc.fontSize(16).text('Ordine fornitore', { align: 'center' }).moveDown();
+
+    doc.fontSize(11);
+    doc.text(`Fornitore: ${order.supplier.name}`);
+    doc.text(`Data ordine: ${order.createdAt.toLocaleDateString('it-IT')}`);
+    if (order.sentAt) doc.text(`Inviato il: ${order.sentAt.toLocaleDateString('it-IT')}`);
+    doc.text(`Autore: ${order.createdBy.email}`);
+    doc.moveDown();
+
+    doc.fontSize(10);
+    for (const line of onlyOrdered) {
+      const amount =
+        line.product.costPerUnit != null
+          ? `€ ${line.product.costPerUnit.toFixed(2)} = € ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
+          : '—';
+      doc.text(
+        `${line.product.name.padEnd(28)} ${String(line.orderedQty).padStart(6)} ${line.product.unit.padEnd(6)} ${amount}`,
+      );
+    }
+
+    if (grandTotal > 0) {
+      doc.moveDown().fontSize(12).text(`Totale: € ${grandTotal.toFixed(2)}`, { align: 'right' });
+    }
+  }
+
+  /** PDF di un singolo ordine. */
+  async exportPdf(venueId: string, orderId: string): Promise<Buffer> {
+    const order = await this.getOrder(venueId, orderId);
+    return this.pdf.buildDocument((doc) => this.renderOrderSection(doc, order));
+  }
+
+  /**
+   * PDF di più ordini (uno per fornitore, dopo una creazione "per
+   * categoria"), con una pagina separata per ciascuno.
+   */
+  async exportBatchPdf(venueId: string, orderIds: string[]): Promise<Buffer> {
+    const orders = await Promise.all(orderIds.map((id) => this.getOrder(venueId, id)));
     return this.pdf.buildDocument((doc) => {
-      doc.fontSize(16).text('Ordine fornitore', { align: 'center' }).moveDown();
-
-      doc.fontSize(11);
-      doc.text(`Fornitore: ${order.supplier.name}`);
-      doc.text(`Data ordine: ${order.createdAt.toLocaleDateString('it-IT')}`);
-      if (order.sentAt) doc.text(`Inviato il: ${order.sentAt.toLocaleDateString('it-IT')}`);
-      doc.text(`Autore: ${order.createdBy.email}`);
-      doc.moveDown();
-
-      doc.fontSize(10);
-      for (const line of onlyOrdered) {
-        const amount =
-          line.product.costPerUnit != null
-            ? `€ ${line.product.costPerUnit.toFixed(2)} = € ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
-            : '—';
-        doc.text(
-          `${line.product.name.padEnd(28)} ${String(line.orderedQty).padStart(6)} ${line.product.unit.padEnd(6)} ${amount}`,
-        );
-      }
-
-      if (grandTotal > 0) {
-        doc.moveDown().fontSize(12).text(`Totale: € ${grandTotal.toFixed(2)}`, { align: 'right' });
-      }
+      orders.forEach((order, i) => {
+        if (i > 0) doc.addPage();
+        this.renderOrderSection(doc, order);
+      });
     });
   }
 }
