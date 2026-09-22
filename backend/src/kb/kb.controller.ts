@@ -12,8 +12,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { randomUUID } from 'crypto';
+import { safeExtension } from '../common/upload/safe-extension';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -77,7 +77,7 @@ export class KbController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: `${process.env.UPLOADS_DIR || './uploads'}/kb`,
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
       }),
       limits: { fileSize: 25 * 1024 * 1024 }, // 25MB, per brevi clip video e documenti
       fileFilter: (_req, file, cb) => {

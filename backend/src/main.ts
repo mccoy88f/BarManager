@@ -4,7 +4,23 @@ import { ValidationPipe } from '@nestjs/common';
 import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 
+/**
+ * auth.service.ts/jwt.strategy.ts ricadono su un segreto di sviluppo
+ * fisso quando JWT_ACCESS_SECRET/JWT_REFRESH_SECRET non sono impostati:
+ * comodo in locale, ma se dimenticato in produzione chiunque potrebbe
+ * forgiare token validi. Meglio bloccare l'avvio che scoprirlo dopo.
+ */
+function assertJwtSecretsConfigured() {
+  if (process.env.NODE_ENV !== 'production') return;
+  if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
+    throw new Error(
+      'JWT_ACCESS_SECRET e JWT_REFRESH_SECRET devono essere impostati in produzione (NODE_ENV=production).',
+    );
+  }
+}
+
 async function bootstrap() {
+  assertJwtSecretsConfigured();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const uploadsDir = process.env.UPLOADS_DIR || './uploads';

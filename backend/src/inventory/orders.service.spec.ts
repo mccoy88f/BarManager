@@ -84,3 +84,50 @@ describe('OrdersService.createOrder', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('OrdersService.updateLineQty', () => {
+  let prisma: {
+    orderLine: { findUnique: jest.Mock; update: jest.Mock };
+  };
+  let service: OrdersService;
+
+  beforeEach(() => {
+    prisma = {
+      orderLine: { findUnique: jest.fn(), update: jest.fn() },
+    };
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      {} as unknown as AuditService,
+      {} as unknown as MailService,
+      {} as unknown as PrintingService,
+    );
+  });
+
+  it('rifiuta la modifica di una riga di un ordine di un altro locale', async () => {
+    prisma.orderLine.findUnique.mockResolvedValue({
+      id: 'line-1',
+      orderId: 'order-1',
+      order: { venueId: 'venue-2' },
+    });
+
+    await expect(
+      service.updateLineQty('venue-1', 'order-1', 'line-1', 5),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.orderLine.update).not.toHaveBeenCalled();
+  });
+
+  it('aggiorna la quantità quando la riga appartiene a un ordine del locale', async () => {
+    prisma.orderLine.findUnique.mockResolvedValue({
+      id: 'line-1',
+      orderId: 'order-1',
+      order: { venueId: 'venue-1' },
+    });
+    prisma.orderLine.update.mockResolvedValue({ id: 'line-1', orderedQty: 5 });
+
+    await service.updateLineQty('venue-1', 'order-1', 'line-1', 5);
+    expect(prisma.orderLine.update).toHaveBeenCalledWith({
+      where: { id: 'line-1' },
+      data: { orderedQty: 5 },
+    });
+  });
+});

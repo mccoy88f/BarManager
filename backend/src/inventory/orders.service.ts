@@ -70,9 +70,14 @@ export class OrdersService {
     return order;
   }
 
-  async updateLineQty(orderId: string, lineId: string, orderedQty: number) {
-    const line = await this.prisma.orderLine.findUnique({ where: { id: lineId } });
-    if (!line || line.orderId !== orderId) throw new NotFoundException('Riga ordine non trovata');
+  async updateLineQty(venueId: string, orderId: string, lineId: string, orderedQty: number) {
+    const line = await this.prisma.orderLine.findUnique({
+      where: { id: lineId },
+      include: { order: true },
+    });
+    if (!line || line.orderId !== orderId || line.order.venueId !== venueId) {
+      throw new NotFoundException('Riga ordine non trovata');
+    }
     return this.prisma.orderLine.update({ where: { id: lineId }, data: { orderedQty } });
   }
 

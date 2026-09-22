@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { safeExtension } from '../common/upload/safe-extension';
 import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -105,7 +105,7 @@ export class MenuController {
     FileInterceptor('photo', {
       storage: diskStorage({
         destination: `${process.env.UPLOADS_DIR || './uploads'}/menu`,
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
       }),
       limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
       fileFilter: (_req, file, cb) => {

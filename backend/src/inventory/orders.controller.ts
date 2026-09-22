@@ -38,11 +38,12 @@ export class OrdersController {
 
   @Patch(':id/lines/:lineId')
   updateLine(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Param('lineId') lineId: string,
     @Body() dto: UpdateOrderLineDto,
   ) {
-    return this.ordersService.updateLineQty(id, lineId, dto.orderedQty);
+    return this.ordersService.updateLineQty(requireVenueId(user), id, lineId, dto.orderedQty);
   }
 
   @Post(':id/send')
