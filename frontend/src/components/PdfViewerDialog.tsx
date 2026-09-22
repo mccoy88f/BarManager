@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, IconButton, Stack, Box, CircularProgress, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import CloseIcon from '@mui/icons-material/Close';
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import ZoomOutIcon from '@mui/icons-material/ZoomOut';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -22,7 +26,8 @@ interface PdfViewerDialogProps {
  * un'anteprima grigia e vuota, anche se il download dello stesso file
  * funziona sempre (è solo un salvataggio di byte, non un rendering).
  * Il rendering via PDF.js non dipende da un plugin nativo: funziona
- * allo stesso modo ovunque.
+ * allo stesso modo ovunque. Lo zoom/pan (pulsanti + pinch-to-zoom su
+ * mobile) è di react-zoom-pan-pinch, applicato sopra al canvas.
  */
 export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,51 +55,73 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
 
   return (
     <Dialog open={!!file} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '90vh' } }}>
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1 }}>
-        {file?.filename}
-        <Stack direction="row" spacing={0.5}>
-          {file && (
-            <IconButton component="a" href={file.url} download={file.filename} title="Scarica">
-              <DownloadIcon />
-            </IconButton>
-          )}
-          <IconButton onClick={onClose} title="Chiudi">
-            <CloseIcon />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
-      <DialogContent ref={containerRef} sx={{ p: 0, overflow: 'auto', bgcolor: 'grey.200' }}>
-        {file && !loadError && (
-          <Document
-            file={file.url}
-            onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-            onLoadError={() => setLoadError(true)}
-            loading={
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            }
-          >
-            {numPages &&
-              Array.from({ length: numPages }, (_, i) => (
-                <Page
-                  key={i}
-                  pageNumber={i + 1}
-                  width={containerWidth || undefined}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                />
-              ))}
-          </Document>
+      <TransformWrapper minScale={0.5} maxScale={4} centerZoomedOut doubleClick={{ mode: 'toggle' }}>
+        {({ zoomIn, zoomOut, resetTransform }) => (
+          <>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1 }}>
+              {file?.filename}
+              <Stack direction="row" spacing={0.5}>
+                <IconButton onClick={() => zoomOut()} title="Riduci">
+                  <ZoomOutIcon />
+                </IconButton>
+                <IconButton onClick={() => zoomIn()} title="Aumenta">
+                  <ZoomInIcon />
+                </IconButton>
+                <IconButton onClick={() => resetTransform()} title="Adatta alla finestra">
+                  <RestartAltIcon />
+                </IconButton>
+                {file && (
+                  <IconButton component="a" href={file.url} download={file.filename} title="Scarica">
+                    <DownloadIcon />
+                  </IconButton>
+                )}
+                <IconButton onClick={onClose} title="Chiudi">
+                  <CloseIcon />
+                </IconButton>
+              </Stack>
+            </DialogTitle>
+            <DialogContent ref={containerRef} sx={{ p: 0, overflow: 'hidden', bgcolor: 'grey.200' }}>
+              {file && !loadError && (
+                <TransformComponent
+                  wrapperStyle={{ width: '100%', height: '100%' }}
+                  contentStyle={{ width: '100%', display: 'flex', justifyContent: 'center' }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 2 }}>
+                    <Document
+                      file={file.url}
+                      onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+                      onLoadError={() => setLoadError(true)}
+                      loading={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                          <CircularProgress />
+                        </Box>
+                      }
+                    >
+                      {numPages &&
+                        Array.from({ length: numPages }, (_, i) => (
+                          <Page
+                            key={i}
+                            pageNumber={i + 1}
+                            width={containerWidth || undefined}
+                            renderTextLayer={false}
+                            renderAnnotationLayer={false}
+                          />
+                        ))}
+                    </Document>
+                  </Box>
+                </TransformComponent>
+              )}
+              {loadError && (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography color="text.secondary">
+                    Impossibile visualizzare l'anteprima di questo PDF.
+                  </Typography>
+                </Box>
+              )}
+            </DialogContent>
+          </>
         )}
-        {loadError && (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              Impossibile visualizzare l'anteprima di questo PDF.
-            </Typography>
-          </Box>
-        )}
-      </DialogContent>
+      </TransformWrapper>
     </Dialog>
   );
 }
