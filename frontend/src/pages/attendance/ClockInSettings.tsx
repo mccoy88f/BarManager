@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Chip,
+  MenuItem,
   Stack,
   Switch,
   TextField,
@@ -16,6 +17,8 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
+type RetentionUnit = 'DAYS' | 'MONTHS' | 'YEARS';
+
 interface VenueClockInSettings {
   clockInQrEnabled: boolean;
   clockInGpsEnabled: boolean;
@@ -23,7 +26,16 @@ interface VenueClockInSettings {
   gpsLat: number | null;
   gpsLng: number | null;
   gpsRadiusMeters: number;
+  attendanceHistoryVisibleToEmployees: boolean;
+  attendanceRetentionValue: number | null;
+  attendanceRetentionUnit: RetentionUnit | null;
 }
+
+const retentionUnitLabels: Record<RetentionUnit, string> = {
+  DAYS: 'giorni',
+  MONTHS: 'mesi',
+  YEARS: 'anni',
+};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -53,6 +65,13 @@ export function ClockInSettings() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [historyVisible, setHistoryVisible] = useState(true);
+  const [retentionEnabled, setRetentionEnabled] = useState(false);
+  const [retentionValue, setRetentionValue] = useState('6');
+  const [retentionUnit, setRetentionUnit] = useState<RetentionUnit>('MONTHS');
+  const [historySaveError, setHistorySaveError] = useState<string | null>(null);
+  const [historySaveSuccess, setHistorySaveSuccess] = useState(false);
+
   const venueQuery = useQuery({
     queryKey: ['venue-me'],
     queryFn: async () => (await api.get<VenueClockInSettings>('/venues/me')).data,
@@ -68,6 +87,14 @@ export function ClockInSettings() {
       setGpsRadius(String(venueQuery.data.gpsRadiusMeters));
       setGpsLat(venueQuery.data.gpsLat);
       setGpsLng(venueQuery.data.gpsLng);
+      setHistoryVisible(venueQuery.data.attendanceHistoryVisibleToEmployees);
+      setRetentionEnabled(venueQuery.data.attendanceRetentionValue != null);
+      if (venueQuery.data.attendanceRetentionValue != null) {
+        setRetentionValue(String(venueQuery.data.attendanceRetentionValue));
+      }
+      if (venueQuery.data.attendanceRetentionUnit) {
+        setRetentionUnit(venueQuery.data.attendanceRetentionUnit);
+      }
     }
   }, [venueQuery.data]);
 
@@ -89,6 +116,26 @@ export function ClockInSettings() {
     onError: (err) => {
       setSaveSuccess(false);
       setSaveError(extractErrorMessage(err));
+    },
+  });
+
+  const saveHistorySettingsMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.patch('/venues/me/attendance-history-settings', {
+          attendanceHistoryVisibleToEmployees: historyVisible,
+          attendanceRetentionValue: retentionEnabled ? Number(retentionValue) : null,
+          attendanceRetentionUnit: retentionEnabled ? retentionUnit : null,
+        })
+      ).data,
+    onSuccess: () => {
+      setHistorySaveError(null);
+      setHistorySaveSuccess(true);
+      queryClient.invalidateQueries({ queryKey: ['venue-me'] });
+    },
+    onError: (err) => {
+      setHistorySaveSuccess(false);
+      setHistorySaveError(extractErrorMessage(err));
     },
   });
 
@@ -220,6 +267,88 @@ export function ClockInSettings() {
             sx={{ mt: 2 }}
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
+          >
+            Salva
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Storico presenze
+          </Typography>
+          <Stack spacing={2} sx={{ mt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="subtitle2">Storico visibile ai dipendenti</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Se disattivato, i dipendenti vedono solo il proprio stato attuale, non lo storico
+                  delle timbrature passate.
+                </Typography>
+              </Box>
+              <Switch checked={historyVisible} onChange={(e) => setHistoryVisible(e.target.checked)} />
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="subtitle2">Cancellazione automatica</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Elimina automaticamente le presenze più vecchie della soglia impostata.
+                </Typography>
+              </Box>
+              <Switch
+                checked={retentionEnabled}
+                onChange={(e) => setRetentionEnabled(e.target.checked)}
+              />
+            </Box>
+
+            {retentionEnabled && (
+              <Box sx={{ pl: 2, borderLeft: '2px solid', borderColor: 'divider' }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography variant="body2">Cancella le presenze più vecchie di</Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={retentionValue}
+                    onChange={(e) => setRetentionValue(e.target.value)}
+                    sx={{ width: 90 }}
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    value={retentionUnit}
+                    onChange={(e) => setRetentionUnit(e.target.value as RetentionUnit)}
+                    sx={{ width: 140 }}
+                  >
+                    {Object.entries(retentionUnitLabels).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+              </Box>
+            )}
+          </Stack>
+
+          {historySaveError && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setHistorySaveError(null)}>
+              {historySaveError}
+            </Alert>
+          )}
+          {historySaveSuccess && (
+            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setHistorySaveSuccess(false)}>
+              Impostazioni salvate.
+            </Alert>
+          )}
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            disabled={
+              saveHistorySettingsMutation.isPending || (retentionEnabled && !retentionValue.trim())
+            }
+            onClick={() => saveHistorySettingsMutation.mutate()}
           >
             Salva
           </Button>

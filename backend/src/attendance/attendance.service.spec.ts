@@ -343,3 +343,56 @@ describe('AttendanceService.selfReport / reviewSelfReport', () => {
     });
   });
 });
+
+describe('AttendanceService.getOwnHistory', () => {
+  let prisma: {
+    employee: { findUnique: jest.Mock };
+    attendanceRecord: { findMany: jest.Mock };
+  };
+  let service: AttendanceService;
+
+  beforeEach(() => {
+    prisma = {
+      employee: { findUnique: jest.fn() },
+      attendanceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    service = new AttendanceService(
+      prisma as unknown as PrismaService,
+      { log: jest.fn() } as unknown as AuditService,
+    );
+  });
+
+  it('rifiuta se il locale ha disattivato lo storico per i dipendenti', async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      venue: { attendanceHistoryVisibleToEmployees: false },
+    });
+
+    await expect(service.getOwnHistory('user-1')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.attendanceRecord.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rifiuta se l\'utente non è collegato a un dipendente', async () => {
+    prisma.employee.findUnique.mockResolvedValue(null);
+
+    await expect(service.getOwnHistory('user-1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('restituisce un riepilogo vuoto se il dipendente non ha ancora timbrature', async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      venue: { attendanceHistoryVisibleToEmployees: true },
+    });
+
+    const result = await service.getOwnHistory('user-1');
+
+    expect(prisma.attendanceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { employeeId: 'employee-1', approvalStatus: 'CONFIRMED' } }),
+    );
+    expect(result).toEqual({ employeeName: 'Mario Rossi', days: [], grandTotalHours: 0 });
+  });
+});

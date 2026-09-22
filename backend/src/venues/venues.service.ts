@@ -7,6 +7,7 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
+import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -81,6 +82,9 @@ export class VenuesService {
         clockInNfcEnabled: true,
         gpsLat: true,
         gpsLng: true,
+        attendanceHistoryVisibleToEmployees: true,
+        attendanceRetentionValue: true,
+        attendanceRetentionUnit: true,
         gpsRadiusMeters: true,
         menuCoverUrl: true,
         menuAddress: true,
@@ -97,6 +101,10 @@ export class VenuesService {
   }
 
   updateClockInSettings(venueId: string, dto: UpdateClockInSettingsDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  }
+
+  updateAttendanceHistorySettings(venueId: string, dto: UpdateAttendanceHistorySettingsDto) {
     return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 

@@ -28,6 +28,7 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
+import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -76,6 +77,16 @@ export class VenuesController {
     @Body() dto: UpdateClockInSettingsDto,
   ) {
     return this.venuesService.updateClockInSettings(requireVenueId(user), dto);
+  }
+
+  /** Storico presenze visibile ai dipendenti + cancellazione automatica oltre una certa età. */
+  @Patch('me/attendance-history-settings')
+  @Roles(Role.ADMIN)
+  updateOwnAttendanceHistorySettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateAttendanceHistorySettingsDto,
+  ) {
+    return this.venuesService.updateAttendanceHistorySettings(requireVenueId(user), dto);
   }
 
   /** Contatti mostrati in fondo al menù pubblico: telefono e link social. */

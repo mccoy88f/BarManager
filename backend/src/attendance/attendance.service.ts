@@ -14,6 +14,7 @@ import { ClockDto } from './dto/clock.dto';
 import { CreateNfcTagDto } from './dto/create-nfc-tag.dto';
 import { AddAttendanceRecordDto } from './dto/add-attendance-record.dto';
 import { SelfReportAttendanceDto } from './dto/self-report-attendance.dto';
+import { buildAttendanceSummary } from './attendance-summary.util';
 
 /** Distanza in metri fra due coordinate (formula haversine). */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -150,6 +151,38 @@ export class AttendanceService {
         ? AttendanceType.CLOCK_IN
         : AttendanceType.CLOCK_OUT;
     return { lastRecord: last, nextAction };
+  }
+
+  /**
+   * Storico delle proprie timbrature confermate, come turni con ore
+   * calcolate (stesso formato usato nei report admin): l'admin può
+   * disattivare questa vista per i dipendenti in Impostazioni locale.
+   */
+  async getOwnHistory(userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+      include: { venue: { select: { attendanceHistoryVisibleToEmployees: true } } },
+    });
+    if (!employee) {
+      throw new BadRequestException('Utente non collegato a un dipendente');
+    }
+    if (!employee.venue.attendanceHistoryVisibleToEmployees) {
+      throw new ForbiddenException('Lo storico presenze non è abilitato per i dipendenti in questo locale');
+    }
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { employeeId: employee.id, approvalStatus: AttendanceApprovalStatus.CONFIRMED },
+      include: { employee: true, qrToken: true, nfcTag: true },
+      orderBy: { timestamp: 'desc' },
+    });
+    const [summary] = buildAttendanceSummary(records);
+    return (
+      summary ?? {
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        days: [],
+        grandTotalHours: 0,
+      }
+    );
   }
 
   /**

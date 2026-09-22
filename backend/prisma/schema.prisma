@@ -76,6 +76,13 @@ model Venue {
   gpsLng          Float?
   gpsRadiusMeters Int    @default(20)
 
+  // Storico presenze: se il dipendente può vedere le proprie timbrature
+  // passate, e se/dopo quanto tempo vanno cancellate automaticamente
+  // (nessun valore impostato = mai, comportamento storico).
+  attendanceHistoryVisibleToEmployees Boolean                  @default(true)
+  attendanceRetentionValue            Int?
+  attendanceRetentionUnit             AttendanceRetentionUnit?
+
   users             User[]
   employees         Employee[]
   fridges           Fridge[]
@@ -206,6 +213,12 @@ enum AttendanceApprovalStatus {
   CONFIRMED // timbratura verificata in tempo reale (QR/GPS/NFC) o inserita dall'admin
   PENDING // dichiarata dal dipendente stesso: non conta nei totali finché l'admin non la conferma
   REJECTED
+}
+
+enum AttendanceRetentionUnit {
+  DAYS
+  MONTHS
+  YEARS
 }
 
 model AttendanceRecord {

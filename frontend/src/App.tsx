@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { AttendanceHome } from './pages/attendance/AttendanceHome';
 import { ClockPage } from './pages/attendance/ClockPage';
 import { LeaveRequests } from './pages/attendance/LeaveRequests';
+import { MyAttendanceHistory } from './pages/attendance/MyAttendanceHistory';
 import { Employees } from './pages/attendance/Employees';
 import { QrTokens } from './pages/attendance/QrTokens';
 import { NfcTags } from './pages/attendance/NfcTags';
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/clock/:token" element={<ClockPage />} />
           <Route path="/attendance" element={<AttendanceHome />} />
           <Route path="/attendance/leave-requests" element={<LeaveRequests />} />
+          <Route path="/attendance/my-history" element={<MyAttendanceHistory />} />
 
           {/* Bacheca e KBpedia: sempre visibili a tutto il personale del
               locale, non sono moduli concedibili per singolo dipendente. */}

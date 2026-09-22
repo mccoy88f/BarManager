@@ -23,6 +23,7 @@ import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import NfcIcon from '@mui/icons-material/Nfc';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import HistoryIcon from '@mui/icons-material/History';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -318,6 +319,14 @@ export function EmployeeSummary() {
                   onClick={openSelfReport}
                 >
                   Ho dimenticato di timbrare
+                </Button>
+                <Button
+                  variant="text"
+                  size="small"
+                  startIcon={<HistoryIcon />}
+                  onClick={() => navigate('/attendance/my-history')}
+                >
+                  Il mio storico presenze
                 </Button>
               </Stack>
             </CardContent>

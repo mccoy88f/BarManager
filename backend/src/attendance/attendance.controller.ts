@@ -46,6 +46,12 @@ export class AttendanceController {
     return this.attendanceService.getCurrentStatus(user.userId);
   }
 
+  /** Storico delle proprie timbrature, se l'admin lo ha abilitato per il locale. */
+  @Get('me/history')
+  getOwnHistory(@CurrentUser() user: AuthenticatedUser) {
+    return this.attendanceService.getOwnHistory(user.userId);
+  }
+
   /** Quali metodi di timbratura verificata sono abilitati (mai le coordinate esatte). */
   @Get('clock-in-settings')
   getClockInSettings(@CurrentUser() user: AuthenticatedUser) {
