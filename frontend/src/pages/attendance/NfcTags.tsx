@@ -141,7 +141,7 @@ export function NfcTags() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica tag NFC' : 'Nuovo tag NFC'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
           <Typography variant="body2" color="text.secondary">
             Scegli un'etichetta e un testo per il tag, poi scrivi lo stesso testo sul tag fisico
             con un'app di scrittura NFC (es. NFC Tools).

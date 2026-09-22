@@ -339,7 +339,7 @@ export function AttendanceRecords() {
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Correggi timbratura</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
           {editing && (
             <Typography variant="body2" color="text.secondary">
               {editing.employee.firstName} {editing.employee.lastName} —{' '}
@@ -377,7 +377,7 @@ export function AttendanceRecords() {
 
       <Dialog open={adding} onClose={() => setAdding(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Aggiungi timbratura</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
           <TextField
             select
             label="Dipendente"

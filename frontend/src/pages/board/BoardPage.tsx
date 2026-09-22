@@ -254,7 +254,7 @@ export function BoardPage() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nuovo messaggio</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
           <TextField
             label="Testo"
             multiline
@@ -310,7 +310,7 @@ export function BoardPage() {
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Modifica messaggio</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
           <TextField
             label="Testo"
             multiline

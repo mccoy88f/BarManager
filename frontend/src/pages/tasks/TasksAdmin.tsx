@@ -200,7 +200,7 @@ export function TasksAdmin() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica attività/scadenza' : 'Nuova attività/scadenza'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 3 }}>
           <TextField
             label="Titolo"
             value={form.title}
