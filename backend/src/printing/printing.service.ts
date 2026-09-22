@@ -20,6 +20,53 @@ export class PrintingService {
     });
   }
 
+  private createThermalPrinter(host: string, port: number) {
+    return new ThermalPrinter({
+      type: PrinterTypes.EPSON,
+      interface: `tcp://${host}:${port}`,
+      removeSpecialCharacters: false,
+    });
+  }
+
+  /** Stampa una ricevuta di prova su una stampante specifica, per verificarne la configurazione. */
+  async printTest(
+    venueId: string,
+    printerId: string,
+  ): Promise<{ printed: boolean; reason?: string }> {
+    const printerConfig = await this.prisma.printer.findUnique({ where: { id: printerId } });
+    if (!printerConfig || printerConfig.venueId !== venueId) {
+      return { printed: false, reason: 'NOT_FOUND' };
+    }
+
+    const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
+
+    try {
+      const isConnected = await printer.isPrinterConnected();
+      if (!isConnected) {
+        return { printed: false, reason: 'PRINTER_UNREACHABLE' };
+      }
+
+      printer.alignCenter();
+      printer.bold(true);
+      printer.println('Test di stampa');
+      printer.bold(false);
+      printer.drawLine();
+      printer.alignLeft();
+      printer.println(`Stampante: ${printerConfig.name}`);
+      printer.println(`Data: ${new Date().toLocaleString('it-IT')}`);
+      printer.newLine();
+      printer.alignCenter();
+      printer.println('Se leggi questo messaggio,');
+      printer.println('la stampante è configurata correttamente.');
+      printer.cut();
+      await printer.execute();
+      return { printed: true };
+    } catch (err) {
+      this.logger.error(`Errore di stampa (test): ${(err as Error).message}`);
+      return { printed: false, reason: 'PRINT_ERROR' };
+    }
+  }
+
   /**
    * Stampa un report tabellare semplice (righe di testo pre-formattate)
    * usata sia per il report HACCP giornaliero sia per la checklist ordini.
@@ -35,11 +82,7 @@ export class PrintingService {
       return { printed: false, reason: 'NO_PRINTER_CONFIGURED' };
     }
 
-    const printer = new ThermalPrinter({
-      type: PrinterTypes.EPSON,
-      interface: `tcp://${printerConfig.host}:${printerConfig.port}`,
-      removeSpecialCharacters: false,
-    });
+    const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
 
     try {
       const isConnected = await printer.isPrinterConnected();

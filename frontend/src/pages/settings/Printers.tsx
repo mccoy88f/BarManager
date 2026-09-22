@@ -20,6 +20,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -41,6 +42,12 @@ const usageLabels: Record<string, string> = {
 
 const emptyForm = { name: '', host: '', port: '9100', usage: 'GENERIC' };
 
+const testFailureLabels: Record<string, string> = {
+  NOT_FOUND: 'Stampante non trovata.',
+  PRINTER_UNREACHABLE: 'Stampante irraggiungibile: verifica indirizzo IP, porta e che sia accesa.',
+  PRINT_ERROR: "Errore durante l'invio della stampa.",
+};
+
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
     ?.data;
@@ -58,6 +65,12 @@ export function Printers() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PrinterRow | null>(null);
+  const [testResult, setTestResult] = useState<{
+    printerId: string;
+    printerName: string;
+    printed: boolean;
+    reason?: string;
+  } | null>(null);
 
   const printersQuery = useQuery({
     queryKey: ['printers'],
@@ -102,6 +115,23 @@ export function Printers() {
     },
   });
 
+  const testMutation = useMutation({
+    mutationFn: async (printer: PrinterRow) => ({
+      printer,
+      result: (await api.post<{ printed: boolean; reason?: string }>(`/printers/${printer.id}/test`))
+        .data,
+    }),
+    onSuccess: ({ printer, result }) =>
+      setTestResult({
+        printerId: printer.id,
+        printerName: printer.name,
+        printed: result.printed,
+        reason: result.reason,
+      }),
+    onError: (_err, printer) =>
+      setTestResult({ printerId: printer.id, printerName: printer.name, printed: false }),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
@@ -135,6 +165,20 @@ export function Printers() {
           report HACCP giornaliero e la checklist degli ordini fornitori.
         </Typography>
 
+        {testResult && (
+          <Alert
+            severity={testResult.printed ? 'success' : 'error'}
+            sx={{ mt: 1 }}
+            onClose={() => setTestResult(null)}
+          >
+            {testResult.printed
+              ? `Ricevuta di prova inviata a "${testResult.printerName}".`
+              : `"${testResult.printerName}": ${
+                  testFailureLabels[testResult.reason ?? ''] ?? 'Test di stampa non riuscito.'
+                }`}
+          </Alert>
+        )}
+
         <Stack spacing={1} sx={{ mt: 2 }}>
           {printersQuery.data?.map((printer) => (
             <Box
@@ -158,6 +202,16 @@ export function Printers() {
                     toggleActiveMutation.mutate({ id: printer.id, active: e.target.checked })
                   }
                 />
+                <IconButton
+                  title="Test di stampa"
+                  disabled={testMutation.isPending}
+                  onClick={() => {
+                    setTestResult(null);
+                    testMutation.mutate(printer);
+                  }}
+                >
+                  <PrintIcon fontSize="small" />
+                </IconButton>
                 <IconButton title="Modifica" onClick={() => openEdit(printer)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
