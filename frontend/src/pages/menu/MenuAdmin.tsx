@@ -50,6 +50,7 @@ import QRCode from 'qrcode';
 import { api } from '../../api/client';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ImageLightbox } from '../../components/ImageLightbox';
 
 interface MenuCategory {
   id: string;
@@ -426,6 +427,7 @@ export function MenuAdmin() {
 
   const publicMenuUrl = `${window.location.origin}/menu`;
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   useEffect(() => {
     QRCode.toDataURL(publicMenuUrl, { width: 320, margin: 1 })
@@ -586,7 +588,8 @@ export function MenuAdmin() {
                         component="img"
                         image={item.photoUrl}
                         alt={item.name}
-                        sx={{ width: 100, height: 100, objectFit: 'cover' }}
+                        onClick={() => setLightbox(item.photoUrl!)}
+                        sx={{ width: 100, height: 100, objectFit: 'cover', cursor: 'zoom-in' }}
                       />
                     )}
                     <CardContent sx={{ flex: 1 }}>
@@ -848,6 +851,8 @@ export function MenuAdmin() {
         onCancel={cancelPhotoCrop}
         onConfirm={confirmPhotoCrop}
       />
+
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </Box>
   );
 }

@@ -24,6 +24,7 @@ import InstagramIcon from '@mui/icons-material/Instagram';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
+import { ImageLightbox } from '../../components/ImageLightbox';
 
 interface PublicMenuVariant {
   id: string;
@@ -97,7 +98,13 @@ function priceLabel(variants: PublicMenuVariant[]): string {
   return `da € ${Math.min(...priced.map((v) => v.price as number)).toFixed(2)}`;
 }
 
-function MenuItemCard({ item }: { item: PublicMenuItem }) {
+function MenuItemCard({
+  item,
+  onImageClick,
+}: {
+  item: PublicMenuItem;
+  onImageClick: (url: string) => void;
+}) {
   return (
     <Card variant="outlined" sx={{ opacity: item.available ? 1 : 0.6 }}>
       <Box sx={{ display: 'flex' }}>
@@ -106,7 +113,8 @@ function MenuItemCard({ item }: { item: PublicMenuItem }) {
             component="img"
             image={item.photoUrl}
             alt={item.name}
-            sx={{ width: 96, height: 96, objectFit: 'cover' }}
+            onClick={() => onImageClick(item.photoUrl!)}
+            sx={{ width: 96, height: 96, objectFit: 'cover', cursor: 'zoom-in' }}
           />
         )}
         <CardContent sx={{ flex: 1 }}>
@@ -162,6 +170,7 @@ export function PublicMenu() {
   const venueSlug = params.get('venueSlug');
   const [search, setSearch] = useState('');
   const [openCategory, setOpenCategory] = useState<string | false>(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const menuQuery = useQuery({
     queryKey: ['public-menu', venueSlug],
@@ -213,7 +222,10 @@ export function PublicMenu() {
   return (
     <Box sx={{ maxWidth: 640, mx: 'auto' }}>
       {venue.coverUrl ? (
-        <Box sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220 } }}>
+        <Box
+          onClick={() => setLightbox(venue.coverUrl!)}
+          sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220 }, cursor: 'zoom-in' }}
+        >
           <Box
             component="img"
             src={venue.coverUrl}
@@ -285,7 +297,7 @@ export function PublicMenu() {
             </Stack>
             <Stack spacing={2}>
               {featuredItems.map((item) => (
-                <MenuItemCard key={item.id} item={item} />
+                <MenuItemCard key={item.id} item={item} onImageClick={setLightbox} />
               ))}
             </Stack>
           </Box>
@@ -306,7 +318,7 @@ export function PublicMenu() {
             <AccordionDetails>
               <Stack spacing={2}>
                 {category.items.map((item) => (
-                  <MenuItemCard key={item.id} item={item} />
+                  <MenuItemCard key={item.id} item={item} onImageClick={setLightbox} />
                 ))}
               </Stack>
             </AccordionDetails>
@@ -354,6 +366,8 @@ export function PublicMenu() {
           </Box>
         )}
       </Box>
+
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </Box>
   );
 }
