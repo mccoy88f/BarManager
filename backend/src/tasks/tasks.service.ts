@@ -23,7 +23,9 @@ export class TasksService {
     return this.prisma.task.findMany({
       where: { venueId, status: filters.status, type: filters.type },
       include: { relatedEmployee: true, assignedTo: { select: { email: true } } },
-      orderBy: { dueDate: 'asc' },
+      // Nello storico (DONE) ha senso vedere prima le completate più di
+      // recente; tra le aperte, prima quelle con scadenza più vicina.
+      orderBy: filters.status === TaskStatus.DONE ? { completedAt: 'desc' } : { dueDate: 'asc' },
     });
   }
 

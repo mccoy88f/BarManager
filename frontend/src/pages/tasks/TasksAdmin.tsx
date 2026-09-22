@@ -14,6 +14,8 @@ import {
   TextField,
   Typography,
   IconButton,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -31,6 +33,7 @@ interface TaskRow {
   dueDate: string;
   recurrence: string;
   status: string;
+  completedAt?: string;
   relatedEmployee?: { id: string; firstName: string; lastName: string };
 }
 
@@ -71,10 +74,11 @@ export function TasksAdmin() {
   const [editing, setEditing] = useState<TaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
+  const [view, setView] = useState<'OPEN' | 'DONE'>('OPEN');
 
   const tasksQuery = useQuery({
-    queryKey: ['tasks', 'OPEN'],
-    queryFn: async () => (await api.get<TaskRow[]>('/tasks', { params: { status: 'OPEN' } })).data,
+    queryKey: ['tasks', view],
+    queryFn: async () => (await api.get<TaskRow[]>('/tasks', { params: { status: view } })).data,
   });
 
   const employeesQuery = useQuery({
@@ -135,15 +139,21 @@ export function TasksAdmin() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">Attività aperte</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          Aggiungi
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h6">{view === 'OPEN' ? 'Attività aperte' : 'Storico attività completate'}</Typography>
+        <Stack direction="row" spacing={1}>
+          <ToggleButtonGroup size="small" exclusive value={view} onChange={(_e, v) => v && setView(v)}>
+            <ToggleButton value="OPEN">Aperte</ToggleButton>
+            <ToggleButton value="DONE">Storico</ToggleButton>
+          </ToggleButtonGroup>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+            Aggiungi
+          </Button>
+        </Stack>
       </Box>
       <Stack spacing={1}>
         {tasksQuery.data?.map((task) => {
-          const overdue = new Date(task.dueDate) < now;
+          const overdue = view === 'OPEN' && new Date(task.dueDate) < now;
           return (
             <Card key={task.id} variant="outlined">
               <CardContent
@@ -163,22 +173,34 @@ export function TasksAdmin() {
                       color={overdue ? 'error' : 'default'}
                       label={`Scadenza: ${new Date(task.dueDate).toLocaleDateString('it-IT')}`}
                     />
+                    {task.completedAt && (
+                      <Chip
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        label={`Completata il: ${new Date(task.completedAt).toLocaleDateString('it-IT')}`}
+                      />
+                    )}
                     {task.recurrence !== 'NONE' && (
                       <Chip size="small" variant="outlined" label={recurrenceLabels[task.recurrence]} />
                     )}
                   </Stack>
                 </Box>
                 <Stack direction="row" spacing={0.5}>
-                  <IconButton
-                    color="success"
-                    title="Segna come completata"
-                    onClick={() => completeMutation.mutate(task.id)}
-                  >
-                    <CheckCircleIcon />
-                  </IconButton>
-                  <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
-                    <EditIcon />
-                  </IconButton>
+                  {view === 'OPEN' && (
+                    <>
+                      <IconButton
+                        color="success"
+                        title="Segna come completata"
+                        onClick={() => completeMutation.mutate(task.id)}
+                      >
+                        <CheckCircleIcon />
+                      </IconButton>
+                      <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
+                        <EditIcon />
+                      </IconButton>
+                    </>
+                  )}
                   <IconButton
                     color="default"
                     title="Elimina"
@@ -193,7 +215,7 @@ export function TasksAdmin() {
         })}
         {tasksQuery.data?.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            Nessuna attività aperta.
+            {view === 'OPEN' ? 'Nessuna attività aperta.' : 'Nessuna attività completata finora.'}
           </Typography>
         )}
       </Stack>
