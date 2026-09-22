@@ -24,8 +24,23 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { api } from '../../api/client';
@@ -35,6 +50,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 interface MenuCategory {
   id: string;
   name: string;
+  visible: boolean;
 }
 interface MenuItemVariant {
   id: string;
@@ -101,6 +117,69 @@ const allergenLabels: Record<string, string> = {
   MOLLUSCS: 'Molluschi',
 };
 
+function SortableCategoryRow({
+  category,
+  index,
+  locked,
+  onEdit,
+  onDeleteRequest,
+  onToggleVisible,
+}: {
+  category: MenuCategory;
+  index: number;
+  locked: boolean;
+  onEdit: () => void;
+  onDeleteRequest: () => void;
+  onToggleVisible: (visible: boolean) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: category.id,
+  });
+
+  return (
+    <Box
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        bgcolor: 'background.paper',
+        opacity: isDragging ? 0.5 : 1,
+        borderRadius: 1,
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <IconButton size="small" {...attributes} {...listeners} sx={{ cursor: 'grab', touchAction: 'none' }}>
+          <DragIndicatorIcon fontSize="small" />
+        </IconButton>
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 20 }}>
+          {index + 1}.
+        </Typography>
+        <Typography variant="body2">{category.name}</Typography>
+      </Stack>
+      <Stack direction="row" alignItems="center" spacing={0.5}>
+        <Switch
+          size="small"
+          checked={category.visible}
+          onChange={(e) => onToggleVisible(e.target.checked)}
+          title="Mostra/nascondi dal menù"
+        />
+        {!locked && (
+          <>
+            <IconButton size="small" title="Modifica" onClick={onEdit}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+            <IconButton size="small" title="Elimina" onClick={onDeleteRequest}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
 export function MenuAdmin() {
   const queryClient = useQueryClient();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -160,11 +239,33 @@ export function MenuAdmin() {
     onError: (err) => setCategoryDeleteError(extractErrorMessage(err)),
   });
 
-  const moveCategoryMutation = useMutation({
-    mutationFn: async ({ id, direction }: { id: string; direction: 'up' | 'down' }) =>
-      (await api.patch(`/menu/categories/${id}/move`, { direction })).data,
+  const reorderCategoriesMutation = useMutation({
+    mutationFn: async (categoryIds: string[]) =>
+      (await api.patch('/menu/categories/reorder', { categoryIds })).data,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
+  });
+
+  const setCategoryVisibilityMutation = useMutation({
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) =>
+      (await api.patch(`/menu/categories/${id}/visibility`, { visible })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
   });
+
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+  );
+
+  const handleCategoryDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !categoriesQuery.data) return;
+    const ids = categoriesQuery.data.map((c) => c.id);
+    const newIds = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+    queryClient.setQueryData<MenuCategory[]>(['menu-categories'], (old) =>
+      old ? newIds.map((id) => old.find((c) => c.id === id)!) : old,
+    );
+    reorderCategoriesMutation.mutate(newIds);
+  };
 
   const saveItemMutation = useMutation({
     mutationFn: async () => {
@@ -365,54 +466,34 @@ export function MenuAdmin() {
             )}
           </Box>
 
-          <Stack spacing={0.5} sx={{ mt: 2 }}>
-            {categoriesQuery.data?.map((category, index) => (
-              <Box
-                key={category.id}
-                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <Typography variant="body2">{category.name}</Typography>
-                <Stack direction="row">
-                  <IconButton
-                    size="small"
-                    disabled={index === 0 || moveCategoryMutation.isPending}
-                    onClick={() => moveCategoryMutation.mutate({ id: category.id, direction: 'up' })}
-                  >
-                    <ArrowUpwardIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    disabled={
-                      index === (categoriesQuery.data?.length ?? 0) - 1 ||
-                      moveCategoryMutation.isPending
+          <Typography variant="caption" color="text.secondary">
+            Trascina per riordinare come compaiono nel menù pubblico.
+          </Typography>
+          <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+            <SortableContext
+              items={categoriesQuery.data?.map((c) => c.id) ?? []}
+              strategy={verticalListSortingStrategy}
+            >
+              <Stack spacing={0.5} sx={{ mt: 1 }}>
+                {categoriesQuery.data?.map((category, index) => (
+                  <SortableCategoryRow
+                    key={category.id}
+                    category={category}
+                    index={index}
+                    locked={locked}
+                    onEdit={() => openEditCategory(category)}
+                    onDeleteRequest={() => {
+                      setCategoryDeleteError(null);
+                      setCategoryToDelete(category);
+                    }}
+                    onToggleVisible={(visible) =>
+                      setCategoryVisibilityMutation.mutate({ id: category.id, visible })
                     }
-                    onClick={() =>
-                      moveCategoryMutation.mutate({ id: category.id, direction: 'down' })
-                    }
-                  >
-                    <ArrowDownwardIcon fontSize="small" />
-                  </IconButton>
-                  {!locked && (
-                    <>
-                      <IconButton size="small" title="Modifica" onClick={() => openEditCategory(category)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        title="Elimina"
-                        onClick={() => {
-                          setCategoryDeleteError(null);
-                          setCategoryToDelete(category);
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </>
-                  )}
-                </Stack>
-              </Box>
-            ))}
-          </Stack>
+                  />
+                ))}
+              </Stack>
+            </SortableContext>
+          </DndContext>
         </CardContent>
       </Card>
 

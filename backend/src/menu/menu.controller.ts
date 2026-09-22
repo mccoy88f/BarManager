@@ -27,6 +27,7 @@ import {
 import { MenuService } from './menu.service';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
+import { ReorderMenuCategoriesDto } from './dto/reorder-menu-categories.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { SetUnavailableDto } from './dto/set-unavailable.dto';
@@ -50,13 +51,19 @@ export class MenuController {
     return this.menuService.listCategories(requireVenueId(user));
   }
 
-  @Patch('categories/:id/move')
-  moveCategory(
+  /** Nuovo ordine dopo un drag&drop in UI: va registrata prima di "categories/:id". */
+  @Patch('categories/reorder')
+  reorderCategories(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReorderMenuCategoriesDto) {
+    return this.menuService.reorderCategories(requireVenueId(user), dto.categoryIds);
+  }
+
+  @Patch('categories/:id/visibility')
+  setCategoryVisibility(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body('direction') direction: 'up' | 'down',
+    @Body('visible') visible: boolean,
   ) {
-    return this.menuService.moveCategory(requireVenueId(user), id, direction);
+    return this.menuService.setCategoryVisibility(requireVenueId(user), id, visible);
   }
 
   @Patch('categories/:id')

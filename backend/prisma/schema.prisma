@@ -516,9 +516,10 @@ enum MenuAvailability {
 }
 
 model MenuCategory {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   name      String
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
+  visible   Boolean @default(true) // mostra/nascondi dal menù pubblico, come le voci di menù
 
   // Popolata solo dal sync Loyverse: chiave per aggiornare la categoria
   // senza duplicarla ai sync successivi, mai impostata a mano.

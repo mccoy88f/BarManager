@@ -97,3 +97,52 @@ describe('MenuService varianti', () => {
     expect(prisma.menuItem.update).not.toHaveBeenCalled();
   });
 });
+
+describe('MenuService categorie', () => {
+  let prisma: {
+    menuCategory: { findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = {
+      menuCategory: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      $transaction: jest.fn((ops) => Promise.all(ops)),
+    };
+    service = new MenuService(prisma as unknown as PrismaService);
+  });
+
+  it('riordina le categorie assegnando sortOrder secondo l\'elenco ricevuto', async () => {
+    prisma.menuCategory.findMany
+      .mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }])
+      .mockResolvedValueOnce([]);
+
+    await service.reorderCategories('venue-1', ['c', 'a', 'b']);
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({ where: { id: 'c' }, data: { sortOrder: 0 } });
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({ where: { id: 'a' }, data: { sortOrder: 1 } });
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({ where: { id: 'b' }, data: { sortOrder: 2 } });
+  });
+
+  it('rifiuta il riordino se gli id non corrispondono esattamente alle categorie del locale', async () => {
+    prisma.menuCategory.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+
+    await expect(service.reorderCategories('venue-1', ['a', 'x'])).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+  });
+
+  it('imposta la visibilità di una categoria', async () => {
+    prisma.menuCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-1' });
+    prisma.menuCategory.update.mockResolvedValue({ id: 'cat-1', visible: false });
+
+    await service.setCategoryVisibility('venue-1', 'cat-1', false);
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({
+      where: { id: 'cat-1' },
+      data: { visible: false },
+    });
+  });
+});

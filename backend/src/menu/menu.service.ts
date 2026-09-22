@@ -52,33 +52,33 @@ export class MenuService {
     });
   }
 
-  /** Sposta una categoria su/giù scambiando l'ordinamento con la vicina. */
-  async moveCategory(venueId: string, categoryId: string, direction: 'up' | 'down') {
-    const categories = await this.prisma.menuCategory.findMany({
-      where: { venueId },
-      orderBy: { sortOrder: 'asc' },
-    });
-    const index = categories.findIndex((c) => c.id === categoryId);
-    if (index === -1) {
+  /**
+   * Riordina le categorie secondo l'elenco di id ricevuto (dopo un
+   * drag&drop in UI): pura presentazione, permessa anche con
+   * l'integrazione Loyverse attiva.
+   */
+  async reorderCategories(venueId: string, categoryIds: string[]) {
+    const categories = await this.prisma.menuCategory.findMany({ where: { venueId } });
+    if (
+      categoryIds.length !== categories.length ||
+      !categoryIds.every((id) => categories.some((c) => c.id === id))
+    ) {
+      throw new BadRequestException('Elenco categorie non valido per questo locale');
+    }
+    await this.prisma.$transaction(
+      categoryIds.map((id, sortOrder) =>
+        this.prisma.menuCategory.update({ where: { id }, data: { sortOrder } }),
+      ),
+    );
+    return this.listCategories(venueId);
+  }
+
+  async setCategoryVisibility(venueId: string, categoryId: string, visible: boolean) {
+    const category = await this.prisma.menuCategory.findUnique({ where: { id: categoryId } });
+    if (!category || category.venueId !== venueId) {
       throw new NotFoundException('Categoria non trovata');
     }
-    const neighborIndex = direction === 'up' ? index - 1 : index + 1;
-    if (neighborIndex < 0 || neighborIndex >= categories.length) {
-      return categories; // già in cima/fondo: nessuna modifica
-    }
-    const current = categories[index];
-    const neighbor = categories[neighborIndex];
-    await this.prisma.$transaction([
-      this.prisma.menuCategory.update({
-        where: { id: current.id },
-        data: { sortOrder: neighbor.sortOrder },
-      }),
-      this.prisma.menuCategory.update({
-        where: { id: neighbor.id },
-        data: { sortOrder: current.sortOrder },
-      }),
-    ]);
-    return this.listCategories(venueId);
+    return this.prisma.menuCategory.update({ where: { id: categoryId }, data: { visible } });
   }
 
   async updateCategory(venueId: string, categoryId: string, dto: UpdateMenuCategoryDto) {
@@ -235,7 +235,7 @@ export class MenuService {
           : [MenuAvailability.ALL_DAY];
 
     const categories = await this.prisma.menuCategory.findMany({
-      where: { venueId },
+      where: { venueId, visible: true },
       orderBy: { sortOrder: 'asc' },
       include: {
         items: {
