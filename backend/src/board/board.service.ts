@@ -61,6 +61,11 @@ export class BoardService {
     return this.prisma.boardMessage.update({ where: { id }, data: { photoUrl } });
   }
 
+  async removePhoto(venueId: string, id: string) {
+    await this.assertOwnership(venueId, id);
+    return this.prisma.boardMessage.update({ where: { id }, data: { photoUrl: null } });
+  }
+
   async remove(venueId: string, id: string) {
     await this.assertOwnership(venueId, id);
     await this.prisma.boardMessage.delete({ where: { id } });

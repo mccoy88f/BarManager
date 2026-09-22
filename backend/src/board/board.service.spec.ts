@@ -62,4 +62,13 @@ describe('BoardService', () => {
       expect.objectContaining({ where: { venueId: 'venue-1', pinned: true } }),
     );
   });
+
+  it('rimuove la foto di un messaggio impostando photoUrl a null', async () => {
+    prisma.boardMessage.findUnique.mockResolvedValue({ id: 'msg-1', venueId: 'venue-1' });
+    await service.removePhoto('venue-1', 'msg-1');
+    expect(prisma.boardMessage.update).toHaveBeenCalledWith({
+      where: { id: 'msg-1' },
+      data: { photoUrl: null },
+    });
+  });
 });

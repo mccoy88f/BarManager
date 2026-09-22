@@ -60,6 +60,9 @@ export function BoardPage() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [editing, setEditing] = useState<BoardMessageRow | null>(null);
   const [editText, setEditText] = useState('');
+  const [editNewPhoto, setEditNewPhoto] = useState<File | null>(null);
+  const [editRemovePhoto, setEditRemovePhoto] = useState(false);
+  const [editCropImageSrc, setEditCropImageSrc] = useState<string | null>(null);
 
   const messagesQuery = useQuery({
     queryKey: ['board-messages'],
@@ -102,11 +105,25 @@ export function BoardPage() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, text: newText }: { id: string; text: string }) =>
-      (await api.patch(`/board/messages/${id}`, { text: newText })).data,
+    mutationFn: async () => {
+      if (!editing) return;
+      const { data: message } = await api.patch<BoardMessageRow>(`/board/messages/${editing.id}`, {
+        text: editText.trim(),
+      });
+      if (editNewPhoto) {
+        const form = new FormData();
+        form.append('photo', editNewPhoto);
+        await api.post(`/board/messages/${editing.id}/photo`, form);
+      } else if (editRemovePhoto) {
+        await api.delete(`/board/messages/${editing.id}/photo`);
+      }
+      return message;
+    },
     onSuccess: () => {
       invalidate();
       setEditing(null);
+      setEditNewPhoto(null);
+      setEditRemovePhoto(false);
     },
   });
 
@@ -135,6 +152,18 @@ export function BoardPage() {
   const confirmPhotoCrop = (blob: Blob) => {
     setPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
     setCropImageSrc(null);
+  };
+
+  const startEditPhotoCrop = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setEditCropImageSrc(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const confirmEditPhotoCrop = (blob: Blob) => {
+    setEditNewPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+    setEditRemovePhoto(false);
+    setEditCropImageSrc(null);
   };
 
   return (
@@ -197,6 +226,8 @@ export function BoardPage() {
                         onClick={() => {
                           setEditing(msg);
                           setEditText(msg.text);
+                          setEditNewPhoto(null);
+                          setEditRemovePhoto(false);
                         }}
                       >
                         <EditIcon fontSize="small" />
@@ -279,7 +310,7 @@ export function BoardPage() {
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Modifica messaggio</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Testo"
             multiline
@@ -289,13 +320,71 @@ export function BoardPage() {
             onChange={(e) => setEditText(e.target.value)}
             autoFocus
           />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {editNewPhoto ? (
+              <>
+                <Typography variant="body2">{editNewPhoto.name}</Typography>
+                <Button size="small" onClick={() => setEditNewPhoto(null)}>
+                  Annulla nuova foto
+                </Button>
+              </>
+            ) : editing?.photoUrl && !editRemovePhoto ? (
+              <>
+                <Box
+                  component="img"
+                  src={editing.photoUrl}
+                  alt=""
+                  sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1 }}
+                />
+                <Button variant="outlined" component="label" size="small" startIcon={<PhotoCameraIcon />}>
+                  Cambia foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) startEditPhotoCrop(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </Button>
+                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setEditRemovePhoto(true)}>
+                  Rimuovi foto
+                </Button>
+              </>
+            ) : editRemovePhoto ? (
+              <>
+                <Typography variant="body2" color="text.secondary">
+                  Foto rimossa
+                </Typography>
+                <Button size="small" onClick={() => setEditRemovePhoto(false)}>
+                  Annulla rimozione
+                </Button>
+              </>
+            ) : (
+              <Button variant="outlined" component="label" size="small" startIcon={<PhotoCameraIcon />}>
+                Aggiungi foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) startEditPhotoCrop(file);
+                    e.target.value = '';
+                  }}
+                />
+              </Button>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setEditing(null)}>Annulla</Button>
           <Button
             variant="contained"
             disabled={!editText.trim() || editMutation.isPending}
-            onClick={() => editing && editMutation.mutate({ id: editing.id, text: editText.trim() })}
+            onClick={() => editMutation.mutate()}
           >
             Salva
           </Button>
@@ -309,6 +398,13 @@ export function BoardPage() {
         imageSrc={cropImageSrc}
         onCancel={() => setCropImageSrc(null)}
         onConfirm={confirmPhotoCrop}
+      />
+
+      <PhotoCropDialog
+        open={!!editCropImageSrc}
+        imageSrc={editCropImageSrc}
+        onCancel={() => setEditCropImageSrc(null)}
+        onConfirm={confirmEditPhotoCrop}
       />
     </Box>
   );

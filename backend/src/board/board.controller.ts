@@ -91,6 +91,12 @@ export class BoardController {
     return this.boardService.setPhoto(requireVenueId(user), id, `/uploads/board/${file.filename}`);
   }
 
+  @Delete('messages/:id/photo')
+  @Roles(Role.ADMIN)
+  removePhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.boardService.removePhoto(requireVenueId(user), id);
+  }
+
   @Delete('messages/:id')
   @Roles(Role.ADMIN)
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
