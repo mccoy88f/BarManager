@@ -41,6 +41,7 @@ model Venue {
   // Aspetto del menù pubblico: immagine di copertina in alto e informazioni
   // di contatto in fondo (social, telefono), impostati dall'admin.
   menuCoverUrl      String?
+  menuAddress       String?
   menuPhone         String?
   menuInstagramUrl  String?
   menuFacebookUrl   String?

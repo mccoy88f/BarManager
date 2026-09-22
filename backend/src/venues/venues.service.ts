@@ -83,6 +83,7 @@ export class VenuesService {
         gpsLng: true,
         gpsRadiusMeters: true,
         menuCoverUrl: true,
+        menuAddress: true,
         menuPhone: true,
         menuInstagramUrl: true,
         menuFacebookUrl: true,

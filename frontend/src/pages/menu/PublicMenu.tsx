@@ -50,6 +50,7 @@ interface PublicMenuResponse {
   venue: {
     name: string;
     coverUrl?: string;
+    address?: string;
     phone?: string;
     instagramUrl?: string;
     facebookUrl?: string;
@@ -206,7 +207,8 @@ export function PublicMenu() {
   }
 
   const { venue } = menuQuery.data;
-  const hasContacts = venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
+  const hasContacts =
+    venue.address || venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
 
   return (
     <Box sx={{ maxWidth: 640, mx: 'auto' }}>
@@ -319,9 +321,12 @@ export function PublicMenu() {
 
         {hasContacts && (
           <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-            {venue.phone && (
+            <Typography variant="subtitle2" fontWeight={700}>
+              {venue.name}
+            </Typography>
+            {venue.address && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {venue.phone}
+                {venue.address}
               </Typography>
             )}
             <Stack direction="row" spacing={1} justifyContent="center">

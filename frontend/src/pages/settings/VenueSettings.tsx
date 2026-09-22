@@ -52,6 +52,7 @@ interface VenueHours {
   dinnerStart: string;
   dinnerEnd: string;
   menuCoverUrl?: string;
+  menuAddress?: string;
   menuPhone?: string;
   menuInstagramUrl?: string;
   menuFacebookUrl?: string;
@@ -81,6 +82,8 @@ export function VenueSettings() {
   const [success, setSuccess] = useState(false);
 
   const [menuSettings, setMenuSettings] = useState({
+    name: '',
+    menuAddress: '',
     menuPhone: '',
     menuInstagramUrl: '',
     menuFacebookUrl: '',
@@ -103,6 +106,8 @@ export function VenueSettings() {
         dinnerEnd: venueQuery.data.dinnerEnd,
       });
       setMenuSettings({
+        name: venueQuery.data.name ?? '',
+        menuAddress: venueQuery.data.menuAddress ?? '',
         menuPhone: venueQuery.data.menuPhone ?? '',
         menuInstagramUrl: venueQuery.data.menuInstagramUrl ?? '',
         menuFacebookUrl: venueQuery.data.menuFacebookUrl ?? '',
@@ -267,8 +272,8 @@ export function VenueSettings() {
             Aspetto del menù pubblico
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Immagine di copertina mostrata in alto e contatti mostrati in fondo al menù che i
-            clienti vedono scansionando il QR code.
+            Immagine di copertina mostrata in alto, nome e indirizzo mostrati in fondo insieme ai
+            contatti, nel menù che i clienti vedono scansionando il QR code.
           </Typography>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
@@ -298,6 +303,18 @@ export function VenueSettings() {
           </Box>
 
           <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, mt: 3, maxWidth: 500 }}>
+            <TextField
+              label="Nome del locale"
+              value={menuSettings.name}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, name: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Indirizzo"
+              value={menuSettings.menuAddress}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, menuAddress: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
             <TextField
               label="Telefono"
               value={menuSettings.menuPhone}
