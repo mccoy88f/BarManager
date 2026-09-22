@@ -36,12 +36,17 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
   }, [file?.url]);
 
   useEffect(() => {
+    // Il contenitore esiste nel DOM solo quando il dialog è aperto (MUI non
+    // lo monta finché open=false): l'effetto deve ripartire ad ogni apertura,
+    // non solo alla creazione del componente, altrimenti containerRef.current
+    // resta null per sempre e le pagine non vengono mai disegnate.
+    if (!file) return;
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [file]);
 
   return (
     <Dialog open={!!file} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { height: '90vh' } }}>
@@ -71,12 +76,11 @@ export function PdfViewerDialog({ file, onClose }: PdfViewerDialogProps) {
             }
           >
             {numPages &&
-              containerWidth > 0 &&
               Array.from({ length: numPages }, (_, i) => (
                 <Page
                   key={i}
                   pageNumber={i + 1}
-                  width={containerWidth}
+                  width={containerWidth || undefined}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
                 />
