@@ -24,6 +24,7 @@ import SyncIcon from '@mui/icons-material/Sync';
 import ArticleIcon from '@mui/icons-material/Article';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface LoyverseSyncSummary {
   categories: number;
@@ -147,6 +148,7 @@ export function VenueSettings() {
   const [loyverseToken, setLoyverseToken] = useState('');
   const [loyverseError, setLoyverseError] = useState<string | null>(null);
   const [loyverseLogOpen, setLoyverseLogOpen] = useState(false);
+  const [pendingToggle, setPendingToggle] = useState<boolean | null>(null);
 
   const loyverseStatusQuery = useQuery({
     queryKey: ['loyverse-status'],
@@ -160,9 +162,15 @@ export function VenueSettings() {
       (await api.patch('/loyverse/settings', { enabled })).data,
     onSuccess: () => {
       loyverseInvalidate();
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['menu-items'] });
       setLoyverseError(null);
+      setPendingToggle(null);
     },
-    onError: (err) => setLoyverseError(extractErrorMessage(err)),
+    onError: (err) => {
+      setLoyverseError(extractErrorMessage(err));
+      setPendingToggle(null);
+    },
   });
 
   const saveLoyverseTokenMutation = useMutation({
@@ -353,7 +361,7 @@ export function VenueSettings() {
               <Switch
                 checked={loyverseStatusQuery.data?.enabled ?? false}
                 disabled={toggleLoyverseMutation.isPending}
-                onChange={(e) => toggleLoyverseMutation.mutate(e.target.checked)}
+                onChange={(e) => setPendingToggle(e.target.checked)}
               />
             }
             label={loyverseStatusQuery.data?.enabled ? 'Integrazione attiva' : 'Integrazione disattivata'}
@@ -478,6 +486,20 @@ export function VenueSettings() {
           <Button onClick={() => setLoyverseLogOpen(false)}>Chiudi</Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingToggle !== null}
+        title={pendingToggle ? 'Attivare l\'integrazione Loyverse?' : 'Disattivare l\'integrazione Loyverse?'}
+        message={
+          pendingToggle
+            ? 'Categorie e voci di menù attualmente presenti (create a mano) verranno eliminate: da questo momento il menù online arriverà solo da Loyverse. L\'operazione non è reversibile.'
+            : 'Categorie e voci di menù sincronizzate da Loyverse verranno eliminate, dato che non saranno più aggiornabili automaticamente. Potrai ricreare il menù a mano. L\'operazione non è reversibile.'
+        }
+        confirmLabel={pendingToggle ? 'Attiva ed elimina il menù attuale' : 'Disattiva ed elimina il menù'}
+        loading={toggleLoyverseMutation.isPending}
+        onCancel={() => setPendingToggle(null)}
+        onConfirm={() => pendingToggle !== null && toggleLoyverseMutation.mutate(pendingToggle)}
+      />
     </Box>
   );
 }

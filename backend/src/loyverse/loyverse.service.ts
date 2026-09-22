@@ -23,6 +23,20 @@ export class LoyverseService {
     };
   }
 
+  /**
+   * All'attivazione, il menù precedente (creato a mano) non ha senso restare
+   * misto a quello che arriverà da Loyverse; alla disattivazione, il menù
+   * sincronizzato da Loyverse non è più aggiornabile da lì. In entrambi i
+   * casi ripartiamo da un menù vuoto — l'utente viene avvisato e deve
+   * confermare lato UI prima che questa chiamata parta (v. VenueSettings.tsx).
+   */
+  private wipeMenu(venueId: string) {
+    return [
+      this.prisma.menuItem.deleteMany({ where: { venueId } }), // MenuItemVariant a cascata
+      this.prisma.menuCategory.deleteMany({ where: { venueId } }),
+    ];
+  }
+
   async updateSettings(venueId: string, dto: UpdateLoyverseSettingsDto) {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) throw new NotFoundException('Locale non trovato');
@@ -33,15 +47,25 @@ export class LoyverseService {
       data.loyverseAccessTokenEnc = dto.accessToken ? encryptSecret(dto.accessToken) : null;
     }
 
+    let togglesIntegration = false;
     if (dto.enabled !== undefined) {
       const willHaveToken = dto.accessToken ? true : !!venue.loyverseAccessTokenEnc;
       if (dto.enabled && !willHaveToken) {
         throw new BadRequestException('Imposta prima un token di accesso Loyverse valido.');
       }
       data.loyverseIntegrationEnabled = dto.enabled;
+      togglesIntegration = dto.enabled !== venue.loyverseIntegrationEnabled;
     }
 
-    await this.prisma.venue.update({ where: { id: venueId }, data });
+    if (togglesIntegration) {
+      await this.prisma.$transaction([
+        ...this.wipeMenu(venueId),
+        this.prisma.venue.update({ where: { id: venueId }, data }),
+      ]);
+    } else {
+      await this.prisma.venue.update({ where: { id: venueId }, data });
+    }
+
     return this.getStatus(venueId);
   }
 

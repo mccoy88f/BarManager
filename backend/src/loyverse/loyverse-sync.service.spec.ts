@@ -61,6 +61,7 @@ describe('LoyverseSyncService', () => {
       {
         id: 'item-ext-1',
         item_name: 'Birra',
+        description: 'Birra artigianale alla spina',
         category_id: 'cat-ext-1',
         variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 4.5 }],
       },
@@ -72,13 +73,14 @@ describe('LoyverseSyncService', () => {
 
     expect(prisma.menuCategory.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ name: 'Bevande', loyverseCategoryId: 'cat-ext-1' }),
+        data: expect.objectContaining({ name: 'Bevande', loyverseCategoryId: 'cat-ext-1', visible: false }),
       }),
     );
     expect(prisma.menuItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           name: 'Birra',
+          description: 'Birra artigianale alla spina',
           loyverseItemId: 'item-ext-1',
           categoryId: 'cat-local-1',
           visible: false,
@@ -103,6 +105,46 @@ describe('LoyverseSyncService', () => {
           imagesSkipped: true,
           warnings: [],
         },
+      },
+    });
+  });
+
+  it('aggiorna la descrizione di una voce già sincronizzata quando cambia su Loyverse', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      loyverseIntegrationEnabled: true,
+      loyverseAccessTokenEnc: encryptSecret('token-123'),
+    });
+    prisma.menuCategory.findMany.mockResolvedValue([
+      { id: 'cat-local-1', venueId: 'venue-1', loyverseCategoryId: 'cat-ext-1', name: 'Bevande', sortOrder: 0 },
+    ]);
+    prisma.menuItem.findFirst.mockResolvedValue({
+      id: 'item-local-1',
+      name: 'Birra',
+      description: 'Vecchia descrizione',
+      categoryId: 'cat-local-1',
+      photoUrl: '/uploads/menu/existing.jpg',
+      variants: [{ id: 'var-local-1', loyverseVariantId: 'var-ext-1' }],
+    });
+    (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Bevande' }]);
+    (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+      {
+        id: 'item-ext-1',
+        item_name: 'Birra',
+        description: 'Nuova descrizione aggiornata da Loyverse',
+        category_id: 'cat-ext-1',
+        variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 4.5 }],
+      },
+    ]);
+
+    await service.sync('venue-1');
+
+    expect(prisma.menuItem.update).toHaveBeenCalledWith({
+      where: { id: 'item-local-1' },
+      data: {
+        name: 'Birra',
+        categoryId: 'cat-local-1',
+        description: 'Nuova descrizione aggiornata da Loyverse',
       },
     });
   });

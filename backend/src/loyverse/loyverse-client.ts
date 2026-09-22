@@ -38,6 +38,7 @@ export interface LoyverseVariant {
 export interface LoyverseItem {
   id: string;
   item_name: string;
+  description?: string | null;
   category_id?: string | null;
   variants?: LoyverseVariant[];
   deleted_at?: string | null;

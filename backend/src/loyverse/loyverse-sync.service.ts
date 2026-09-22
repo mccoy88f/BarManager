@@ -114,6 +114,7 @@ export class LoyverseSyncService {
             name: remote.name,
             loyverseCategoryId: remote.id,
             sortOrder: nextSortOrder++,
+            visible: false, // nascosta finché l'admin non la rivede e la pubblica, come le voci
           },
         });
         map.set(remote.id, created.id);
@@ -164,12 +165,18 @@ export class LoyverseSyncService {
       include: { variants: true },
     });
 
+    const description = remote.description ?? null;
+
     let menuItemId: string;
     if (existing) {
-      if (existing.name !== remote.item_name || existing.categoryId !== categoryId) {
+      if (
+        existing.name !== remote.item_name ||
+        existing.categoryId !== categoryId ||
+        existing.description !== description
+      ) {
         await this.prisma.menuItem.update({
           where: { id: existing.id },
-          data: { name: remote.item_name, categoryId },
+          data: { name: remote.item_name, categoryId, description },
         });
       }
       menuItemId = existing.id;
@@ -179,6 +186,7 @@ export class LoyverseSyncService {
           venueId,
           categoryId,
           name: remote.item_name,
+          description,
           loyverseItemId: remote.id,
           visible: false, // nascosta finché l'admin non la rivede e la pubblica
         },
