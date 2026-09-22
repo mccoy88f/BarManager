@@ -1,1 +1,80 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#1E5F74"/><text x="24" y="32" font-size="24" text-anchor="middle" fill="#fff" font-family="sans-serif">B</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Sfumatura di sfondo -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E5F74" />
+      <stop offset="100%" stop-color="#144250" />
+    </linearGradient>
+
+    <!-- Sfumatura Oro/Bronzo per l'ingranaggio -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F1C40F" />
+      <stop offset="100%" stop-color="#D35400" />
+    </linearGradient>
+
+    <!-- Sfumatura metallica pulita per il campanello -->
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#BDC3C7" />
+    </linearGradient>
+
+    <!-- Sfumatura verde per il grafico -->
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2ECC71" />
+      <stop offset="100%" stop-color="#27AE60" />
+    </linearGradient>
+
+    <!-- Ombra per dare profondità -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Sfondo dell'app -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Ingranaggio geometrico centrale -->
+  <g filter="url(#dropShadow)" transform="translate(256, 256)">
+    <!-- 8 Denti geometrici simmetrici -->
+    <g fill="url(#goldGrad)">
+      <rect x="-30" y="-210" width="60" height="50" rx="12" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(45)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(90)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(135)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(180)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(225)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(270)" />
+      <rect x="-30" y="-210" width="60" height="50" rx="12" transform="rotate(315)" />
+    </g>
+
+    <!-- Anello esterno dell'ingranaggio -->
+    <circle r="165" fill="none" stroke="url(#goldGrad)" stroke-width="50" />
+
+    <!-- Foro interno dell'ingranaggio -->
+    <circle r="140" fill="#144250" />
+  </g>
+
+  <!-- Icona interna: Campanello e Grafico Centrato -->
+  <g filter="url(#dropShadow)">
+    <!-- Base del bancone / campanello -->
+    <path d="M 160 330 C 160 315, 352 315, 352 330 C 352 345, 160 345, 160 330 Z" fill="url(#goldGrad)" />
+    <path d="M 160 330 L 170 350 C 170 365, 342 365, 342 350 L 352 330 Z" fill="#B9770E" opacity="0.8" />
+
+    <!-- Corpo del campanello -->
+    <path d="M 190 320 C 190 220, 322 220, 322 320 Z" fill="url(#metalGrad)" />
+
+    <!-- Pomello superiore del campanello -->
+    <rect x="238" y="195" width="36" height="25" rx="6" fill="url(#goldGrad)" />
+
+    <!-- Grafico a barre posizionato esattamente al centro geometrico (X: 216, Y: 250) -->
+    <g transform="translate(216, 250)">
+      <rect x="0" y="30" width="18" height="35" rx="4" fill="url(#greenGrad)" />
+      <rect x="25" y="16" width="18" height="49" rx="4" fill="url(#greenGrad)" />
+      <rect x="50" y="2" width="18" height="63" rx="4" fill="url(#greenGrad)" />
+
+      <!-- Freccia del trend centrata -->
+      <path d="M-4 35 L 23 10 L 42 24 L 69 -6" fill="none" stroke="#F1C40F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M 53 -6 L 69 -6 L 69 10" fill="none" stroke="#F1C40F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+</svg>
