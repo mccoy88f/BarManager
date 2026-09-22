@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
@@ -33,6 +34,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SearchIcon from '@mui/icons-material/Search';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
+import QrCodeIcon from '@mui/icons-material/QrCode';
 import {
   DndContext,
   closestCenter,
@@ -50,7 +52,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import QRCode from 'qrcode';
 import { api } from '../../api/client';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -230,6 +231,7 @@ function SortableCategorySection({
 }
 
 export function MenuAdmin() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
@@ -463,78 +465,18 @@ export function MenuAdmin() {
     }))
     .filter((group) => !isSearchingItems || group.items.length > 0);
 
-  const publicMenuUrl = `${window.location.origin}/menu`;
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [lightbox, setLightbox] = useState<string | null>(null);
-
-  useEffect(() => {
-    QRCode.toDataURL(publicMenuUrl, { width: 320, margin: 1 })
-      .then(setQrCodeDataUrl)
-      .catch(() => setQrCodeDataUrl(''));
-  }, [publicMenuUrl]);
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Menù pubblico
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            I clienti possono vedere il menù, senza login, a questo indirizzo o scansionando il
-            QR code:
-          </Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
-            <Stack spacing={1} sx={{ flexGrow: 1, width: '100%' }}>
-              <TextField
-                label="URL menù pubblico"
-                value={publicMenuUrl}
-                size="small"
-                InputProps={{ readOnly: true }}
-                onFocus={(e) => e.target.select()}
-              />
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => navigator.clipboard?.writeText(publicMenuUrl)}
-                >
-                  Copia link
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  component="a"
-                  href={publicMenuUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Apri link
-                </Button>
-              </Stack>
-            </Stack>
-            {qrCodeDataUrl && (
-              <Stack spacing={1} alignItems="center">
-                <Box
-                  component="img"
-                  src={qrCodeDataUrl}
-                  alt="QR code menù pubblico"
-                  sx={{ width: 160, height: 160 }}
-                />
-                <Button
-                  variant="contained"
-                  size="small"
-                  component="a"
-                  href={qrCodeDataUrl}
-                  download="menu-qrcode.png"
-                >
-                  Scarica QR code
-                </Button>
-              </Stack>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
+      <Button
+        variant="outlined"
+        startIcon={<QrCodeIcon />}
+        sx={{ justifySelf: 'flex-start' }}
+        onClick={() => navigate('/menu/admin/link')}
+      >
+        Link e QR code del menù pubblico
+      </Button>
 
       {locked && (
         <Alert severity="info">

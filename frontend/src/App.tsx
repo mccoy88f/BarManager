@@ -20,6 +20,7 @@ import { Catalog } from './pages/inventory/Catalog';
 import { OrderHistory } from './pages/inventory/OrderHistory';
 import { OrderDetail } from './pages/inventory/OrderDetail';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
+import { MenuPublicLink } from './pages/menu/MenuPublicLink';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { Venues } from './pages/super-admin/Venues';
@@ -82,6 +83,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute moduleKey="menu" />}>
             <Route path="/menu/admin" element={<MenuAdmin />} />
+            <Route path="/menu/admin/link" element={<MenuPublicLink />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="tasks" />}>
             <Route path="/tasks" element={<TasksAdmin />} />
