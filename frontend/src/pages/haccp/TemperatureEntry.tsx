@@ -22,7 +22,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/qzPrint';
+import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
 import type { Fridge } from './Fridges';
 
 function todayIso() {
@@ -104,8 +104,8 @@ export function TemperatureEntry() {
       setPrintError(null);
       setPrintSuccess(
         outcome.printed
-          ? 'Report stampato correttamente.'
-          : 'Report registrato e firmato (stampa non riuscita: verifica che QZ Tray sia in esecuzione e che la stampante sia raggiungibile).',
+          ? 'Report registrato: dialogo di stampa aperto.'
+          : 'Report registrato e firmato (nessuna stampante configurata per HACCP: Impostazioni > Stampanti).',
       );
       setPrintOpen(false);
       setSignedByName('');

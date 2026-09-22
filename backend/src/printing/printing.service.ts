@@ -1,21 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { printer as ThermalPrinter, types as PrinterTypes } from 'node-thermal-printer';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrinterUsage } from '@prisma/client';
 
 export type PrintJob =
-  | { ready: true; host: string; port: number; dataBase64: string }
+  | { ready: true; title: string; lines: string[]; footer?: string[] }
   | { ready: false; reason: 'NO_PRINTER_CONFIGURED' | 'NOT_FOUND' };
 
 /**
- * Prepara contenuto ESC/POS per una stampante Epson (o compatibile) di
- * rete, ma non lo invia: costruisce solo il buffer di comandi. L'invio
- * effettivo (connessione TCP diretta sulla porta configurata, default
- * 9100) avviene dal browser tramite QZ Tray (v.
- * frontend/src/printing/qzPrint.ts), non da qui — il server spesso non è
- * sulla stessa rete locale della stampante (es. hosting cloud, v.
- * docs/DEVELOPMENT.md §9.2), mentre il browser di chi stampa sì. Le
- * stampanti sono censite dall'admin nel modello `Printer`.
+ * Prepara solo il contenuto testuale da stampare (titolo/righe/piè di
+ * pagina): l'invio alla stampante avviene con la stampa standard del
+ * browser (window.print, v. frontend/src/printing/printJob.ts), non da
+ * qui. Un browser non può aprire una connessione diretta a una
+ * stampante di rete (nessuna libreria lo permette, v.
+ * docs/DEVELOPMENT.md §9.2): la stampante di destinazione la scelgono
+ * chi stampa nel dialogo di stampa del sistema operativo — su Android,
+ * con RawBT installato, compare lì e consegna il contenuto a una
+ * stampante ESC/POS in rete.
  */
 @Injectable()
 export class PrintingService {
@@ -29,14 +29,6 @@ export class PrintingService {
     });
   }
 
-  private createThermalPrinter(host: string, port: number) {
-    return new ThermalPrinter({
-      type: PrinterTypes.EPSON,
-      interface: `tcp://${host}:${port}`,
-      removeSpecialCharacters: false,
-    });
-  }
-
   /** Prepara una ricevuta di prova per una stampante specifica, per verificarne la configurazione. */
   async buildTestJob(venueId: string, printerId: string): Promise<PrintJob> {
     const printerConfig = await this.prisma.printer.findUnique({ where: { id: printerId } });
@@ -44,26 +36,16 @@ export class PrintingService {
       return { ready: false, reason: 'NOT_FOUND' };
     }
 
-    const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
-    printer.alignCenter();
-    printer.bold(true);
-    printer.println('Test di stampa');
-    printer.bold(false);
-    printer.drawLine();
-    printer.alignLeft();
-    printer.println(`Stampante: ${printerConfig.name}`);
-    printer.println(`Data: ${new Date().toLocaleString('it-IT')}`);
-    printer.newLine();
-    printer.alignCenter();
-    printer.println('Se leggi questo messaggio,');
-    printer.println('la stampante è configurata correttamente.');
-    printer.cut();
-
     return {
       ready: true,
-      host: printerConfig.host,
-      port: printerConfig.port,
-      dataBase64: printer.getBuffer().toString('base64'),
+      title: 'Test di stampa',
+      lines: [
+        `Stampante: ${printerConfig.name}`,
+        `Data: ${new Date().toLocaleString('it-IT')}`,
+        '',
+        'Se leggi questo messaggio,',
+        'la stampante è configurata correttamente.',
+      ],
     };
   }
 
@@ -82,29 +64,6 @@ export class PrintingService {
       return { ready: false, reason: 'NO_PRINTER_CONFIGURED' };
     }
 
-    const printer = this.createThermalPrinter(printerConfig.host, printerConfig.port);
-    printer.alignCenter();
-    printer.bold(true);
-    printer.println(opts.title);
-    printer.bold(false);
-    printer.drawLine();
-    printer.alignLeft();
-    for (const line of opts.lines) {
-      printer.println(line);
-    }
-    if (opts.footer?.length) {
-      printer.drawLine();
-      for (const line of opts.footer) {
-        printer.println(line);
-      }
-    }
-    printer.cut();
-
-    return {
-      ready: true,
-      host: printerConfig.host,
-      port: printerConfig.port,
-      dataBase64: printer.getBuffer().toString('base64'),
-    };
+    return { ready: true, ...opts };
   }
 }

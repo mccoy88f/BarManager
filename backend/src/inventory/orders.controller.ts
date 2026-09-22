@@ -52,7 +52,7 @@ export class OrdersController {
     return this.ordersService.sendOrder(user, id);
   }
 
-  /** Prepara il lavoro di stampa della checklist: il browser lo invia poi alla stampante via QZ Tray. */
+  /** Prepara il lavoro di stampa della checklist: il browser lo stampa poi con la stampa standard. */
   @Post(':id/print')
   buildPrintJob(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.ordersService.buildPrintJob(requireVenueId(user), id);

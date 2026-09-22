@@ -47,7 +47,6 @@
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",
     "multer": "^1.4.5-lts.1",
-    "node-thermal-printer": "^4.4.4",
     "nodemailer": "^6.9.14",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

@@ -29,7 +29,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/qzPrint';
+import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
 
 type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
 
@@ -52,8 +52,6 @@ const emptyForm = { name: '', host: '', port: '9100', usages: ['GENERIC'] as Pri
 
 const testFailureLabels: Record<string, string> = {
   NOT_FOUND: 'Stampante non trovata.',
-  QZ_ERROR:
-    'Impossibile stampare: verifica che QZ Tray sia installato e in esecuzione su questo dispositivo (https://qz.io/download/), e che la stampante sia raggiungibile dalla rete locale.',
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -168,14 +166,17 @@ export function Printers() {
           </Button>
         </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          Stampanti POS Epson (ESC/POS) raggiungibili in rete sulla porta indicata, usate per il
-          report HACCP giornaliero e la checklist degli ordini fornitori. La stampa parte dal
-          browser tramite{' '}
-          <a href="https://qz.io/download/" target="_blank" rel="noopener noreferrer">
-            QZ Tray
-          </a>
-          , da installare e avviare sul dispositivo da cui si stampa (nella stessa rete locale
-          della stampante).
+          Usate per il report HACCP giornaliero e la checklist degli ordini fornitori. La stampa
+          parte dal browser con la stampa standard del dispositivo: su PC usa la stampante di
+          sistema, su Android serve un'app come{' '}
+          <a
+            href="https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            RawBT
+          </a>{' '}
+          per collegare la stampante ESC/POS di rete al dialogo di stampa.
         </Typography>
 
         {testResult && (
@@ -185,7 +186,7 @@ export function Printers() {
             onClose={() => setTestResult(null)}
           >
             {testResult.printed
-              ? `Ricevuta di prova inviata a "${testResult.printerName}".`
+              ? `Dialogo di stampa aperto per "${testResult.printerName}".`
               : `"${testResult.printerName}": ${
                   testFailureLabels[testResult.reason ?? ''] ?? 'Test di stampa non riuscito.'
                 }`}

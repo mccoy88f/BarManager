@@ -112,9 +112,9 @@ export class OrdersService {
   /**
    * Conferma e invia l'ordine: email al fornitore (in CC i responsabili di
    * reparto/categoria configurati). La stampa della checklist POS non è
-   * più fatta da qui: il frontend, dopo l'invio, prepara e invia il
-   * lavoro di stampa dal browser (v. buildPrintJob e
-   * frontend/src/printing/qzPrint.ts).
+   * più fatta da qui: il frontend, dopo l'invio, prepara e stampa dal
+   * browser con la stampa standard (v. buildPrintJob e
+   * frontend/src/printing/printJob.ts).
    */
   async sendOrder(user: AuthenticatedUser, orderId: string) {
     const venueId = requireVenueId(user);
@@ -194,7 +194,7 @@ export class OrdersService {
   /**
    * Prepara la checklist ordine per la stampa (all'invio o su richiesta
    * dallo storico, in qualsiasi momento dopo l'invio): il browser la
-   * inoltra poi alla stampante via QZ Tray.
+   * stampa poi con la stampa standard (window.print).
    */
   async buildPrintJob(venueId: string, orderId: string) {
     const order = await this.getOrder(venueId, orderId);

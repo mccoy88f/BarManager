@@ -71,8 +71,8 @@ export class HaccpController {
 
   /**
    * Prepara il contenuto ESC/POS del report giornaliero: va poi inviato
-   * alla stampante dal browser (QZ Tray), non da qui — v.
-   * frontend/src/printing/qzPrint.ts.
+   * alla stampante dal browser con la stampa standard (window.print),
+   * non da qui — v. frontend/src/printing/printJob.ts.
    */
   @Post('report/print-job')
   @Roles(Role.ADMIN, Role.MANAGER)

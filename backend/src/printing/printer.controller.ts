@@ -63,8 +63,8 @@ export class PrinterController {
   }
 
   /**
-   * Prepara una ricevuta di prova: il contenuto va poi inviato alla
-   * stampante dal browser (QZ Tray), non da qui.
+   * Prepara una ricevuta di prova: il contenuto va poi stampato dal
+   * browser con la stampa standard (window.print), non da qui.
    */
   @Post(':id/test')
   async test(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

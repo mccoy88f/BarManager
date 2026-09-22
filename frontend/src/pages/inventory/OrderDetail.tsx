@@ -21,7 +21,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/qzPrint';
+import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
 
 interface OrderLineRow {
   id: string;
@@ -55,8 +55,6 @@ const statusColor: Record<OrderRow['status'], 'default' | 'warning' | 'success'>
 
 const printFailureLabels: Record<string, string> = {
   NO_PRINTER_CONFIGURED: 'Nessuna stampante configurata per gli ordini (Impostazioni > Stampanti).',
-  QZ_ERROR:
-    'Impossibile stampare: verifica che QZ Tray sia installato e in esecuzione su questo dispositivo (https://qz.io/download/), e che la stampante sia raggiungibile dalla rete locale.',
 };
 
 function orderTotal(order: OrderRow): number {
@@ -141,7 +139,7 @@ export function OrderDetail() {
       {printResult && (
         <Alert severity={printResult.printed ? 'success' : 'warning'} onClose={() => setPrintResult(null)}>
           {printResult.printed
-            ? 'Ristampa inviata alla stampante.'
+            ? 'Dialogo di stampa aperto.'
             : (printResult.reason && printFailureLabels[printResult.reason]) || 'Ristampa non riuscita.'}
         </Alert>
       )}

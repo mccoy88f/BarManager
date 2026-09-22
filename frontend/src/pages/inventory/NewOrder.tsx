@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { deliverPrintJob, type PrintJobResponse, type PrintOutcome } from '../../printing/qzPrint';
+import { deliverPrintJob, type PrintJobResponse, type PrintOutcome } from '../../printing/printJob';
 
 interface Supplier {
   id: string;
@@ -280,8 +280,8 @@ export function NewOrder() {
                 {sendMutation.isSuccess && (
                   <Alert severity={sendMutation.data.printed ? 'success' : 'warning'} sx={{ mt: 2 }}>
                     {sendMutation.data.printed
-                      ? 'Ordine inviato e stampato.'
-                      : 'Ordine inviato (stampa non riuscita: verifica che QZ Tray sia in esecuzione e che la stampante sia raggiungibile).'}
+                      ? 'Ordine inviato: dialogo di stampa aperto.'
+                      : 'Ordine inviato (nessuna stampante configurata per gli ordini: Impostazioni > Stampanti).'}
                   </Alert>
                 )}
               </Box>
