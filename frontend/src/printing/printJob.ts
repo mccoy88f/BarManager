@@ -44,17 +44,21 @@ function printContent(content: { title: string; lines: string[]; footer?: string
     body.push('-'.repeat(32), ...content.footer);
   }
 
+  // Altezza fissa (non "auto": con "auto" alcuni browser scartano la
+  // dimensione personalizzata e tornano a un foglio A4/Letter intero) ma
+  // proporzionata al contenuto, non un valore enorme fisso: con una pagina
+  // di migliaia di mm e solo poche righe di testo in cima, l'anteprima di
+  // stampa mostra quel testo rimpicciolito a un puntino, praticamente
+  // indistinguibile da una pagina vuota.
+  const heightMm = Math.max(40, body.length * 4.2 + 10);
+
   doc.open();
   doc.write(`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <style>
-      /* Altezza fissa (non "auto"): con "auto" alcuni browser scartano la
-         dimensione personalizzata e tornano a un foglio A4/Letter intero.
-         Una stampante termica taglia comunque il rotolo dove finisce il
-         contenuto, quindi un'altezza "esagerata" non stampa pagine vuote. */
-      @page { size: 80mm 2000mm; margin: 0; }
+      @page { size: 80mm ${heightMm}mm; margin: 0; }
       body {
         margin: 0;
         padding: 3mm;
