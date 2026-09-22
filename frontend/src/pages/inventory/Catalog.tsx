@@ -42,6 +42,7 @@ interface ProductRow {
   reorderAt?: number;
   supplierCode?: string;
   costPerUnit?: number;
+  unitsPerPackage?: number;
   categoryId: string;
   supplierId: string;
   active: boolean;
@@ -65,6 +66,7 @@ const emptyProductForm = {
   reorderAt: '',
   supplierCode: '',
   costPerUnit: '',
+  unitsPerPackage: '',
   categoryId: '',
   supplierId: '',
 };
@@ -136,6 +138,7 @@ export function Catalog() {
         reorderAt: productForm.reorderAt ? Number(productForm.reorderAt) : undefined,
         supplierCode: productForm.supplierCode.trim() || undefined,
         costPerUnit: productForm.costPerUnit ? Number(productForm.costPerUnit) : undefined,
+        unitsPerPackage: productForm.unitsPerPackage ? Number(productForm.unitsPerPackage) : undefined,
         categoryId: productForm.categoryId,
         supplierId: productForm.supplierId,
       };
@@ -199,6 +202,7 @@ export function Catalog() {
       reorderAt: product.reorderAt != null ? String(product.reorderAt) : '',
       supplierCode: product.supplierCode ?? '',
       costPerUnit: product.costPerUnit != null ? String(product.costPerUnit) : '',
+      unitsPerPackage: product.unitsPerPackage != null ? String(product.unitsPerPackage) : '',
       categoryId: product.categoryId,
       supplierId: product.supplierId,
     });
@@ -255,6 +259,7 @@ export function Catalog() {
                   {product.category.name} — {product.supplier.name} — standard {product.standardQty}{' '}
                   {product.unit}
                   {product.costPerUnit != null && ` — € ${product.costPerUnit.toFixed(2)}/${product.unit}`}
+                  {product.unitsPerPackage != null && ` — ${product.unitsPerPackage} unità/${product.unit}`}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.5}>
@@ -380,6 +385,13 @@ export function Catalog() {
             value={productForm.costPerUnit}
             onChange={(e) => setProductForm((f) => ({ ...f, costPerUnit: e.target.value }))}
             helperText="Usato per il totale quando si stampa l'ordine"
+          />
+          <TextField
+            label="Unità/porzioni per confezione (opzionale)"
+            type="number"
+            value={productForm.unitsPerPackage}
+            onChange={(e) => setProductForm((f) => ({ ...f, unitsPerPackage: e.target.value }))}
+            helperText="Es. un cartone di birre contiene 24 lattine"
           />
           {productError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }}>

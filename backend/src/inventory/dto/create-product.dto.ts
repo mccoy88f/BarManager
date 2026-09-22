@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateProductDto {
   @IsString()
@@ -21,6 +21,12 @@ export class CreateProductDto {
   @IsOptional()
   @IsNumber()
   costPerUnit?: number;
+
+  /** Es. un cartone di birre contiene 24 lattine: puramente informativo. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  unitsPerPackage?: number;
 
   @IsString()
   categoryId: string;

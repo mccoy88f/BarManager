@@ -454,6 +454,10 @@ model Product {
   reorderAt   Float? // soglia minima sotto la quale segnalare urgenza
   supplierCode String? // codice prodotto presso il fornitore
   costPerUnit Float? // costo unitario per collo/unità, opzionale: usato per il totale ordine
+  // Quante unità/porzioni singole contiene una unità d'acquisto (es. un
+  // cartone di birre contiene 24 lattine): puramente informativo, non
+  // entra nei calcoli di scorta/ordine che restano espressi in "unit".
+  unitsPerPackage Int?
   active      Boolean @default(true)
 
   categoryId String
