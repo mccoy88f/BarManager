@@ -182,8 +182,10 @@ export class MenuService {
     });
   }
 
+  /** A differenza di visibilità/disponibilità, la foto segue il contenuto: con Loyverse attivo arriva da lì. */
   async setPhoto(venueId: string, itemId: string, photoUrl: string) {
     await this.assertOwnership(venueId, itemId);
+    await this.assertNotLoyverseManaged(venueId);
     return this.prisma.menuItem.update({ where: { id: itemId }, data: { photoUrl } });
   }
 

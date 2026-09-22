@@ -618,19 +618,21 @@ export function MenuAdmin() {
                           >
                             {item.featured ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                           </IconButton>
-                          <IconButton component="label" size="small" title="Carica foto">
-                            <PhotoCameraIcon fontSize="small" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              hidden
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) startPhotoCrop(item.id, file);
-                                e.target.value = '';
-                              }}
-                            />
-                          </IconButton>
+                          {!locked && (
+                            <IconButton component="label" size="small" title="Carica foto">
+                              <PhotoCameraIcon fontSize="small" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                hidden
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) startPhotoCrop(item.id, file);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </IconButton>
+                          )}
                           {(() => {
                             const isUnavailable =
                               !!item.unavailableUntil && new Date(item.unavailableUntil) > new Date();

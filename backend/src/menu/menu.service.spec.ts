@@ -109,6 +109,29 @@ describe('MenuService varianti', () => {
     );
     expect(prisma.menuItem.update).not.toHaveBeenCalled();
   });
+
+  it('con integrazione attiva rifiuta di caricare una foto a mano: arriva da Loyverse', async () => {
+    prisma.venue.findUnique.mockResolvedValue({ loyverseIntegrationEnabled: true });
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+
+    await expect(
+      service.setPhoto('venue-1', 'item-1', '/uploads/menu/foo.jpg'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.menuItem.update).not.toHaveBeenCalled();
+  });
+
+  it('senza integrazione permette di caricare una foto a mano', async () => {
+    prisma.venue.findUnique.mockResolvedValue({ loyverseIntegrationEnabled: false });
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({ id: 'item-1', photoUrl: '/uploads/menu/foo.jpg' });
+
+    await service.setPhoto('venue-1', 'item-1', '/uploads/menu/foo.jpg');
+
+    expect(prisma.menuItem.update).toHaveBeenCalledWith({
+      where: { id: 'item-1' },
+      data: { photoUrl: '/uploads/menu/foo.jpg' },
+    });
+  });
 });
 
 describe('MenuService categorie', () => {
