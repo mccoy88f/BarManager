@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { AdminSummary } from '../components/AdminSummary';
 import { EmployeeSummary } from '../components/EmployeeSummary';
+import { BoardWidget } from '../components/BoardWidget';
 import { navigation, canSeeNavItem } from '../config/navigation';
 
 export function Dashboard() {
@@ -27,6 +28,8 @@ export function Dashboard() {
     <>
       {isAdminOrManager && <AdminSummary />}
       {isEmployeeOrManager && <EmployeeSummary />}
+
+      <BoardWidget />
 
       <Typography variant="h5" fontWeight={700} gutterBottom>
         Moduli disponibili

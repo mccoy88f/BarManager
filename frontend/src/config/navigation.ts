@@ -7,6 +7,8 @@ import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import SettingsIcon from '@mui/icons-material/Settings';
 import StoreIcon from '@mui/icons-material/Store';
+import CampaignIcon from '@mui/icons-material/Campaign';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -30,6 +32,20 @@ export interface NavItem {
  * pagina.
  */
 export const navigation: NavItem[] = [
+  {
+    key: 'board',
+    label: 'Bacheca',
+    path: '/board',
+    icon: CampaignIcon,
+    description: 'Messaggi e avvisi per tutto il personale',
+  },
+  {
+    key: 'kb',
+    label: 'KBpedia',
+    path: '/kb',
+    icon: MenuBookIcon,
+    description: 'Guide e procedure interne',
+  },
   {
     key: 'attendance',
     label: 'Presenze',

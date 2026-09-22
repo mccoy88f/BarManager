@@ -21,6 +21,10 @@ import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { Venues } from './pages/super-admin/Venues';
 import { SettingsHome } from './pages/settings/SettingsHome';
+import { BoardPage } from './pages/board/BoardPage';
+import { KbHome } from './pages/kb/KbHome';
+import { KbArticleView } from './pages/kb/KbArticleView';
+import { KbEditor } from './pages/kb/KbEditor';
 
 export default function App() {
   return (
@@ -36,6 +40,14 @@ export default function App() {
           <Route path="/clock/:token" element={<ClockPage />} />
           <Route path="/attendance" element={<AttendanceHome />} />
           <Route path="/attendance/leave-requests" element={<LeaveRequests />} />
+
+          {/* Bacheca e KBpedia: sempre visibili a tutto il personale del
+              locale, non sono moduli concedibili per singolo dipendente. */}
+          <Route path="/board" element={<BoardPage />} />
+          <Route path="/kb" element={<KbHome />} />
+          <Route path="/kb/new" element={<KbEditor />} />
+          <Route path="/kb/:id" element={<KbArticleView />} />
+          <Route path="/kb/:id/edit" element={<KbEditor />} />
 
           {/* Gestione dipendenti/postazioni: sempre riservata ad Admin/Manager,
               non concedibile via permessi per modulo (non è un "modulo" ma
