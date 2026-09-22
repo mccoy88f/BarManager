@@ -1,6 +1,26 @@
-import { useCallback, useState } from 'react';
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Slider, Box } from '@mui/material';
-import Cropper, { Area } from 'react-easy-crop';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Slider,
+  TextField,
+  Box,
+} from '@mui/material';
+import Cropper, { Area, MediaSize } from 'react-easy-crop';
+
+/** "Originale" usa il rapporto del file caricato, senza forzare un formato. */
+const ASPECT_PRESETS = [
+  { label: 'Originale', value: 'original' },
+  { label: '1:1 (quadrata)', value: '1' },
+  { label: '4:3 (orizzontale)', value: String(4 / 3) },
+  { label: '16:9 (orizzontale)', value: String(16 / 9) },
+  { label: '3:4 (verticale)', value: String(3 / 4) },
+  { label: '9:16 (verticale)', value: String(9 / 16) },
+] as const;
 
 interface PhotoCropDialogProps {
   open: boolean;
@@ -47,16 +67,33 @@ async function getCroppedBlob(imageSrc: string, cropPixels: Area): Promise<Blob>
   });
 }
 
-/** Ritaglio 4:3 della foto prima dell'upload, con anteprima e zoom. */
+/** Ritaglio della foto prima dell'upload, in qualunque formato (non solo 4:3), con anteprima e zoom. */
 export function PhotoCropDialog({ open, imageSrc, onCancel, onConfirm }: PhotoCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
+  const [aspectChoice, setAspectChoice] = useState<string>('original');
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+
+  // Ogni nuova foto riparte da zoom/posizione azzerati e dal proprio
+  // rapporto originale, invece di ripartire da quelli della foto precedente.
+  useEffect(() => {
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setAspectChoice('original');
+    setNaturalAspect(null);
+  }, [imageSrc]);
 
   const onCropComplete = useCallback((_area: Area, areaPixels: Area) => {
     setCroppedAreaPixels(areaPixels);
   }, []);
+
+  const onMediaLoaded = useCallback(({ naturalWidth, naturalHeight }: MediaSize) => {
+    setNaturalAspect(naturalWidth / naturalHeight);
+  }, []);
+
+  const aspect = aspectChoice === 'original' ? naturalAspect ?? 1 : Number(aspectChoice);
 
   const handleConfirm = async () => {
     if (!imageSrc || !croppedAreaPixels) return;
@@ -73,16 +110,31 @@ export function PhotoCropDialog({ open, imageSrc, onCancel, onConfirm }: PhotoCr
     <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
       <DialogTitle>Ritaglia foto</DialogTitle>
       <DialogContent>
+        <TextField
+          select
+          label="Formato"
+          size="small"
+          value={aspectChoice}
+          onChange={(e) => setAspectChoice(e.target.value)}
+          sx={{ mb: 2, minWidth: 220 }}
+        >
+          {ASPECT_PRESETS.map((preset) => (
+            <MenuItem key={preset.value} value={preset.value}>
+              {preset.label}
+            </MenuItem>
+          ))}
+        </TextField>
         <Box sx={{ position: 'relative', width: '100%', height: 320, bgcolor: 'black' }}>
           {imageSrc && (
             <Cropper
               image={imageSrc}
               crop={crop}
               zoom={zoom}
-              aspect={4 / 3}
+              aspect={aspect}
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={onCropComplete}
+              onMediaLoaded={onMediaLoaded}
             />
           )}
         </Box>
