@@ -17,6 +17,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export interface Fridge {
   id: string;
@@ -41,31 +42,44 @@ function extractErrorMessage(error: unknown): string {
 export function Fridges() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Fridge | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [fridgeToDelete, setFridgeToDelete] = useState<Fridge | null>(null);
 
   const fridgesQuery = useQuery({
     queryKey: ['fridges'],
     queryFn: async () => (await api.get<Fridge[]>('/haccp/fridges')).data,
   });
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/haccp/fridges', {
-          label: form.label.trim(),
-          location: form.location.trim() || undefined,
-          minTemp: Number(form.minTemp),
-          maxTemp: Number(form.maxTemp),
-        })
-      ).data,
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        label: form.label.trim(),
+        location: form.location.trim() || undefined,
+        minTemp: Number(form.minTemp),
+        maxTemp: Number(form.maxTemp),
+      };
+      return editing
+        ? (await api.patch(`/haccp/fridges/${editing.id}`, payload)).data
+        : (await api.post('/haccp/fridges', payload)).data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fridges'] });
       setForm(emptyForm);
       setError(null);
       setOpen(false);
+      setEditing(null);
     },
     onError: (err) => setError(extractErrorMessage(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/haccp/fridges/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fridges'] });
+      setFridgeToDelete(null);
+    },
   });
 
   const canSubmit =
@@ -75,7 +89,20 @@ export function Fridges() {
     Number(form.minTemp) <= Number(form.maxTemp);
 
   const openDialog = () => {
+    setEditing(null);
     setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
+  const openEdit = (fridge: Fridge) => {
+    setEditing(fridge);
+    setForm({
+      label: fridge.label,
+      location: fridge.location ?? '',
+      minTemp: String(fridge.minTemp),
+      maxTemp: String(fridge.maxTemp),
+    });
     setError(null);
     setOpen(true);
   };
@@ -96,6 +123,8 @@ export function Fridges() {
               key={fridge.id}
               label={`${fridge.label} (${fridge.minTemp}°C / ${fridge.maxTemp}°C)${fridge.location ? ' — ' + fridge.location : ''}`}
               variant="outlined"
+              onClick={() => openEdit(fridge)}
+              onDelete={() => setFridgeToDelete(fridge)}
             />
           ))}
           {fridgesQuery.data?.length === 0 && (
@@ -107,7 +136,7 @@ export function Fridges() {
       </CardContent>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuovo frigorifero/congelatore</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica frigorifero/congelatore' : 'Nuovo frigorifero/congelatore'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Nome (es. Frigo bancone, Congelatore cucina)"
@@ -143,13 +172,26 @@ export function Fridges() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!canSubmit || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!canSubmit || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!fridgeToDelete}
+        title="Eliminare il frigorifero?"
+        message={
+          fridgeToDelete
+            ? `"${fridgeToDelete.label}" non sarà più disponibile per nuove rilevazioni. Lo storico delle temperature già registrate resta consultabile.`
+            : ''
+        }
+        loading={deleteMutation.isPending}
+        onCancel={() => setFridgeToDelete(null)}
+        onConfirm={() => fridgeToDelete && deleteMutation.mutate(fridgeToDelete.id)}
+      />
     </Card>
   );
 }

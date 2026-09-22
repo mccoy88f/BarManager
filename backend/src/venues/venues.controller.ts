@@ -10,6 +10,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 
@@ -33,6 +34,11 @@ export class VenuesController {
   @Patch(':id/active')
   setActive(@Param('id') id: string, @Body('active') active: boolean) {
     return this.venuesService.setActive(id, active);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateVenueDto) {
+    return this.venuesService.update(id, dto);
   }
 
   /** Il locale può vedere/modificare le proprie fasce orarie pranzo/cena. */

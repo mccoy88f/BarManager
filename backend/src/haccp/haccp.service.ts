@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
+import { UpdateFridgeDto } from './dto/update-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
 
 @Injectable()
@@ -20,6 +21,24 @@ export class HaccpService {
 
   listFridges(venueId: string) {
     return this.prisma.fridge.findMany({ where: { venueId, active: true } });
+  }
+
+  async updateFridge(venueId: string, id: string, dto: UpdateFridgeDto) {
+    const fridge = await this.prisma.fridge.findUnique({ where: { id } });
+    if (!fridge || fridge.venueId !== venueId) {
+      throw new NotFoundException('Frigorifero non trovato');
+    }
+    return this.prisma.fridge.update({ where: { id }, data: dto });
+  }
+
+  /** Disattiva il frigorifero senza perdere lo storico delle rilevazioni collegate. */
+  async removeFridge(venueId: string, id: string) {
+    const fridge = await this.prisma.fridge.findUnique({ where: { id } });
+    if (!fridge || fridge.venueId !== venueId) {
+      throw new NotFoundException('Frigorifero non trovato');
+    }
+    await this.prisma.fridge.update({ where: { id }, data: { active: false } });
+    return { success: true };
   }
 
   // ---- Rilevazioni temperatura ------------------------------------------

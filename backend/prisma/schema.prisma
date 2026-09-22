@@ -373,8 +373,9 @@ model Printer {
 // ---------------------------------------------------------------------------
 
 model ProductCategory {
-  id   String @id @default(cuid())
-  name String
+  id     String  @id @default(cuid())
+  name   String
+  active Boolean @default(true)
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -392,6 +393,7 @@ model Supplier {
   email        String
   ccEmails     String[] @default([]) // email extra fisse (oltre ai responsabili reparto)
   phone        String?
+  active       Boolean  @default(true)
   // Giorni della settimana in cui va fatto l'ordine (1=lunedì .. 7=domenica),
   // impostati dall'admin ("impostazioni"): usati per il promemoria in home.
   orderDays    Int[]    @default([])

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { PrinterUsage, Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -13,6 +13,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { HaccpService } from './haccp.service';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
+import { UpdateFridgeDto } from './dto/update-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
 import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
@@ -36,6 +37,22 @@ export class HaccpController {
   @Get('fridges')
   listFridges(@CurrentUser() user: AuthenticatedUser) {
     return this.haccpService.listFridges(requireVenueId(user));
+  }
+
+  @Patch('fridges/:id')
+  @Roles(Role.ADMIN)
+  updateFridge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateFridgeDto,
+  ) {
+    return this.haccpService.updateFridge(requireVenueId(user), id, dto);
+  }
+
+  @Delete('fridges/:id')
+  @Roles(Role.ADMIN)
+  removeFridge(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.haccpService.removeFridge(requireVenueId(user), id);
   }
 
   @Post('readings')

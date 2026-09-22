@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -30,7 +31,7 @@ interface TaskRow {
   dueDate: string;
   recurrence: string;
   status: string;
-  relatedEmployee?: { firstName: string; lastName: string };
+  relatedEmployee?: { id: string; firstName: string; lastName: string };
 }
 
 interface EmployeeOption {
@@ -67,6 +68,7 @@ const emptyForm = {
 export function TasksAdmin() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<TaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
 
@@ -82,18 +84,18 @@ export function TasksAdmin() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/tasks', {
-          ...form,
-          relatedEmployeeId: form.relatedEmployeeId || undefined,
-        })
-      ).data,
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { ...form, relatedEmployeeId: form.relatedEmployeeId || undefined };
+      return editing
+        ? (await api.patch(`/tasks/${editing.id}`, payload)).data
+        : (await api.post('/tasks', payload)).data;
+    },
     onSuccess: () => {
       invalidate();
       setForm(emptyForm);
       setOpen(false);
+      setEditing(null);
     },
   });
 
@@ -111,7 +113,21 @@ export function TasksAdmin() {
   });
 
   const openCreate = () => {
+    setEditing(null);
     setForm(emptyForm);
+    setOpen(true);
+  };
+
+  const openEdit = (task: TaskRow) => {
+    setEditing(task);
+    setForm({
+      title: task.title,
+      description: task.description ?? '',
+      type: task.type,
+      dueDate: task.dueDate.slice(0, 10),
+      recurrence: task.recurrence,
+      relatedEmployeeId: task.relatedEmployee?.id ?? '',
+    });
     setOpen(true);
   };
 
@@ -160,6 +176,9 @@ export function TasksAdmin() {
                   >
                     <CheckCircleIcon />
                   </IconButton>
+                  <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
+                    <EditIcon />
+                  </IconButton>
                   <IconButton
                     color="default"
                     title="Elimina"
@@ -180,7 +199,7 @@ export function TasksAdmin() {
       </Stack>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova attività/scadenza</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica attività/scadenza' : 'Nuova attività/scadenza'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             label="Titolo"
@@ -247,10 +266,10 @@ export function TasksAdmin() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!form.title || !form.dueDate || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!form.title || !form.dueDate || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>

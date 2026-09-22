@@ -59,6 +59,16 @@ export class BoardController {
     return this.boardService.setPinned(requireVenueId(user), id, pinned);
   }
 
+  @Patch('messages/:id')
+  @Roles(Role.ADMIN)
+  updateText(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('text') text: string,
+  ) {
+    return this.boardService.updateText(requireVenueId(user), id, text);
+  }
+
   @Post('messages/:id/photo')
   @Roles(Role.ADMIN)
   @UseInterceptors(

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -45,6 +45,12 @@ export class CatalogController {
     return this.catalog.updateCategory(requireVenueId(user), id, dto);
   }
 
+  @Delete('categories/:id')
+  @Roles(Role.ADMIN)
+  removeCategory(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.catalog.removeCategory(requireVenueId(user), id);
+  }
+
   @Post('suppliers')
   @Roles(Role.ADMIN)
   createSupplier(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateSupplierDto) {
@@ -64,6 +70,12 @@ export class CatalogController {
     @Body() dto: UpdateSupplierDto,
   ) {
     return this.catalog.updateSupplier(requireVenueId(user), id, dto);
+  }
+
+  @Delete('suppliers/:id')
+  @Roles(Role.ADMIN)
+  removeSupplier(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.catalog.removeSupplier(requireVenueId(user), id);
   }
 
   @Post('products')

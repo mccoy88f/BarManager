@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
+import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 
 /** Inizio/fine (esclusa) del periodo corrente per una ricorrenza di pulizia. */
 function periodRange(unit: CleaningFrequencyUnit): { start: Date; end: Date } {
@@ -56,6 +57,24 @@ export class CleaningService {
       where: { venueId, active: true },
       orderBy: [{ location: 'asc' }, { description: 'asc' }],
     });
+  }
+
+  async updateTask(venueId: string, id: string, dto: UpdateCleaningTaskDto) {
+    const task = await this.prisma.cleaningTask.findUnique({ where: { id } });
+    if (!task || task.venueId !== venueId) {
+      throw new NotFoundException('Voce di pulizia non trovata');
+    }
+    return this.prisma.cleaningTask.update({ where: { id }, data: dto });
+  }
+
+  /** Disattiva la voce senza perdere lo storico di chi l'ha già svolta (CleaningLog). */
+  async removeTask(venueId: string, id: string) {
+    const task = await this.prisma.cleaningTask.findUnique({ where: { id } });
+    if (!task || task.venueId !== venueId) {
+      throw new NotFoundException('Voce di pulizia non trovata');
+    }
+    await this.prisma.cleaningTask.update({ where: { id }, data: { active: false } });
+    return { success: true };
   }
 
   /** Voci del periodo corrente, con quante volte sono già state fatte oggi/questa settimana/questo mese. */

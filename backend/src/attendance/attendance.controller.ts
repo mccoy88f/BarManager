@@ -78,6 +78,22 @@ export class AttendanceController {
     return this.attendanceService.listQrTokens(requireVenueId(user));
   }
 
+  @Patch('qr-tokens/:id')
+  @Roles(Role.ADMIN)
+  updateQrToken(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('label') label: string,
+  ) {
+    return this.attendanceService.updateQrToken(requireVenueId(user), id, label);
+  }
+
+  @Delete('qr-tokens/:id')
+  @Roles(Role.ADMIN)
+  removeQrToken(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.attendanceService.removeQrToken(requireVenueId(user), id);
+  }
+
   // Admin: gestione tag NFC
   @Post('nfc-tags')
   @Roles(Role.ADMIN)
@@ -89,6 +105,16 @@ export class AttendanceController {
   @Roles(Role.ADMIN)
   listNfcTags(@CurrentUser() user: AuthenticatedUser) {
     return this.attendanceService.listNfcTags(requireVenueId(user));
+  }
+
+  @Patch('nfc-tags/:id')
+  @Roles(Role.ADMIN)
+  updateNfcTag(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateNfcTagDto,
+  ) {
+    return this.attendanceService.updateNfcTag(requireVenueId(user), id, dto);
   }
 
   @Delete('nfc-tags/:id')

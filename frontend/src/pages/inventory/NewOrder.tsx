@@ -16,7 +16,7 @@ import {
   TableRow,
   Alert,
 } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
 interface Supplier {
@@ -32,6 +32,17 @@ interface Product {
   costPerUnit?: number;
   category: { name: string };
 }
+interface OrderLine {
+  id: string;
+  orderedQty: number;
+  suggestedQty: number;
+  product: Product;
+}
+interface Order {
+  id: string;
+  status: string;
+  lines: OrderLine[];
+}
 
 /**
  * Flusso "nuovo ordine": si sceglie il fornitore, si inserisce la giacenza
@@ -40,10 +51,12 @@ interface Product {
  * dell'invio (email + stampa checklist).
  */
 export function NewOrder() {
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [supplierId, setSupplierId] = useState(searchParams.get('supplierId') ?? '');
   const [stock, setStock] = useState<Record<string, string>>({});
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [editedQty, setEditedQty] = useState<Record<string, string>>({});
 
   const suppliersQuery = useQuery({
     queryKey: ['suppliers'],
@@ -81,8 +94,37 @@ export function NewOrder() {
             .map((s) => ({ productId: s.product.id, stockOnHand: s.stockOnHand })),
         })
       ).data,
-    onSuccess: (data) => setCreatedOrderId(data.id),
+    onSuccess: (data) => {
+      setCreatedOrderId(data.id);
+      setEditedQty({});
+    },
   });
+
+  const orderQuery = useQuery({
+    queryKey: ['order', createdOrderId],
+    queryFn: async () => (await api.get<Order>(`/inventory/orders/${createdOrderId}`)).data,
+    enabled: !!createdOrderId,
+  });
+
+  const updateLineMutation = useMutation({
+    mutationFn: async ({ lineId, orderedQty }: { lineId: string; orderedQty: number }) =>
+      (
+        await api.patch(`/inventory/orders/${createdOrderId}/lines/${lineId}`, { orderedQty })
+      ).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order', createdOrderId] }),
+  });
+
+  const saveLineQty = (lineId: string, value: string) => {
+    const orderedQty = Number(value);
+    if (Number.isNaN(orderedQty) || orderedQty < 0) return;
+    updateLineMutation.mutate({ lineId, orderedQty });
+  };
+
+  const orderTotal =
+    orderQuery.data?.lines.reduce(
+      (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
+      0,
+    ) ?? 0;
 
   const sendMutation = useMutation({
     mutationFn: async () => (await api.post(`/inventory/orders/${createdOrderId}/send`)).data,
@@ -174,12 +216,57 @@ export function NewOrder() {
             ) : (
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  Bozza creata. Verifica le quantità e conferma l'invio.
+                  Bozza creata. Correggi le quantità se serve, poi confirma l'invio.
                 </Alert>
+
+                <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Prodotto</TableCell>
+                        <TableCell>Da ordinare</TableCell>
+                        <TableCell>Costo</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {orderQuery.data?.lines.map((line) => (
+                        <TableRow key={line.id}>
+                          <TableCell>{line.product.name}</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={editedQty[line.id] ?? line.orderedQty}
+                              onChange={(e) =>
+                                setEditedQty((q) => ({ ...q, [line.id]: e.target.value }))
+                              }
+                              onBlur={(e) => saveLineQty(line.id, e.target.value)}
+                              sx={{ width: 90 }}
+                              InputProps={{ endAdornment: line.product.unit }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {line.product.costPerUnit != null
+                              ? `€ ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
+                              : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                {orderTotal > 0 && (
+                  <Typography variant="body2" sx={{ mt: 1, textAlign: 'right' }} fontWeight={600}>
+                    Totale: € {orderTotal.toFixed(2)}
+                  </Typography>
+                )}
+
                 <Button
                   variant="contained"
                   color="secondary"
-                  disabled={sendMutation.isPending}
+                  sx={{ mt: 2 }}
+                  disabled={sendMutation.isPending || updateLineMutation.isPending}
                   onClick={() => sendMutation.mutate()}
                 >
                   Invia ordine (email + stampa)

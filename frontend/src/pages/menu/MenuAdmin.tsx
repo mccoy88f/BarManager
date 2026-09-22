@@ -18,6 +18,8 @@ import {
   IconButton,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
@@ -27,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { api } from '../../api/client';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface MenuCategory {
   id: string;
@@ -51,6 +54,15 @@ const availabilityLabels: Record<string, string> = {
   ALL_DAY: 'Tutto il giorno',
 };
 
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
+    ?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return 'Errore durante l\'eliminazione.';
+}
+
 const allergenLabels: Record<string, string> = {
   GLUTEN: 'Glutine',
   CRUSTACEANS: 'Crostacei',
@@ -71,8 +83,13 @@ const allergenLabels: Record<string, string> = {
 export function MenuAdmin() {
   const queryClient = useQueryClient();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryToDelete, setCategoryToDelete] = useState<MenuCategory | null>(null);
+  const [categoryDeleteError, setCategoryDeleteError] = useState<string | null>(null);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MenuItemRow | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<MenuItemRow | null>(null);
   const [newItem, setNewItem] = useState({
     name: '',
     price: '',
@@ -93,13 +110,27 @@ export function MenuAdmin() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['menu-items'] });
 
-  const createCategoryMutation = useMutation({
-    mutationFn: async () => (await api.post('/menu/categories', { name: newCategoryName })).data,
+  const saveCategoryMutation = useMutation({
+    mutationFn: async () =>
+      editingCategory
+        ? (await api.patch(`/menu/categories/${editingCategory.id}`, { name: newCategoryName })).data
+        : (await api.post('/menu/categories', { name: newCategoryName })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       setNewCategoryName('');
       setCategoryDialogOpen(false);
+      setEditingCategory(null);
     },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/menu/categories/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      setCategoryToDelete(null);
+      setCategoryDeleteError(null);
+    },
+    onError: (err) => setCategoryDeleteError(extractErrorMessage(err)),
   });
 
   const moveCategoryMutation = useMutation({
@@ -108,18 +139,26 @@ export function MenuAdmin() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
   });
 
-  const createItemMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/menu/items', {
-          ...newItem,
-          price: Number(newItem.price),
-        })
-      ).data,
+  const saveItemMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { ...newItem, price: Number(newItem.price) };
+      return editingItem
+        ? (await api.patch(`/menu/items/${editingItem.id}`, payload)).data
+        : (await api.post('/menu/items', payload)).data;
+    },
     onSuccess: () => {
       invalidate();
       setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
       setItemDialogOpen(false);
+      setEditingItem(null);
+    },
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/menu/items/${id}`)).data,
+    onSuccess: () => {
+      invalidate();
+      setItemToDelete(null);
     },
   });
 
@@ -169,12 +208,32 @@ export function MenuAdmin() {
   };
 
   const openCategoryDialog = () => {
+    setEditingCategory(null);
     setNewCategoryName('');
     setCategoryDialogOpen(true);
   };
 
+  const openEditCategory = (category: MenuCategory) => {
+    setEditingCategory(category);
+    setNewCategoryName(category.name);
+    setCategoryDialogOpen(true);
+  };
+
   const openItemDialog = () => {
+    setEditingItem(null);
     setNewItem({ name: '', price: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+    setItemDialogOpen(true);
+  };
+
+  const openEditItem = (item: MenuItemRow) => {
+    setEditingItem(item);
+    setNewItem({
+      name: item.name,
+      price: String(item.price),
+      categoryId: item.categoryId,
+      description: item.description ?? '',
+      availability: item.availability,
+    });
     setItemDialogOpen(true);
   };
 
@@ -275,6 +334,19 @@ export function MenuAdmin() {
                   >
                     <ArrowDownwardIcon fontSize="small" />
                   </IconButton>
+                  <IconButton size="small" title="Modifica" onClick={() => openEditCategory(category)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    title="Elimina"
+                    onClick={() => {
+                      setCategoryDeleteError(null);
+                      setCategoryToDelete(category);
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 </Stack>
               </Box>
             ))}
@@ -369,6 +441,12 @@ export function MenuAdmin() {
                       }
                       title="Mostra/nascondi dal menù"
                     />
+                    <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </Stack>
                 </Box>
               </CardContent>
@@ -378,7 +456,7 @@ export function MenuAdmin() {
       </Stack>
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova categoria</DialogTitle>
+        <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <TextField
             label="Nome categoria"
@@ -391,16 +469,33 @@ export function MenuAdmin() {
           <Button onClick={() => setCategoryDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!newCategoryName || createCategoryMutation.isPending}
-            onClick={() => createCategoryMutation.mutate()}
+            disabled={!newCategoryName || saveCategoryMutation.isPending}
+            onClick={() => saveCategoryMutation.mutate()}
           >
-            Aggiungi
+            {editingCategory ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
 
+      <ConfirmDialog
+        open={!!categoryToDelete}
+        title="Eliminare la categoria?"
+        message={
+          categoryDeleteError ??
+          (categoryToDelete
+            ? `"${categoryToDelete.name}" verrà eliminata definitivamente. Possibile solo se non contiene più voci di menù.`
+            : '')
+        }
+        loading={deleteCategoryMutation.isPending}
+        onCancel={() => {
+          setCategoryToDelete(null);
+          setCategoryDeleteError(null);
+        }}
+        onConfirm={() => categoryToDelete && deleteCategoryMutation.mutate(categoryToDelete.id)}
+      />
+
       <Dialog open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova voce di menù</DialogTitle>
+        <DialogTitle>{editingItem ? 'Modifica voce di menù' : 'Nuova voce di menù'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             label="Nome piatto"
@@ -452,14 +547,23 @@ export function MenuAdmin() {
           <Button
             variant="contained"
             disabled={
-              !newItem.name || !newItem.price || !newItem.categoryId || createItemMutation.isPending
+              !newItem.name || !newItem.price || !newItem.categoryId || saveItemMutation.isPending
             }
-            onClick={() => createItemMutation.mutate()}
+            onClick={() => saveItemMutation.mutate()}
           >
-            Aggiungi al menù
+            {editingItem ? 'Salva' : 'Aggiungi al menù'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!itemToDelete}
+        title="Eliminare la voce di menù?"
+        message={itemToDelete ? `"${itemToDelete.name}" verrà eliminata definitivamente.` : ''}
+        loading={deleteItemMutation.isPending}
+        onCancel={() => setItemToDelete(null)}
+        onConfirm={() => itemToDelete && deleteItemMutation.mutate(itemToDelete.id)}
+      />
 
       <PhotoCropDialog
         open={!!cropImageSrc}

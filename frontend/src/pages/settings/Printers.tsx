@@ -18,6 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -53,6 +54,7 @@ function extractErrorMessage(error: unknown): string {
 export function Printers() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<PrinterRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PrinterRow | null>(null);
@@ -64,21 +66,24 @@ export function Printers() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['printers'] });
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/printers', {
-          name: form.name.trim(),
-          host: form.host.trim(),
-          port: Number(form.port),
-          usage: form.usage,
-        })
-      ).data,
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: form.name.trim(),
+        host: form.host.trim(),
+        port: Number(form.port),
+        usage: form.usage,
+      };
+      return editing
+        ? (await api.patch(`/printers/${editing.id}`, payload)).data
+        : (await api.post('/printers', payload)).data;
+    },
     onSuccess: () => {
       invalidate();
       setForm(emptyForm);
       setError(null);
       setOpen(false);
+      setEditing(null);
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -98,7 +103,20 @@ export function Printers() {
   });
 
   const openCreate = () => {
+    setEditing(null);
     setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
+  const openEdit = (printer: PrinterRow) => {
+    setEditing(printer);
+    setForm({
+      name: printer.name,
+      host: printer.host,
+      port: String(printer.port),
+      usage: printer.usage,
+    });
     setError(null);
     setOpen(true);
   };
@@ -140,6 +158,9 @@ export function Printers() {
                     toggleActiveMutation.mutate({ id: printer.id, active: e.target.checked })
                   }
                 />
+                <IconButton title="Modifica" onClick={() => openEdit(printer)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
                 <IconButton title="Elimina" onClick={() => setToDelete(printer)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
@@ -155,7 +176,7 @@ export function Printers() {
       </CardContent>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova stampante</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica stampante' : 'Nuova stampante'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Nome"
@@ -192,10 +213,10 @@ export function Printers() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!form.name || !form.host || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!form.name || !form.host || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -44,6 +45,7 @@ function extractErrorMessage(error: unknown): string {
 export function NfcTags() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<NfcTagRow | null>(null);
   const [newTagLabel, setNewTagLabel] = useState('');
   const [newTagValue, setNewTagValue] = useState('');
   const [tagError, setTagError] = useState<string | null>(null);
@@ -54,20 +56,20 @@ export function NfcTags() {
     queryFn: async () => (await api.get<NfcTagRow[]>('/attendance/nfc-tags')).data,
   });
 
-  const createTagMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/attendance/nfc-tags', {
-          label: newTagLabel.trim(),
-          value: newTagValue.trim(),
-        })
-      ).data,
+  const saveTagMutation = useMutation({
+    mutationFn: async () => {
+      const payload = { label: newTagLabel.trim(), value: newTagValue.trim() };
+      return editing
+        ? (await api.patch(`/attendance/nfc-tags/${editing.id}`, payload)).data
+        : (await api.post('/attendance/nfc-tags', payload)).data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nfc-tags'] });
       setNewTagLabel('');
       setNewTagValue('');
       setTagError(null);
       setOpen(false);
+      setEditing(null);
     },
     onError: (err) => setTagError(extractErrorMessage(err)),
   });
@@ -81,8 +83,17 @@ export function NfcTags() {
   });
 
   const openDialog = () => {
+    setEditing(null);
     setNewTagLabel('');
     setNewTagValue('');
+    setTagError(null);
+    setOpen(true);
+  };
+
+  const openEdit = (tag: NfcTagRow) => {
+    setEditing(tag);
+    setNewTagLabel(tag.label);
+    setNewTagValue(tag.value);
     setTagError(null);
     setOpen(true);
   };
@@ -110,9 +121,14 @@ export function NfcTags() {
                   {tag.value}
                 </Typography>
               </Box>
-              <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton size="small" title="Modifica" onClick={() => openEdit(tag)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
             </CardContent>
           </Card>
         ))}
@@ -124,7 +140,7 @@ export function NfcTags() {
       </Stack>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuovo tag NFC</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica tag NFC' : 'Nuovo tag NFC'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Scegli un'etichetta e un testo per il tag, poi scrivi lo stesso testo sul tag fisico
@@ -147,11 +163,11 @@ export function NfcTags() {
           <Button
             variant="contained"
             disabled={
-              !newTagLabel.trim() || newTagValue.trim().length < 4 || createTagMutation.isPending
+              !newTagLabel.trim() || newTagValue.trim().length < 4 || saveTagMutation.isPending
             }
-            onClick={() => createTagMutation.mutate()}
+            onClick={() => saveTagMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>

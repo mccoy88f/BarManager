@@ -1,7 +1,8 @@
-import { NotFoundException, Injectable } from '@nestjs/common';
+import { BadRequestException, NotFoundException, Injectable } from '@nestjs/common';
 import { MenuAvailability } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
+import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 
@@ -58,6 +59,31 @@ export class MenuService {
       }),
     ]);
     return this.listCategories(venueId);
+  }
+
+  async updateCategory(venueId: string, categoryId: string, dto: UpdateMenuCategoryDto) {
+    const category = await this.prisma.menuCategory.findUnique({ where: { id: categoryId } });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    return this.prisma.menuCategory.update({ where: { id: categoryId }, data: dto });
+  }
+
+  async removeCategory(venueId: string, categoryId: string) {
+    const category = await this.prisma.menuCategory.findUnique({
+      where: { id: categoryId },
+      include: { items: true },
+    });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    if (category.items.length > 0) {
+      throw new BadRequestException(
+        'Rimuovi prima le voci di menù di questa categoria per poterla eliminare',
+      );
+    }
+    await this.prisma.menuCategory.delete({ where: { id: categoryId } });
+    return { success: true };
   }
 
   // ---- Voci di menù (amministrazione) ------------------------------------

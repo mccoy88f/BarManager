@@ -19,6 +19,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +56,8 @@ export function BoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<BoardMessageRow | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [editing, setEditing] = useState<BoardMessageRow | null>(null);
+  const [editText, setEditText] = useState('');
 
   const messagesQuery = useQuery({
     queryKey: ['board-messages'],
@@ -94,6 +97,15 @@ export function BoardPage() {
     mutationFn: async ({ id, pinned: next }: { id: string; pinned: boolean }) =>
       (await api.patch(`/board/messages/${id}/pin`, { pinned: next })).data,
     onSuccess: invalidate,
+  });
+
+  const editMutation = useMutation({
+    mutationFn: async ({ id, text: newText }: { id: string; text: string }) =>
+      (await api.patch(`/board/messages/${id}`, { text: newText })).data,
+    onSuccess: () => {
+      invalidate();
+      setEditing(null);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -166,6 +178,16 @@ export function BoardPage() {
                           <PushPinOutlinedIcon fontSize="small" />
                         )}
                       </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Modifica"
+                        onClick={() => {
+                          setEditing(msg);
+                          setEditText(msg.text);
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
                       <IconButton size="small" title="Elimina" onClick={() => setToDelete(msg)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
@@ -237,6 +259,31 @@ export function BoardPage() {
         onCancel={() => setToDelete(null)}
         onConfirm={() => toDelete && deleteMutation.mutate(toDelete.id)}
       />
+
+      <Dialog open={!!editing} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Modifica messaggio</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <TextField
+            label="Testo"
+            multiline
+            minRows={3}
+            fullWidth
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setEditing(null)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!editText.trim() || editMutation.isPending}
+            onClick={() => editing && editMutation.mutate({ id: editing.id, text: editText.trim() })}
+          >
+            Salva
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </Box>

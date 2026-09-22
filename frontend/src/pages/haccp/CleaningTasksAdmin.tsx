@@ -10,14 +10,18 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 type FrequencyUnit = 'DAY' | 'WEEK' | 'MONTH';
 
@@ -62,36 +66,66 @@ const emptyForm = {
 export function CleaningTasksAdmin() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CleaningTaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<CleaningTaskRow | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ['cleaning-tasks'],
     queryFn: async () => (await api.get<CleaningTaskRow[]>('/haccp/cleaning-tasks')).data,
   });
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/haccp/cleaning-tasks', {
-          description: form.description.trim(),
-          location: form.location.trim(),
-          frequencyUnit: form.frequencyUnit,
-          timesPerUnit: Number(form.timesPerUnit),
-        })
-      ).data,
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['cleaning-tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['cleaning-due'] });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        description: form.description.trim(),
+        location: form.location.trim(),
+        frequencyUnit: form.frequencyUnit,
+        timesPerUnit: Number(form.timesPerUnit),
+      };
+      return editing
+        ? (await api.patch(`/haccp/cleaning-tasks/${editing.id}`, payload)).data
+        : (await api.post('/haccp/cleaning-tasks', payload)).data;
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cleaning-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['cleaning-due'] });
+      invalidate();
       setForm(emptyForm);
       setError(null);
       setOpen(false);
+      setEditing(null);
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/haccp/cleaning-tasks/${id}`)).data,
+    onSuccess: () => {
+      invalidate();
+      setTaskToDelete(null);
+    },
+  });
+
   const openCreate = () => {
+    setEditing(null);
     setForm(emptyForm);
+    setError(null);
+    setOpen(true);
+  };
+
+  const openEdit = (task: CleaningTaskRow) => {
+    setEditing(task);
+    setForm({
+      description: task.description,
+      location: task.location,
+      frequencyUnit: task.frequencyUnit,
+      timesPerUnit: String(task.timesPerUnit),
+    });
     setError(null);
     setOpen(true);
   };
@@ -123,10 +157,18 @@ export function CleaningTasksAdmin() {
                   {task.location}
                 </Typography>
               </Box>
-              <Chip
-                size="small"
-                label={frequencyLabel(task.frequencyUnit, task.timesPerUnit)}
-              />
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Chip
+                  size="small"
+                  label={frequencyLabel(task.frequencyUnit, task.timesPerUnit)}
+                />
+                <IconButton size="small" title="Modifica" onClick={() => openEdit(task)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" title="Elimina" onClick={() => setTaskToDelete(task)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
             </Box>
           ))}
           {tasksQuery.data?.length === 0 && (
@@ -138,7 +180,7 @@ export function CleaningTasksAdmin() {
       </CardContent>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova voce di pulizia</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica voce di pulizia' : 'Nuova voce di pulizia'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             label="Descrizione (es. Sgrassare friggitrice)"
@@ -182,13 +224,26 @@ export function CleaningTasksAdmin() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!canSubmit || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!canSubmit || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!taskToDelete}
+        title="Eliminare la voce di pulizia?"
+        message={
+          taskToDelete
+            ? `"${taskToDelete.description}" (${taskToDelete.location}) non sarà più richiesta ai dipendenti. Lo storico di chi l'ha già pulita resta consultabile.`
+            : ''
+        }
+        loading={deleteMutation.isPending}
+        onCancel={() => setTaskToDelete(null)}
+        onConfirm={() => taskToDelete && deleteMutation.mutate(taskToDelete.id)}
+      />
     </Card>
   );
 }

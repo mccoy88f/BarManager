@@ -10,13 +10,17 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface SupplierRow {
   id: string;
@@ -52,8 +56,10 @@ function extractErrorMessage(error: unknown): string {
 export function Suppliers() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SupplierRow | null>(null);
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
   const [error, setError] = useState<string | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<SupplierRow | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ['suppliers-admin'],
@@ -62,23 +68,33 @@ export function Suppliers() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['suppliers-admin'] });
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/inventory/suppliers', {
-          ...form,
-          name: form.name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-        })
-      ).data,
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+      };
+      return editing
+        ? (await api.patch(`/inventory/suppliers/${editing.id}`, payload)).data
+        : (await api.post('/inventory/suppliers', payload)).data;
+    },
     onSuccess: () => {
       invalidate();
       setForm({ name: '', email: '', phone: '' });
       setError(null);
       setOpen(false);
+      setEditing(null);
     },
     onError: (err) => setError(extractErrorMessage(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/inventory/suppliers/${id}`)).data,
+    onSuccess: () => {
+      invalidate();
+      setSupplierToDelete(null);
+    },
   });
 
   const toggleOrderDayMutation = useMutation({
@@ -92,7 +108,15 @@ export function Suppliers() {
   });
 
   const openCreate = () => {
+    setEditing(null);
     setForm({ name: '', email: '', phone: '' });
+    setError(null);
+    setOpen(true);
+  };
+
+  const openEdit = (supplier: SupplierRow) => {
+    setEditing(supplier);
+    setForm({ name: supplier.name, email: supplier.email, phone: supplier.phone ?? '' });
     setError(null);
     setOpen(true);
   };
@@ -109,12 +133,24 @@ export function Suppliers() {
         {suppliersQuery.data?.map((supplier) => (
           <Card key={supplier.id} variant="outlined">
             <CardContent>
-              <Typography variant="subtitle1" fontWeight={600}>
-                {supplier.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {supplier.email} {supplier.phone && `— ${supplier.phone}`}
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {supplier.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {supplier.email} {supplier.phone && `— ${supplier.phone}`}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.5}>
+                  <IconButton size="small" title="Modifica" onClick={() => openEdit(supplier)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" title="Elimina" onClick={() => setSupplierToDelete(supplier)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Giorni ordine ricorrenti:
               </Typography>
@@ -144,7 +180,7 @@ export function Suppliers() {
       </Stack>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuovo fornitore</DialogTitle>
+        <DialogTitle>{editing ? 'Modifica fornitore' : 'Nuovo fornitore'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Nome"
@@ -168,13 +204,26 @@ export function Suppliers() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!form.name || !form.email || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!form.name || !form.email || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            Aggiungi
+            {editing ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!supplierToDelete}
+        title="Eliminare il fornitore?"
+        message={
+          supplierToDelete
+            ? `"${supplierToDelete.name}" non sarà più selezionabile per nuovi prodotti o ordini. Lo storico ordini resta invariato.`
+            : ''
+        }
+        loading={deleteMutation.isPending}
+        onCancel={() => setSupplierToDelete(null)}
+        onConfirm={() => supplierToDelete && deleteMutation.mutate(supplierToDelete.id)}
+      />
     </Box>
   );
 }

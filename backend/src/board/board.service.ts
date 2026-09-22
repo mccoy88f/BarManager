@@ -51,6 +51,11 @@ export class BoardService {
     return this.prisma.boardMessage.update({ where: { id }, data: { pinned } });
   }
 
+  async updateText(venueId: string, id: string, text: string) {
+    await this.assertOwnership(venueId, id);
+    return this.prisma.boardMessage.update({ where: { id }, data: { text } });
+  }
+
   async setPhoto(venueId: string, id: string, photoUrl: string) {
     await this.assertOwnership(venueId, id);
     return this.prisma.boardMessage.update({ where: { id }, data: { photoUrl } });

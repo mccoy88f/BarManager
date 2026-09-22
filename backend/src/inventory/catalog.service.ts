@@ -18,7 +18,7 @@ export class CatalogService {
 
   listCategories(venueId: string) {
     return this.prisma.productCategory.findMany({
-      where: { venueId },
+      where: { venueId, active: true },
       include: { products: true },
       orderBy: { name: 'asc' },
     });
@@ -34,6 +34,18 @@ export class CatalogService {
     return this.prisma.productCategory.update({ where: { id: categoryId }, data: dto });
   }
 
+  /** Disattiva la categoria senza perdere lo storico dei prodotti/ordini collegati. */
+  async removeCategory(venueId: string, categoryId: string) {
+    const category = await this.prisma.productCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    await this.prisma.productCategory.update({ where: { id: categoryId }, data: { active: false } });
+    return { success: true };
+  }
+
   // Fornitori
   createSupplier(venueId: string, dto: CreateSupplierDto) {
     return this.prisma.supplier.create({
@@ -42,7 +54,10 @@ export class CatalogService {
   }
 
   listSuppliers(venueId: string) {
-    return this.prisma.supplier.findMany({ where: { venueId }, orderBy: { name: 'asc' } });
+    return this.prisma.supplier.findMany({
+      where: { venueId, active: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async updateSupplier(venueId: string, supplierId: string, dto: UpdateSupplierDto) {
@@ -53,11 +68,21 @@ export class CatalogService {
     return this.prisma.supplier.update({ where: { id: supplierId }, data: dto });
   }
 
+  /** Disattiva il fornitore senza perdere lo storico di prodotti/ordini collegati. */
+  async removeSupplier(venueId: string, supplierId: string) {
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier || supplier.venueId !== venueId) {
+      throw new NotFoundException('Fornitore non trovato');
+    }
+    await this.prisma.supplier.update({ where: { id: supplierId }, data: { active: false } });
+    return { success: true };
+  }
+
   /** Fornitori il cui giorno di ordine ricorrente è oggi (usato in home). */
   listSuppliersDueToday(venueId: string) {
     const isoWeekday = ((new Date().getDay() + 6) % 7) + 1; // 1=lun .. 7=dom
     return this.prisma.supplier.findMany({
-      where: { venueId, orderDays: { has: isoWeekday } },
+      where: { venueId, active: true, orderDays: { has: isoWeekday } },
       orderBy: { name: 'asc' },
     });
   }
@@ -110,7 +135,7 @@ export class CatalogService {
     return this.prisma.product.findMany({
       where: {
         active: filters.includeInactive ? undefined : true,
-        category: { venueId },
+        category: { venueId, active: filters.includeInactive ? undefined : true },
         categoryId: filters.categoryId,
         supplierId: filters.supplierId,
       },

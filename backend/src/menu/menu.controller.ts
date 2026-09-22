@@ -26,6 +26,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { MenuService } from './menu.service';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
+import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { SetUnavailableDto } from './dto/set-unavailable.dto';
@@ -56,6 +57,20 @@ export class MenuController {
     @Body('direction') direction: 'up' | 'down',
   ) {
     return this.menuService.moveCategory(requireVenueId(user), id, direction);
+  }
+
+  @Patch('categories/:id')
+  updateCategory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateMenuCategoryDto,
+  ) {
+    return this.menuService.updateCategory(requireVenueId(user), id, dto);
+  }
+
+  @Delete('categories/:id')
+  removeCategory(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.menuService.removeCategory(requireVenueId(user), id);
   }
 
   @Post('items')

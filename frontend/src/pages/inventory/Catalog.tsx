@@ -5,19 +5,24 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface CategoryRow {
   id: string;
@@ -68,11 +73,15 @@ const emptyProductForm = {
 export function Catalog() {
   const queryClient = useQueryClient();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryRow | null>(null);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [productError, setProductError] = useState<string | null>(null);
+  const [productToDelete, setProductToDelete] = useState<ProductRow | null>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ['inventory-categories'],
@@ -91,45 +100,66 @@ export function Catalog() {
         .data,
   });
 
-  const createCategoryMutation = useMutation({
+  const saveCategoryMutation = useMutation({
     mutationFn: async () =>
-      (await api.post('/inventory/categories', { name: newCategoryName.trim() })).data,
+      editingCategory
+        ? (
+            await api.patch(`/inventory/categories/${editingCategory.id}`, {
+              name: newCategoryName.trim(),
+            })
+          ).data
+        : (await api.post('/inventory/categories', { name: newCategoryName.trim() })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-categories'] });
       setNewCategoryName('');
       setCategoryError(null);
       setCategoryDialogOpen(false);
+      setEditingCategory(null);
     },
     onError: (err) => setCategoryError(extractErrorMessage(err)),
   });
 
-  const createProductMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post('/inventory/products', {
-          name: productForm.name.trim(),
-          unit: productForm.unit.trim(),
-          standardQty: Number(productForm.standardQty),
-          reorderAt: productForm.reorderAt ? Number(productForm.reorderAt) : undefined,
-          supplierCode: productForm.supplierCode.trim() || undefined,
-          costPerUnit: productForm.costPerUnit ? Number(productForm.costPerUnit) : undefined,
-          categoryId: productForm.categoryId,
-          supplierId: productForm.supplierId,
-        })
-      ).data,
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/inventory/categories/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-categories'] });
+      setCategoryToDelete(null);
+    },
+  });
+
+  const saveProductMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: productForm.name.trim(),
+        unit: productForm.unit.trim(),
+        standardQty: Number(productForm.standardQty),
+        reorderAt: productForm.reorderAt ? Number(productForm.reorderAt) : undefined,
+        supplierCode: productForm.supplierCode.trim() || undefined,
+        costPerUnit: productForm.costPerUnit ? Number(productForm.costPerUnit) : undefined,
+        categoryId: productForm.categoryId,
+        supplierId: productForm.supplierId,
+      };
+      return editingProduct
+        ? (await api.patch(`/inventory/products/${editingProduct.id}`, payload)).data
+        : (await api.post('/inventory/products', payload)).data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
       setProductForm(emptyProductForm);
       setProductError(null);
       setProductDialogOpen(false);
+      setEditingProduct(null);
     },
     onError: (err) => setProductError(extractErrorMessage(err)),
   });
 
-  const toggleActiveMutation = useMutation({
+  const deleteProductMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
       (await api.patch(`/inventory/products/${id}`, { active })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory-products'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
+      setProductToDelete(null);
+    },
   });
 
   const canSubmitProduct =
@@ -140,13 +170,38 @@ export function Catalog() {
     !!productForm.supplierId;
 
   const openCategoryDialog = () => {
+    setEditingCategory(null);
     setNewCategoryName('');
     setCategoryError(null);
     setCategoryDialogOpen(true);
   };
 
+  const openEditCategory = (category: CategoryRow) => {
+    setEditingCategory(category);
+    setNewCategoryName(category.name);
+    setCategoryError(null);
+    setCategoryDialogOpen(true);
+  };
+
   const openProductDialog = () => {
+    setEditingProduct(null);
     setProductForm(emptyProductForm);
+    setProductError(null);
+    setProductDialogOpen(true);
+  };
+
+  const openEditProduct = (product: ProductRow) => {
+    setEditingProduct(product);
+    setProductForm({
+      name: product.name,
+      unit: product.unit,
+      standardQty: String(product.standardQty),
+      reorderAt: product.reorderAt != null ? String(product.reorderAt) : '',
+      supplierCode: product.supplierCode ?? '',
+      costPerUnit: product.costPerUnit != null ? String(product.costPerUnit) : '',
+      categoryId: product.categoryId,
+      supplierId: product.supplierId,
+    });
     setProductError(null);
     setProductDialogOpen(true);
   };
@@ -163,9 +218,12 @@ export function Catalog() {
           </Box>
           <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 2 }}>
             {categoriesQuery.data?.map((c) => (
-              <Typography key={c.id} variant="body2" sx={{ px: 1.5, py: 0.5, bgcolor: 'action.hover', borderRadius: 1 }}>
-                {c.name}
-              </Typography>
+              <Chip
+                key={c.id}
+                label={c.name}
+                onClick={() => openEditCategory(c)}
+                onDelete={() => setCategoryToDelete(c)}
+              />
             ))}
             {categoriesQuery.data?.length === 0 && (
               <Typography variant="body2" color="text.secondary">
@@ -189,6 +247,9 @@ export function Catalog() {
               <Box>
                 <Typography variant="body2" fontWeight={600}>
                   {product.name}
+                  {!product.active && (
+                    <Chip size="small" label="Disattivato" sx={{ ml: 1 }} />
+                  )}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {product.category.name} — {product.supplier.name} — standard {product.standardQty}{' '}
@@ -196,13 +257,24 @@ export function Catalog() {
                   {product.costPerUnit != null && ` — € ${product.costPerUnit.toFixed(2)}/${product.unit}`}
                 </Typography>
               </Box>
-              <Switch
-                checked={product.active}
-                title="Attivo/disattivo"
-                onChange={(e) =>
-                  toggleActiveMutation.mutate({ id: product.id, active: e.target.checked })
-                }
-              />
+              <Stack direction="row" spacing={0.5}>
+                <IconButton size="small" title="Modifica" onClick={() => openEditProduct(product)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                {product.active ? (
+                  <IconButton size="small" title="Elimina" onClick={() => setProductToDelete(product)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    size="small"
+                    title="Riattiva"
+                    onClick={() => deleteProductMutation.mutate({ id: product.id, active: true })}
+                  >
+                    <RestartAltIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
             </CardContent>
           </Card>
         ))}
@@ -214,7 +286,7 @@ export function Catalog() {
       </Stack>
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuova categoria</DialogTitle>
+        <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
             label="Nome categoria"
@@ -227,16 +299,29 @@ export function Catalog() {
           <Button onClick={() => setCategoryDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!newCategoryName.trim() || createCategoryMutation.isPending}
-            onClick={() => createCategoryMutation.mutate()}
+            disabled={!newCategoryName.trim() || saveCategoryMutation.isPending}
+            onClick={() => saveCategoryMutation.mutate()}
           >
-            Aggiungi
+            {editingCategory ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
 
+      <ConfirmDialog
+        open={!!categoryToDelete}
+        title="Eliminare la categoria?"
+        message={
+          categoryToDelete
+            ? `"${categoryToDelete.name}" non sarà più selezionabile per nuovi prodotti. I prodotti già assegnati e lo storico ordini restano invariati.`
+            : ''
+        }
+        loading={deleteCategoryMutation.isPending}
+        onCancel={() => setCategoryToDelete(null)}
+        onConfirm={() => categoryToDelete && deleteCategoryMutation.mutate(categoryToDelete.id)}
+      />
+
       <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nuovo prodotto</DialogTitle>
+        <DialogTitle>{editingProduct ? 'Modifica prodotto' : 'Nuovo prodotto'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 2 }}>
           <TextField
             label="Nome prodotto"
@@ -306,13 +391,28 @@ export function Catalog() {
           <Button onClick={() => setProductDialogOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!canSubmitProduct || createProductMutation.isPending}
-            onClick={() => createProductMutation.mutate()}
+            disabled={!canSubmitProduct || saveProductMutation.isPending}
+            onClick={() => saveProductMutation.mutate()}
           >
-            Aggiungi
+            {editingProduct ? 'Salva' : 'Aggiungi'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!productToDelete}
+        title="Eliminare il prodotto?"
+        message={
+          productToDelete
+            ? `"${productToDelete.name}" non sarà più selezionabile per nuovi ordini. Lo storico ordini resta invariato e potrai riattivarlo in qualsiasi momento.`
+            : ''
+        }
+        loading={deleteProductMutation.isPending}
+        onCancel={() => setProductToDelete(null)}
+        onConfirm={() =>
+          productToDelete && deleteProductMutation.mutate({ id: productToDelete.id, active: false })
+        }
+      />
     </Box>
   );
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -12,6 +12,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { CleaningService } from './cleaning.service';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
+import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 
 @Controller('haccp/cleaning-tasks')
 @UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
@@ -29,6 +30,22 @@ export class CleaningController {
   @Roles(Role.ADMIN)
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.cleaningService.listTasks(requireVenueId(user));
+  }
+
+  @Patch(':id')
+  @Roles(Role.ADMIN)
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateCleaningTaskDto,
+  ) {
+    return this.cleaningService.updateTask(requireVenueId(user), id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.cleaningService.removeTask(requireVenueId(user), id);
   }
 
   /** Voci del periodo corrente da fare, viste da chiunque abbia accesso al modulo HACCP. */

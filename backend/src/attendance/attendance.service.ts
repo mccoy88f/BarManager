@@ -49,7 +49,25 @@ export class AttendanceService {
   }
 
   listQrTokens(venueId: string) {
-    return this.prisma.qrToken.findMany({ where: { venueId } });
+    return this.prisma.qrToken.findMany({ where: { venueId, active: true } });
+  }
+
+  async updateQrToken(venueId: string, id: string, label: string) {
+    const token = await this.prisma.qrToken.findUnique({ where: { id } });
+    if (!token || token.venueId !== venueId) {
+      throw new NotFoundException('Postazione QR non trovata');
+    }
+    return this.prisma.qrToken.update({ where: { id }, data: { label } });
+  }
+
+  /** Disattiva la postazione senza perdere lo storico delle timbrature già registrate. */
+  async removeQrToken(venueId: string, id: string) {
+    const token = await this.prisma.qrToken.findUnique({ where: { id } });
+    if (!token || token.venueId !== venueId) {
+      throw new NotFoundException('Postazione QR non trovata');
+    }
+    await this.prisma.qrToken.update({ where: { id }, data: { active: false } });
+    return { success: true };
   }
 
   // ---- Tag NFC ----------------------------------------------------------
@@ -69,6 +87,24 @@ export class AttendanceService {
 
   listNfcTags(venueId: string) {
     return this.prisma.nfcTag.findMany({ where: { venueId } });
+  }
+
+  async updateNfcTag(venueId: string, id: string, dto: CreateNfcTagDto) {
+    const tag = await this.prisma.nfcTag.findUnique({ where: { id } });
+    if (!tag || tag.venueId !== venueId) {
+      throw new NotFoundException('Tag NFC non trovato');
+    }
+    try {
+      return await this.prisma.nfcTag.update({
+        where: { id },
+        data: { label: dto.label, value: dto.value.trim() },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Questo testo è già usato da un altro tag NFC');
+      }
+      throw e;
+    }
   }
 
   async removeNfcTag(venueId: string, tagId: string) {
