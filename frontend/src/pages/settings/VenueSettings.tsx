@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, TextField, Typography } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  TextField,
+  Typography,
+} from '@mui/material';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
 interface VenueHours {
@@ -11,6 +21,11 @@ interface VenueHours {
   lunchEnd: string;
   dinnerStart: string;
   dinnerEnd: string;
+  menuCoverUrl?: string;
+  menuPhone?: string;
+  menuInstagramUrl?: string;
+  menuFacebookUrl?: string;
+  menuWebsiteUrl?: string;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -25,6 +40,7 @@ function extractErrorMessage(error: unknown): string {
 /** Fasce orarie pranzo/cena del locale: determinano quali voci di menù sono
  * mostrate come disponibili nel menù pubblico in base all'ora corrente. */
 export function VenueSettings() {
+  const queryClient = useQueryClient();
   const [hours, setHours] = useState({
     lunchStart: '',
     lunchEnd: '',
@@ -33,6 +49,15 @@ export function VenueSettings() {
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const [menuSettings, setMenuSettings] = useState({
+    menuPhone: '',
+    menuInstagramUrl: '',
+    menuFacebookUrl: '',
+    menuWebsiteUrl: '',
+  });
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuSuccess, setMenuSuccess] = useState(false);
 
   const venueQuery = useQuery({
     queryKey: ['venue-me'],
@@ -47,6 +72,12 @@ export function VenueSettings() {
         dinnerStart: venueQuery.data.dinnerStart,
         dinnerEnd: venueQuery.data.dinnerEnd,
       });
+      setMenuSettings({
+        menuPhone: venueQuery.data.menuPhone ?? '',
+        menuInstagramUrl: venueQuery.data.menuInstagramUrl ?? '',
+        menuFacebookUrl: venueQuery.data.menuFacebookUrl ?? '',
+        menuWebsiteUrl: venueQuery.data.menuWebsiteUrl ?? '',
+      });
     }
   }, [venueQuery.data]);
 
@@ -60,6 +91,30 @@ export function VenueSettings() {
       setSuccess(false);
       setError(extractErrorMessage(err));
     },
+  });
+
+  const saveMenuSettingsMutation = useMutation({
+    mutationFn: async () => (await api.patch('/venues/me/menu-settings', menuSettings)).data,
+    onSuccess: () => {
+      menuQueryInvalidate();
+      setMenuError(null);
+      setMenuSuccess(true);
+    },
+    onError: (err) => {
+      setMenuSuccess(false);
+      setMenuError(extractErrorMessage(err));
+    },
+  });
+
+  const menuQueryInvalidate = () => queryClient.invalidateQueries({ queryKey: ['venue-me'] });
+
+  const uploadCoverMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('photo', file);
+      return (await api.post('/venues/me/menu-cover', form)).data;
+    },
+    onSuccess: menuQueryInvalidate,
   });
 
   return (
@@ -118,6 +173,92 @@ export function VenueSettings() {
             sx={{ mt: 2 }}
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
+          >
+            Salva
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Aspetto del menù pubblico
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Immagine di copertina mostrata in alto e contatti mostrati in fondo al menù che i
+            clienti vedono scansionando il QR code.
+          </Typography>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+            <Avatar
+              variant="rounded"
+              src={venueQuery.data?.menuCoverUrl}
+              sx={{ width: 96, height: 64 }}
+            />
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<PhotoCameraIcon />}
+              disabled={uploadCoverMutation.isPending}
+            >
+              {venueQuery.data?.menuCoverUrl ? 'Cambia copertina' : 'Carica copertina'}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadCoverMutation.mutate(file);
+                  e.target.value = '';
+                }}
+              />
+            </Button>
+          </Box>
+
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, mt: 3, maxWidth: 500 }}>
+            <TextField
+              label="Telefono"
+              value={menuSettings.menuPhone}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, menuPhone: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Instagram (URL)"
+              placeholder="https://instagram.com/..."
+              value={menuSettings.menuInstagramUrl}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, menuInstagramUrl: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Facebook (URL)"
+              placeholder="https://facebook.com/..."
+              value={menuSettings.menuFacebookUrl}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, menuFacebookUrl: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Sito web (URL)"
+              placeholder="https://..."
+              value={menuSettings.menuWebsiteUrl}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, menuWebsiteUrl: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+          </Box>
+          {menuError && (
+            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setMenuError(null)}>
+              {menuError}
+            </Alert>
+          )}
+          {menuSuccess && (
+            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setMenuSuccess(false)}>
+              Aspetto del menù aggiornato.
+            </Alert>
+          )}
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            disabled={saveMenuSettingsMutation.isPending}
+            onClick={() => saveMenuSettingsMutation.mutate()}
           >
             Salva
           </Button>

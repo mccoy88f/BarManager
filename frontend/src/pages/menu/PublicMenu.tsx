@@ -8,7 +8,12 @@ import {
   Chip,
   Stack,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
+import PhoneIcon from '@mui/icons-material/Phone';
+import InstagramIcon from '@mui/icons-material/Instagram';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 
 interface PublicMenuItem {
@@ -26,7 +31,14 @@ interface PublicMenuCategory {
   items: PublicMenuItem[];
 }
 interface PublicMenuResponse {
-  venue: { name: string };
+  venue: {
+    name: string;
+    coverUrl?: string;
+    phone?: string;
+    instagramUrl?: string;
+    facebookUrl?: string;
+    websiteUrl?: string;
+  };
   categories: PublicMenuCategory[];
 }
 
@@ -82,10 +94,23 @@ export function PublicMenu() {
     );
   }
 
+  const { venue } = menuQuery.data;
+  const hasContacts = venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
+
   return (
-    <Box sx={{ maxWidth: 640, mx: 'auto', p: 2 }}>
+    <Box sx={{ maxWidth: 640, mx: 'auto' }}>
+      {venue.coverUrl && (
+        <Box
+          component="img"
+          src={venue.coverUrl}
+          alt={venue.name}
+          sx={{ width: '100%', height: { xs: 160, sm: 220 }, objectFit: 'cover', display: 'block' }}
+        />
+      )}
+
+      <Box sx={{ p: 2 }}>
       <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ my: 3 }}>
-        {menuQuery.data.venue.name}
+        {venue.name}
       </Typography>
 
       {menuQuery.data.categories.map((category) => (
@@ -134,6 +159,39 @@ export function PublicMenu() {
           </Stack>
         </Box>
       ))}
+
+      {hasContacts && (
+        <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+          {venue.phone && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {venue.phone}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={1} justifyContent="center">
+            {venue.phone && (
+              <IconButton component="a" href={`tel:${venue.phone}`} title="Chiama">
+                <PhoneIcon />
+              </IconButton>
+            )}
+            {venue.instagramUrl && (
+              <IconButton component="a" href={venue.instagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram">
+                <InstagramIcon />
+              </IconButton>
+            )}
+            {venue.facebookUrl && (
+              <IconButton component="a" href={venue.facebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook">
+                <FacebookIcon />
+              </IconButton>
+            )}
+            {venue.websiteUrl && (
+              <IconButton component="a" href={venue.websiteUrl} target="_blank" rel="noopener noreferrer" title="Sito web">
+                <LanguageIcon />
+              </IconButton>
+            )}
+          </Stack>
+        </Box>
+      )}
+      </Box>
     </Box>
   );
 }

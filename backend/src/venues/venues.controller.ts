@@ -1,8 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomUUID } from 'crypto';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { safeExtension } from '../common/upload/safe-extension';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -13,6 +27,7 @@ import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
+import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -61,5 +76,37 @@ export class VenuesController {
     @Body() dto: UpdateClockInSettingsDto,
   ) {
     return this.venuesService.updateClockInSettings(requireVenueId(user), dto);
+  }
+
+  /** Contatti mostrati in fondo al menù pubblico: telefono e link social. */
+  @Patch('me/menu-settings')
+  @Roles(Role.ADMIN)
+  updateOwnMenuSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMenuSettingsDto,
+  ) {
+    return this.venuesService.updateMenuSettings(requireVenueId(user), dto);
+  }
+
+  /** Immagine di copertina mostrata in alto nel menù pubblico. */
+  @Post('me/menu-cover')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      storage: diskStorage({
+        destination: `${process.env.UPLOADS_DIR || './uploads'}/menu`,
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (_req, file, cb) => {
+        cb(null, /^image\/(jpe?g|png|webp)$/.test(file.mimetype));
+      },
+    }),
+  )
+  uploadMenuCover(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.venuesService.setMenuCover(requireVenueId(user), `/uploads/menu/${file.filename}`);
   }
 }

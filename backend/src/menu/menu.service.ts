@@ -192,7 +192,14 @@ export class MenuService {
 
     const now = new Date();
     return {
-      venue: { name: venue.name },
+      venue: {
+        name: venue.name,
+        coverUrl: venue.menuCoverUrl,
+        phone: venue.menuPhone,
+        instagramUrl: venue.menuInstagramUrl,
+        facebookUrl: venue.menuFacebookUrl,
+        websiteUrl: venue.menuWebsiteUrl,
+      },
       categories: categories
         .filter((c) => c.items.length > 0)
         .map((c) => ({

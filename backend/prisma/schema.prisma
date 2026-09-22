@@ -38,6 +38,14 @@ model Venue {
   dinnerStart String @default("19:00")
   dinnerEnd   String @default("23:00")
 
+  // Aspetto del menù pubblico: immagine di copertina in alto e informazioni
+  // di contatto in fondo (social, telefono), impostati dall'admin.
+  menuCoverUrl      String?
+  menuPhone         String?
+  menuInstagramUrl  String?
+  menuFacebookUrl   String?
+  menuWebsiteUrl    String?
+
   // Metodi di timbratura verificata abilitati dall'admin (più di uno può
   // essere attivo insieme): QR di postazione, posizione GPS entro un raggio
   // dal locale, tag NFC fisico. Se nessuno è abilitato, resta disponibile la
