@@ -90,9 +90,20 @@ describe('LoyverseSyncService', () => {
     });
     expect(summary.categories).toBe(1);
     expect(summary.items).toBe(1);
+    expect(summary.warnings).toEqual([]);
     expect(prisma.venue.update).toHaveBeenCalledWith({
       where: { id: 'venue-1' },
-      data: { loyverseLastSyncAt: expect.any(Date), loyverseLastSyncError: null },
+      data: {
+        loyverseLastSyncAt: expect.any(Date),
+        loyverseLastSyncError: null,
+        loyverseLastSyncSummary: {
+          categories: 1,
+          items: 1,
+          imagesDownloaded: 0,
+          imagesSkipped: true,
+          warnings: [],
+        },
+      },
     });
   });
 
@@ -110,7 +121,9 @@ describe('LoyverseSyncService', () => {
     const summary = await service.sync('venue-1');
 
     expect(prisma.menuItem.create).not.toHaveBeenCalled();
-    expect(summary.items).toBe(1);
+    expect(summary.items).toBe(0);
+    expect(summary.warnings).toHaveLength(1);
+    expect(summary.warnings[0]).toContain('categoria non mappata');
   });
 
   it('costruisce il nome variante dai valori delle opzioni Loyverse quando ce ne sono più di una', async () => {
@@ -165,6 +178,8 @@ describe('LoyverseSyncService', () => {
     const summary = await service.sync('venue-1');
 
     expect(prisma.menuItem.create).not.toHaveBeenCalled();
-    expect(summary.items).toBe(1);
+    expect(summary.items).toBe(0);
+    expect(summary.warnings).toHaveLength(1);
+    expect(summary.warnings[0]).toContain('nessuna variante a prezzo fisso');
   });
 });

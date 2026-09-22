@@ -56,6 +56,10 @@ model Venue {
   loyverseAccessTokenEnc     String?
   loyverseLastSyncAt         DateTime?
   loyverseLastSyncError      String?
+  // Riepilogo dell'ultima sincronizzazione riuscita (conteggi + eventuali
+  // avvisi tipo "voce saltata perché senza categoria mappata"): mostrato
+  // nella UI come log, non solo tenuto nei log del server.
+  loyverseLastSyncSummary    Json?
 
   // Metodi di timbratura verificata abilitati dall'admin (più di uno può
   // essere attivo insieme): QR di postazione, posizione GPS entro un raggio

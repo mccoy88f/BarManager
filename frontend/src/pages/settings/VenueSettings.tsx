@@ -6,27 +6,38 @@ import {
   Button,
   Card,
   CardContent,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
+  List,
+  ListItem,
+  ListItemText,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SyncIcon from '@mui/icons-material/Sync';
+import ArticleIcon from '@mui/icons-material/Article';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
+interface LoyverseSyncSummary {
+  categories: number;
+  items: number;
+  imagesDownloaded: number;
+  imagesSkipped: boolean;
+  warnings: string[];
+}
 interface LoyverseStatus {
   enabled: boolean;
   hasToken: boolean;
   lastSyncAt?: string;
   lastSyncError?: string;
-}
-interface LoyverseSyncResult {
-  categories: number;
-  items: number;
-  imagesDownloaded: number;
-  imagesSkipped: boolean;
+  lastSyncSummary?: LoyverseSyncSummary | null;
 }
 
 interface VenueHours {
@@ -135,7 +146,7 @@ export function VenueSettings() {
 
   const [loyverseToken, setLoyverseToken] = useState('');
   const [loyverseError, setLoyverseError] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<LoyverseSyncResult | null>(null);
+  const [loyverseLogOpen, setLoyverseLogOpen] = useState(false);
 
   const loyverseStatusQuery = useQuery({
     queryKey: ['loyverse-status'],
@@ -165,16 +176,14 @@ export function VenueSettings() {
   });
 
   const syncLoyverseMutation = useMutation({
-    mutationFn: async () => (await api.post<LoyverseSyncResult>('/loyverse/sync')).data,
-    onSuccess: (data) => {
-      setSyncResult(data);
+    mutationFn: async () => (await api.post<LoyverseSyncSummary>('/loyverse/sync')).data,
+    onSuccess: () => {
       setLoyverseError(null);
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       queryClient.invalidateQueries({ queryKey: ['menu-items'] });
       loyverseInvalidate();
     },
     onError: (err) => {
-      setSyncResult(null);
       setLoyverseError(extractErrorMessage(err));
       loyverseInvalidate();
     },
@@ -388,29 +397,87 @@ export function VenueSettings() {
               {loyverseError}
             </Alert>
           )}
-          {syncResult && (
-            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setSyncResult(null)}>
-              Sincronizzate {syncResult.categories} categorie e {syncResult.items} voci di menù.
-              {syncResult.imagesSkipped
+          {loyverseStatusQuery.data?.lastSyncSummary && (
+            <Alert
+              severity={loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 ? 'warning' : 'success'}
+              sx={{ mt: 2 }}
+            >
+              Sincronizzate {loyverseStatusQuery.data.lastSyncSummary.categories} categorie e{' '}
+              {loyverseStatusQuery.data.lastSyncSummary.items} voci di menù.
+              {loyverseStatusQuery.data.lastSyncSummary.imagesSkipped
                 ? ' Nessuna immagine trovata su Loyverse per questi prodotti.'
-                : ` ${syncResult.imagesDownloaded} nuove immagini scaricate.`}
+                : ` ${loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} nuove immagini scaricate.`}
+              {loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 &&
+                ` ${loyverseStatusQuery.data.lastSyncSummary.warnings.length} voci saltate, vedi il log.`}
             </Alert>
           )}
 
-          <Button
-            variant="contained"
-            startIcon={<SyncIcon />}
-            sx={{ mt: 2 }}
-            disabled={!loyverseStatusQuery.data?.enabled || syncLoyverseMutation.isPending}
-            onClick={() => {
-              setSyncResult(null);
-              syncLoyverseMutation.mutate();
-            }}
-          >
-            Sincronizza ora
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={syncLoyverseMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+              disabled={!loyverseStatusQuery.data?.enabled || syncLoyverseMutation.isPending}
+              onClick={() => syncLoyverseMutation.mutate()}
+            >
+              {syncLoyverseMutation.isPending ? 'Sincronizzazione in corso…' : 'Sincronizza ora'}
+            </Button>
+            <Button
+              variant="text"
+              startIcon={<ArticleIcon />}
+              disabled={!loyverseStatusQuery.data?.lastSyncAt}
+              onClick={() => setLoyverseLogOpen(true)}
+            >
+              Vedi log
+            </Button>
+          </Box>
         </CardContent>
       </Card>
+
+      <Dialog open={loyverseLogOpen} onClose={() => setLoyverseLogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Log ultima sincronizzazione Loyverse</DialogTitle>
+        <DialogContent>
+          {loyverseStatusQuery.data?.lastSyncAt && (
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {new Date(loyverseStatusQuery.data.lastSyncAt).toLocaleString('it-IT')}
+            </Typography>
+          )}
+          {loyverseStatusQuery.data?.lastSyncError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {loyverseStatusQuery.data.lastSyncError}
+            </Alert>
+          )}
+          {loyverseStatusQuery.data?.lastSyncSummary && (
+            <>
+              <Typography variant="body2">
+                {loyverseStatusQuery.data.lastSyncSummary.categories} categorie,{' '}
+                {loyverseStatusQuery.data.lastSyncSummary.items} voci sincronizzate,{' '}
+                {loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} immagini scaricate.
+              </Typography>
+              {loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 ? (
+                <List dense>
+                  {loyverseStatusQuery.data.lastSyncSummary.warnings.map((warning, i) => (
+                    <ListItem key={i} disableGutters>
+                      <ListItemText primary={warning} />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Nessuna voce saltata.
+                </Typography>
+              )}
+            </>
+          )}
+          {!loyverseStatusQuery.data?.lastSyncSummary && !loyverseStatusQuery.data?.lastSyncError && (
+            <Typography variant="body2" color="text.secondary">
+              Nessuna sincronizzazione completata finora.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setLoyverseLogOpen(false)}>Chiudi</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

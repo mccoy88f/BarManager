@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { writeFile } from 'fs/promises';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret } from '../common/crypto/secret-crypto';
 import { safeExtension } from '../common/upload/safe-extension';
@@ -11,6 +12,8 @@ export interface LoyverseSyncSummary {
   items: number;
   imagesDownloaded: number;
   imagesSkipped: boolean;
+  /** Voci Loyverse saltate durante il sync e il motivo (es. senza categoria mappata). */
+  warnings: string[];
 }
 
 /**
@@ -34,6 +37,8 @@ export class LoyverseSyncService {
       throw new NotFoundException('Integrazione Loyverse non configurata per questo locale');
     }
 
+    const warnings: string[] = [];
+
     try {
       const accessToken = decryptSecret(venue.loyverseAccessTokenEnc);
       const [remoteCategories, remoteItems] = await Promise.all([
@@ -44,27 +49,36 @@ export class LoyverseSyncService {
       const categoryIdMap = await this.syncCategories(venueId, remoteCategories);
 
       let imagesDownloaded = 0;
+      let itemsSynced = 0;
       let sawAnyImageField = false;
       for (const item of remoteItems) {
         if (loyverseClient.extractImageUrl(item)) sawAnyImageField = true;
       }
 
       for (const item of remoteItems.filter((i) => !i.deleted_at)) {
-        const downloaded = await this.syncItem(venueId, item, categoryIdMap);
-        if (downloaded) imagesDownloaded++;
+        const result = await this.syncItem(venueId, item, categoryIdMap, warnings);
+        if (result.synced) itemsSynced++;
+        if (result.downloadedImage) imagesDownloaded++;
       }
+
+      const summary: LoyverseSyncSummary = {
+        categories: categoryIdMap.size,
+        items: itemsSynced,
+        imagesDownloaded,
+        imagesSkipped: !sawAnyImageField,
+        warnings,
+      };
 
       await this.prisma.venue.update({
         where: { id: venueId },
-        data: { loyverseLastSyncAt: new Date(), loyverseLastSyncError: null },
+        data: {
+          loyverseLastSyncAt: new Date(),
+          loyverseLastSyncError: null,
+          loyverseLastSyncSummary: summary as unknown as Prisma.InputJsonValue,
+        },
       });
 
-      return {
-        categories: remoteCategories.length,
-        items: remoteItems.length,
-        imagesDownloaded,
-        imagesSkipped: !sawAnyImageField,
-      };
+      return summary;
     } catch (err) {
       const message =
         err instanceof LoyverseApiError ? err.message : 'Errore imprevisto durante la sincronizzazione.';
@@ -125,21 +139,24 @@ export class LoyverseSyncService {
     venueId: string,
     remote: LoyverseItem,
     categoryIdMap: Map<string, string>,
-  ): Promise<boolean> {
+    warnings: string[],
+  ): Promise<{ synced: boolean; downloadedImage: boolean }> {
     const categoryId = remote.category_id ? categoryIdMap.get(remote.category_id) : undefined;
     if (!categoryId) {
-      this.logger.warn(`Voce Loyverse "${remote.item_name}" senza categoria mappata: saltata.`);
-      return false;
+      const message = `"${remote.item_name}" saltata: categoria non mappata (categoria Loyverse eliminata o non ancora sincronizzata).`;
+      this.logger.warn(message);
+      warnings.push(message);
+      return { synced: false, downloadedImage: false };
     }
 
     const usableVariants = (remote.variants ?? []).filter(
       (v) => v.default_pricing_type !== 'VARIABLE' && v.default_price != null,
     );
     if (usableVariants.length === 0) {
-      this.logger.warn(
-        `Voce Loyverse "${remote.item_name}" senza nessuna variante a prezzo fisso (tutte "VARIABLE"): saltata, il prezzo va deciso in cassa e non c'è nulla da sincronizzare.`,
-      );
-      return false;
+      const message = `"${remote.item_name}" saltata: nessuna variante a prezzo fisso (il prezzo si decide in cassa in Loyverse, non c'è nulla da sincronizzare).`;
+      this.logger.warn(message);
+      warnings.push(message);
+      return { synced: false, downloadedImage: false };
     }
 
     const existing = await this.prisma.menuItem.findFirst({
@@ -183,7 +200,7 @@ export class LoyverseSyncService {
       }
     }
 
-    return downloadedImage;
+    return { synced: true, downloadedImage };
   }
 
   /** "usableVariants" è già filtrata alle sole varianti a prezzo fisso (v. syncItem). */

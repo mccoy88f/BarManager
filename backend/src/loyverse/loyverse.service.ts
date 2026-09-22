@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptSecret } from '../common/crypto/secret-crypto';
 import { UpdateLoyverseSettingsDto } from './dto/update-loyverse-settings.dto';
-import { LoyverseSyncService } from './loyverse-sync.service';
+import { LoyverseSyncService, LoyverseSyncSummary } from './loyverse-sync.service';
 
 @Injectable()
 export class LoyverseService {
@@ -19,6 +19,7 @@ export class LoyverseService {
       hasToken: !!venue.loyverseAccessTokenEnc,
       lastSyncAt: venue.loyverseLastSyncAt,
       lastSyncError: venue.loyverseLastSyncError,
+      lastSyncSummary: venue.loyverseLastSyncSummary as unknown as LoyverseSyncSummary | null,
     };
   }
 
