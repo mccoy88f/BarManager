@@ -55,6 +55,7 @@ model Venue {
   users             User[]
   employees         Employee[]
   fridges           Fridge[]
+  cleaningTasks     CleaningTask[]
   printers          Printer[]
   productCategories ProductCategory[]
   suppliers         Supplier[]
@@ -122,6 +123,7 @@ model Employee {
   attendanceRecords AttendanceRecord[]
   leaveRequests     LeaveRequest[]
   relatedTasks      Task[]
+  cleaningLogs      CleaningLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -293,6 +295,51 @@ model HaccpReport {
   @@index([venueId, reportDate])
 }
 
+/// Unità di ricorrenza di una voce di pulizia: combinata con `timesPerUnit`
+/// copre "giornaliera" (DAY,1), "più volte al giorno" (DAY,>1), "settimanale"
+/// (WEEK,1), "più volte a settimana" (WEEK,>1), "mensile" (MONTH,1) e
+/// "più volte al mese" (MONTH,>1).
+enum CleaningFrequencyUnit {
+  DAY
+  WEEK
+  MONTH
+}
+
+/// Voce di pulizia ricorrente censita dall'admin (es. "Sgrassare friggitrice"
+/// in "Cucina", ogni giorno). Le esecuzioni effettive sono in CleaningLog.
+model CleaningTask {
+  id            String                @id @default(cuid())
+  description   String
+  location      String
+  frequencyUnit CleaningFrequencyUnit
+  timesPerUnit  Int                   @default(1)
+  active        Boolean               @default(true)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  logs CleaningLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Un'esecuzione registrata di una voce di pulizia: chi l'ha fatta e quando.
+model CleaningLog {
+  id          String   @id @default(cuid())
+  completedAt DateTime @default(now())
+
+  taskId String
+  task   CleaningTask @relation(fields: [taskId], references: [id])
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, completedAt])
+}
+
 // ---------------------------------------------------------------------------
 // Stampanti
 // ---------------------------------------------------------------------------
@@ -361,6 +408,7 @@ model Product {
   standardQty Float // scorta standard/obiettivo
   reorderAt   Float? // soglia minima sotto la quale segnalare urgenza
   supplierCode String? // codice prodotto presso il fornitore
+  costPerUnit Float? // costo unitario per collo/unità, opzionale: usato per il totale ordine
   active      Boolean @default(true)
 
   categoryId String

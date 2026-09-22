@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { HaccpService } from './haccp.service';
 import { HaccpController } from './haccp.controller';
+import { CleaningService } from './cleaning.service';
+import { CleaningController } from './cleaning.controller';
 import { PrintingModule } from '../printing/printing.module';
 
 @Module({
   imports: [PrintingModule],
-  controllers: [HaccpController],
-  providers: [HaccpService],
+  controllers: [HaccpController, CleaningController],
+  providers: [HaccpService, CleaningService],
 })
 export class HaccpModule {}
