@@ -113,9 +113,24 @@ export class MenuService {
   async createItem(venueId: string, dto: CreateMenuItemDto) {
     await this.assertNotLoyverseManaged(venueId);
     const { variants, ...item } = dto;
+    // Senza un sortOrder incrementale (come per le categorie), tutte le
+    // voci di una categoria condividerebbero lo stesso valore di default:
+    // l'ORDER BY sortOrder non avrebbe un criterio per distinguerle, e un
+    // qualsiasi UPDATE successivo (es. abilitare/disabilitare) potrebbe
+    // farle apparire in un ordine diverso a seconda della posizione fisica
+    // delle righe nel database.
+    let { sortOrder } = item;
+    if (sortOrder === undefined) {
+      const last = await this.prisma.menuItem.findFirst({
+        where: { venueId, categoryId: item.categoryId },
+        orderBy: { sortOrder: 'desc' },
+      });
+      sortOrder = (last?.sortOrder ?? -1) + 1;
+    }
     return this.prisma.menuItem.create({
       data: {
         ...item,
+        sortOrder,
         venueId,
         variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
       },
@@ -126,7 +141,10 @@ export class MenuService {
   listItems(venueId: string, categoryId?: string) {
     return this.prisma.menuItem.findMany({
       where: { venueId, categoryId },
-      orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
+      // createdAt come criterio secondario: garantisce un ordine stabile
+      // anche per le voci create prima di questo fix, che condividono
+      // tutte sortOrder=0.
+      orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
       include: { category: true, variants: { orderBy: { sortOrder: 'asc' } } },
     });
   }
@@ -161,7 +179,21 @@ export class MenuService {
 
   async setVisibility(venueId: string, itemId: string, visible: boolean) {
     await this.assertOwnership(venueId, itemId);
-    return this.prisma.menuItem.update({ where: { id: itemId }, data: { visible } });
+    const item = await this.prisma.menuItem.update({
+      where: { id: itemId },
+      data: { visible },
+      include: { category: true },
+    });
+    // Abilitare una voce la cui categoria è nascosta la lascerebbe
+    // comunque invisibile nel menù pubblico (che filtra per categoria
+    // visibile): la categoria si riabilita di conseguenza.
+    if (visible && !item.category.visible) {
+      await this.prisma.menuCategory.update({
+        where: { id: item.categoryId },
+        data: { visible: true },
+      });
+    }
+    return item;
   }
 
   /**
@@ -252,7 +284,7 @@ export class MenuService {
       include: {
         items: {
           where: { visible: true, availability: { in: allowedAvailabilities } },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: { variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } } },
         },
       },

@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 describe('MenuService varianti', () => {
   let prisma: {
-    menuItem: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
+    menuItem: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     menuItemVariant: { deleteMany: jest.Mock };
     venue: { findUnique: jest.Mock };
     $transaction: jest.Mock;
@@ -13,7 +13,12 @@ describe('MenuService varianti', () => {
 
   beforeEach(() => {
     prisma = {
-      menuItem: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+      menuItem: {
+        create: jest.fn(),
+        update: jest.fn(),
+        findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       menuItemVariant: { deleteMany: jest.fn() },
       venue: { findUnique: jest.fn().mockResolvedValue({ loyverseIntegrationEnabled: false }) },
       $transaction: jest.fn((cb) => cb(prisma)),
@@ -39,6 +44,24 @@ describe('MenuService varianti', () => {
       { name: 'Piccola', price: 3.5, sortOrder: 0 },
       { name: 'Grande', price: 5, sortOrder: 1 },
     ]);
+  });
+
+  it("assegna alla voce il sortOrder successivo all'ultima della stessa categoria", async () => {
+    prisma.menuItem.findFirst.mockResolvedValue({ sortOrder: 4 });
+    prisma.menuItem.create.mockResolvedValue({ id: 'item-2' });
+
+    await service.createItem('venue-1', {
+      name: 'Vino',
+      categoryId: 'cat-1',
+      variants: [{ price: 6 }],
+    });
+
+    expect(prisma.menuItem.findFirst).toHaveBeenCalledWith({
+      where: { venueId: 'venue-1', categoryId: 'cat-1' },
+      orderBy: { sortOrder: 'desc' },
+    });
+    const data = prisma.menuItem.create.mock.calls[0][0].data;
+    expect(data.sortOrder).toBe(5);
   });
 
   it('aggiornando con nuove varianti, sostituisce tutte quelle esistenti', async () => {
@@ -209,6 +232,64 @@ describe('MenuService.setFeatured', () => {
 
     await expect(service.setFeatured('venue-1', 'item-1', true)).rejects.toThrow();
     expect(prisma.menuItem.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('MenuService.setVisibility', () => {
+  let prisma: {
+    menuItem: { findUnique: jest.Mock; update: jest.Mock };
+    menuCategory: { update: jest.Mock };
+  };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = {
+      menuItem: { findUnique: jest.fn(), update: jest.fn() },
+      menuCategory: { update: jest.fn() },
+    };
+    service = new MenuService(prisma as unknown as PrismaService);
+  });
+
+  it('abilitando una voce la cui categoria è nascosta, riabilita anche la categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', visible: false },
+    });
+
+    await service.setVisibility('venue-1', 'item-1', true);
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({
+      where: { id: 'cat-1' },
+      data: { visible: true },
+    });
+  });
+
+  it('abilitando una voce la cui categoria è già visibile, non tocca la categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', visible: true },
+    });
+
+    await service.setVisibility('venue-1', 'item-1', true);
+
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+  });
+
+  it('disabilitando una voce non tocca la visibilità della categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', visible: true },
+    });
+
+    await service.setVisibility('venue-1', 'item-1', false);
+
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
   });
 });
 

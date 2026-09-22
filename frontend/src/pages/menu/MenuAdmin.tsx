@@ -356,7 +356,12 @@ export function MenuAdmin() {
   const toggleVisibilityMutation = useMutation({
     mutationFn: async ({ id, visible }: { id: string; visible: boolean }) =>
       (await api.patch(`/menu/items/${id}/visibility`, { visible })).data,
-    onSuccess: invalidate,
+    // Abilitare una voce può abilitare anche la sua categoria (se era
+    // nascosta), quindi va aggiornata anche quella lista.
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+    },
   });
 
   const toggleFeaturedMutation = useMutation({
