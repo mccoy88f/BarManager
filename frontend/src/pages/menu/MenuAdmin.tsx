@@ -453,14 +453,25 @@ export function MenuAdmin() {
                 InputProps={{ readOnly: true }}
                 onFocus={(e) => e.target.select()}
               />
-              <Button
-                variant="outlined"
-                size="small"
-                sx={{ alignSelf: 'flex-start' }}
-                onClick={() => navigator.clipboard?.writeText(publicMenuUrl)}
-              >
-                Copia link
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => navigator.clipboard?.writeText(publicMenuUrl)}
+                >
+                  Copia link
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  component="a"
+                  href={publicMenuUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Apri link
+                </Button>
+              </Stack>
             </Stack>
             {qrCodeDataUrl && (
               <Stack spacing={1} alignItems="center">
