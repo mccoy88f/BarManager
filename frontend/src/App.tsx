@@ -18,6 +18,7 @@ import { InventoryHome } from './pages/inventory/InventoryHome';
 import { Suppliers } from './pages/inventory/Suppliers';
 import { Catalog } from './pages/inventory/Catalog';
 import { OrderHistory } from './pages/inventory/OrderHistory';
+import { OrderDetail } from './pages/inventory/OrderDetail';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="/inventory/suppliers" element={<Suppliers />} />
             <Route path="/inventory/catalog" element={<Catalog />} />
             <Route path="/inventory/orders-history" element={<OrderHistory />} />
+            <Route path="/inventory/orders-history/:id" element={<OrderDetail />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="menu" />}>
             <Route path="/menu/admin" element={<MenuAdmin />} />

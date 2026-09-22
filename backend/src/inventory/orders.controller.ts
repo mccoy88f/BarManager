@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { ModuleAccessGuard } from '../common/guards/module-access.guard';
@@ -49,5 +50,24 @@ export class OrdersController {
   @Post(':id/send')
   send(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.ordersService.sendOrder(user, id);
+  }
+
+  @Post(':id/print')
+  printAgain(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.ordersService.printAgain(requireVenueId(user), id);
+  }
+
+  @Get(':id/export/pdf')
+  async exportPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.ordersService.exportPdf(requireVenueId(user), id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="ordine-${id}.pdf"`,
+    });
+    res.send(buffer);
   }
 }

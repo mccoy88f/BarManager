@@ -5,6 +5,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { MailService } from './mail.service';
 import { PrintingService } from '../printing/printing.service';
+import { PdfService } from '../reports/pdf.service';
 
 const adminUser: AuthenticatedUser = {
   userId: 'user-1',
@@ -34,6 +35,7 @@ describe('OrdersService.createOrder', () => {
       audit as unknown as AuditService,
       {} as unknown as MailService,
       {} as unknown as PrintingService,
+      {} as unknown as PdfService,
     );
   });
 
@@ -100,6 +102,7 @@ describe('OrdersService.updateLineQty', () => {
       {} as unknown as AuditService,
       {} as unknown as MailService,
       {} as unknown as PrintingService,
+      {} as unknown as PdfService,
     );
   });
 
@@ -129,5 +132,72 @@ describe('OrdersService.updateLineQty', () => {
       where: { id: 'line-1' },
       data: { orderedQty: 5 },
     });
+  });
+});
+
+describe('OrdersService.printAgain / exportPdf', () => {
+  let prisma: { order: { findUnique: jest.Mock } };
+  let printing: { printReport: jest.Mock };
+  let pdf: { buildDocument: jest.Mock };
+  let service: OrdersService;
+
+  const order = {
+    id: 'order-1',
+    venueId: 'venue-1',
+    createdAt: new Date('2026-01-10'),
+    sentAt: new Date('2026-01-11'),
+    supplier: { name: 'Fornitore SRL' },
+    createdBy: { email: 'admin@venue1.test' },
+    lines: [
+      { orderedQty: 3, product: { name: 'Birra', unit: 'cassa', costPerUnit: 10 } },
+      { orderedQty: 0, product: { name: 'Non ordinato', unit: 'pz', costPerUnit: 5 } },
+    ],
+  };
+
+  beforeEach(() => {
+    prisma = { order: { findUnique: jest.fn().mockResolvedValue(order) } };
+    printing = { printReport: jest.fn().mockResolvedValue({ printed: true }) };
+    pdf = {
+      buildDocument: jest.fn(async (build) => {
+        const calls: string[] = [];
+        const doc: Record<string, jest.Mock> = {};
+        const chain = () => doc as unknown as PDFKit.PDFDocument;
+        doc.fontSize = jest.fn(chain);
+        doc.moveDown = jest.fn(chain);
+        doc.text = jest.fn((t: string) => {
+          calls.push(t);
+          return chain();
+        });
+        build(doc as unknown as PDFKit.PDFDocument);
+        return Buffer.from(calls.join('\n'));
+      }),
+    };
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      {} as unknown as AuditService,
+      {} as unknown as MailService,
+      printing as unknown as PrintingService,
+      pdf as unknown as PdfService,
+    );
+  });
+
+  it('ristampa la checklist con le sole righe ordinate (quantità > 0)', async () => {
+    await service.printAgain('venue-1', 'order-1');
+
+    expect(printing.printReport).toHaveBeenCalledWith('venue-1', 'ORDERS', {
+      title: 'Ordine Fornitore SRL',
+      lines: [`${'Birra'.padEnd(24)} x 3 cassa  €10.00 = €30.00`],
+      footer: ['Checklist per controllo scarico merce ->', '', 'TOTALE: €30.00'],
+    });
+  });
+
+  it('genera il PDF con fornitore, data, autore e importi', async () => {
+    const buffer = await service.exportPdf('venue-1', 'order-1');
+    const text = buffer.toString();
+
+    expect(text).toContain('Fornitore: Fornitore SRL');
+    expect(text).toContain('Autore: admin@venue1.test');
+    expect(text).toContain('Totale: € 30.00');
+    expect(text).not.toContain('Non ordinato');
   });
 });

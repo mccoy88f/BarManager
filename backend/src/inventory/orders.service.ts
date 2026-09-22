@@ -1,11 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, PrinterUsage } from '@prisma/client';
+import { OrderStatus, PrinterUsage, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { MailService } from './mail.service';
 import { PrintingService } from '../printing/printing.service';
+import { PdfService } from '../reports/pdf.service';
+
+const ORDER_INCLUDE = {
+  lines: { include: { product: true } },
+  supplier: true,
+  createdBy: { select: { email: true } },
+} as const;
+
+type OrderWithDetails = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
 
 @Injectable()
 export class OrdersService {
@@ -14,6 +23,7 @@ export class OrdersService {
     private audit: AuditService,
     private mail: MailService,
     private printing: PrintingService,
+    private pdf: PdfService,
   ) {}
 
   /** Crea un nuovo ordine (bozza) calcolando le quantità da ordinare. */
@@ -55,7 +65,7 @@ export class OrdersService {
           }),
         },
       },
-      include: { lines: { include: { product: true } }, supplier: true },
+      include: ORDER_INCLUDE,
     });
 
     await this.audit.log({
@@ -84,7 +94,7 @@ export class OrdersService {
   async getOrder(venueId: string, orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { lines: { include: { product: true } }, supplier: true },
+      include: ORDER_INCLUDE,
     });
     if (!order || order.venueId !== venueId) throw new NotFoundException('Ordine non trovato');
     return order;
@@ -94,7 +104,7 @@ export class OrdersService {
   listOrders(venueId: string) {
     return this.prisma.order.findMany({
       where: { venueId },
-      include: { supplier: true, lines: { include: { product: true } } },
+      include: ORDER_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -132,9 +142,41 @@ export class OrdersService {
       text: `Buongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
     });
 
+    const printResult = await this.printing.printReport(
+      venueId,
+      PrinterUsage.ORDERS,
+      this.buildPrintPayload(order),
+    );
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.SENT, sentAt: new Date() },
+      include: ORDER_INCLUDE,
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: user.userId,
+      entity: 'Order',
+      entityId: orderId,
+      action: 'UPDATE',
+      before: order,
+      after: updated,
+    });
+
+    return { order: updated, email: emailResult, print: printResult };
+  }
+
+  /**
+   * Righe/piè di pagina della checklist POS: condiviso tra l'invio
+   * dell'ordine e una ristampa richiesta più avanti dallo storico.
+   */
+  private buildPrintPayload(order: OrderWithDetails) {
+    const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
+
     // Se il prodotto ha un costo unitario impostato, la riga mostra anche
     // prezzo x colli ordinati = subtotale, e in fondo compare il totale.
-    const printLines = onlyOrdered.map((l) => {
+    const lines = onlyOrdered.map((l) => {
       const base = `${l.product.name.padEnd(24)} x ${l.orderedQty} ${l.product.unit}`;
       if (l.product.costPerUnit == null) return base;
       const lineTotal = l.product.costPerUnit * l.orderedQty;
@@ -149,28 +191,48 @@ export class OrdersService {
         ? ['Checklist per controllo scarico merce ->', '', `TOTALE: €${grandTotal.toFixed(2)}`]
         : ['Checklist per controllo scarico merce ->'];
 
-    const printResult = await this.printing.printReport(venueId, PrinterUsage.ORDERS, {
-      title: `Ordine ${order.supplier.name}`,
-      lines: printLines,
-      footer,
-    });
+    return { title: `Ordine ${order.supplier.name}`, lines, footer };
+  }
 
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.SENT, sentAt: new Date() },
-      include: { lines: { include: { product: true } }, supplier: true },
-    });
+  /** Ristampa la checklist ordine su richiesta, dallo storico, in qualsiasi momento dopo l'invio. */
+  async printAgain(venueId: string, orderId: string) {
+    const order = await this.getOrder(venueId, orderId);
+    return this.printing.printReport(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
+  }
 
-    await this.audit.log({
-      venueId,
-      userId: user.userId,
-      entity: 'Order',
-      entityId: orderId,
-      action: 'UPDATE',
-      before: order,
-      after: updated,
-    });
+  /** PDF dell'ordine: fornitore, data, autore, righe con importi singoli e totale. */
+  async exportPdf(venueId: string, orderId: string): Promise<Buffer> {
+    const order = await this.getOrder(venueId, orderId);
+    const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
+    const grandTotal = onlyOrdered.reduce(
+      (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
+      0,
+    );
 
-    return { order: updated, email: emailResult, print: printResult };
+    return this.pdf.buildDocument((doc) => {
+      doc.fontSize(16).text('Ordine fornitore', { align: 'center' }).moveDown();
+
+      doc.fontSize(11);
+      doc.text(`Fornitore: ${order.supplier.name}`);
+      doc.text(`Data ordine: ${order.createdAt.toLocaleDateString('it-IT')}`);
+      if (order.sentAt) doc.text(`Inviato il: ${order.sentAt.toLocaleDateString('it-IT')}`);
+      doc.text(`Autore: ${order.createdBy.email}`);
+      doc.moveDown();
+
+      doc.fontSize(10);
+      for (const line of onlyOrdered) {
+        const amount =
+          line.product.costPerUnit != null
+            ? `€ ${line.product.costPerUnit.toFixed(2)} = € ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
+            : '—';
+        doc.text(
+          `${line.product.name.padEnd(28)} ${String(line.orderedQty).padStart(6)} ${line.product.unit.padEnd(6)} ${amount}`,
+        );
+      }
+
+      if (grandTotal > 0) {
+        doc.moveDown().fontSize(12).text(`Totale: € ${grandTotal.toFixed(2)}`, { align: 'right' });
+      }
+    });
   }
 }
