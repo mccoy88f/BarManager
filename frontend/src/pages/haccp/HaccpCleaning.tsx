@@ -9,13 +9,13 @@ export function HaccpCleaning() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      {isAdmin ? (
+      {/* Anche l'admin deve poter segnare una pulizia come fatta, non solo gestire l'elenco. */}
+      <CleaningToday />
+      {isAdmin && (
         <>
           <CleaningTasksAdmin />
           <CleaningLogHistory />
         </>
-      ) : (
-        <CleaningToday />
       )}
     </Box>
   );
