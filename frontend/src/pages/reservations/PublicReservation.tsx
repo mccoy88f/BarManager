@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { api } from '../../api/client';
+import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 
 interface OpeningHoursDay {
   /** 0 = domenica .. 6 = sabato, come Date#getDay(). */
@@ -231,14 +232,11 @@ export function PublicReservation() {
               value={form.date}
               onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
             />
-            <TextField
+            <QuarterHourTimeField
               label="Orario"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 900 }}
               fullWidth
               value={form.time}
-              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+              onChange={(time) => setForm((f) => ({ ...f, time }))}
             />
           </Stack>
           {selectedDaySchedule && (

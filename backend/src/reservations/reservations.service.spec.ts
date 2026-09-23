@@ -38,6 +38,16 @@ function nextDinnerSlot(daysAhead = 2): Date {
   return d;
 }
 
+/** Fixture di un candidato sovrapposto per findOverlapping/getBusyTableIds (select: {tableId: true}). */
+function overlapCandidate(tableIds: string[]) {
+  return tableIds.map((tableId) => ({ tableId }));
+}
+
+/** Fixture di una prenotazione con relazione tables completa (include: {table: true}), come da requireReservation/getForManage. */
+function withTables(tableIds: string[]) {
+  return tableIds.map((id) => ({ table: { id, label: id, seats: 4, active: true, venueId: 'venue-1' } }));
+}
+
 describe('ReservationsService', () => {
   let prisma: {
     venue: { findUnique: jest.Mock };
@@ -99,7 +109,7 @@ describe('ReservationsService', () => {
         { id: 't2', seats: 6, active: true },
       ]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'r1', reservedAt, partySize: 3, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        { id: 'r1', reservedAt, partySize: 3, tables: overlapCandidate(['t1']), status: ReservationStatus.CONFIRMED },
       ]);
 
       const result = await service.getAvailability('venue-1', reservedAt.toISOString());
@@ -111,7 +121,13 @@ describe('ReservationsService', () => {
       const farAway = new Date(reservedAt.getTime() + 5 * 60 * 60 * 1000); // 5h dopo, slot da 120min
       prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'r1', reservedAt: farAway, partySize: 4, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        {
+          id: 'r1',
+          reservedAt: farAway,
+          partySize: 4,
+          tables: overlapCandidate(['t1']),
+          status: ReservationStatus.CONFIRMED,
+        },
       ]);
 
       const result = await service.getAvailability('venue-1', reservedAt.toISOString());
@@ -153,7 +169,7 @@ describe('ReservationsService', () => {
         { id: 't-big', seats: 8, active: true },
       ]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-small']) }),
       );
 
       const result = await service.createPublicReservation('venue-1', {
@@ -164,7 +180,10 @@ describe('ReservationsService', () => {
       expect(result.status).toBe(ReservationStatus.CONFIRMED);
       expect(prisma.reservation.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: ReservationStatus.CONFIRMED, tableId: 't-small' }),
+          data: expect.objectContaining({
+            status: ReservationStatus.CONFIRMED,
+            tables: { create: [{ tableId: 't-small' }] },
+          }),
         }),
       );
       expect(mail.sendConfirmed).toHaveBeenCalled();
@@ -182,7 +201,7 @@ describe('ReservationsService', () => {
         { id: 't-8', seats: 8, active: true },
       ]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-4']) }),
       );
 
       await service.createPublicReservation('venue-1', { ...dto, partySize: 4, reservedAt: reservedAt.toISOString() });
@@ -191,7 +210,7 @@ describe('ReservationsService', () => {
         expect.objectContaining({ orderBy: { seats: 'asc' } }),
       );
       expect(prisma.reservation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ tableId: 't-4' }) }),
+        expect.objectContaining({ data: expect.objectContaining({ tables: { create: [{ tableId: 't-4' }] } }) }),
       );
     });
 
@@ -199,7 +218,7 @@ describe('ReservationsService', () => {
       const reservedAt = nextDinnerSlot();
       prisma.table.findMany.mockResolvedValue([{ id: 't-big', seats: 10, active: true }]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-big']) }),
       );
       prisma.user.findMany.mockResolvedValue([{ id: 'admin-1' }]);
 
@@ -212,7 +231,10 @@ describe('ReservationsService', () => {
       expect(result.status).toBe(ReservationStatus.PENDING);
       expect(prisma.reservation.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: ReservationStatus.PENDING, tableId: 't-big' }),
+          data: expect.objectContaining({
+            status: ReservationStatus.PENDING,
+            tables: { create: [{ tableId: 't-big' }] },
+          }),
         }),
       );
       expect(mail.sendReceived).toHaveBeenCalled();
@@ -223,7 +245,7 @@ describe('ReservationsService', () => {
       );
     });
 
-    it('resta PENDING senza tavolo assegnato se nessun singolo tavolo libero basta (v1: niente accorpamenti)', async () => {
+    it('resta PENDING senza tavolo assegnato se nessun singolo tavolo libero basta (v1: niente accorpamenti automatici)', async () => {
       const reservedAt = nextDinnerSlot();
       // Capienza totale sufficiente (2+2=4) ma nessun tavolo singolo da 4.
       prisma.table.findMany.mockResolvedValue([
@@ -231,7 +253,7 @@ describe('ReservationsService', () => {
         { id: 't-b', seats: 2, active: true },
       ]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: [] }),
       );
 
       const result = await service.createPublicReservation('venue-1', {
@@ -242,7 +264,7 @@ describe('ReservationsService', () => {
 
       expect(result.status).toBe(ReservationStatus.PENDING);
       expect(prisma.reservation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ tableId: null }) }),
+        expect.objectContaining({ data: expect.objectContaining({ tables: undefined }) }),
       );
     });
 
@@ -250,7 +272,13 @@ describe('ReservationsService', () => {
       const reservedAt = nextDinnerSlot();
       prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        {
+          id: 'existing',
+          reservedAt,
+          partySize: 2,
+          tables: overlapCandidate(['t1']),
+          status: ReservationStatus.CONFIRMED,
+        },
       ]);
       prisma.user.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]);
 
@@ -284,7 +312,7 @@ describe('ReservationsService', () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, email: 'info@bartest.it' });
       prisma.table.findMany.mockResolvedValue([{ id: 't-big', seats: 10, active: true }]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-big']) }),
       );
 
       await service.createPublicReservation('venue-1', {
@@ -306,7 +334,7 @@ describe('ReservationsService', () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, email: 'info@bartest.it' });
       prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-small']) }),
       );
 
       await service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() });
@@ -323,7 +351,7 @@ describe('ReservationsService', () => {
     it('non tenta di avvisare il locale se non ha impostato un\'email', async () => {
       prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-small']) }),
       );
 
       await service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() });
@@ -337,7 +365,7 @@ describe('ReservationsService', () => {
       id: 'res-1',
       venueId: 'venue-1',
       status: ReservationStatus.PENDING,
-      tableId: 'suggested-table',
+      tables: withTables(['suggested-table']),
       firstName: 'Mario',
       email: 'mario@test.it',
       partySize: 4,
@@ -347,16 +375,45 @@ describe('ReservationsService', () => {
     it('accetta confermando il tavolo suggerito se non viene indicato altro', async () => {
       prisma.reservation.findUnique.mockResolvedValue(pending);
       prisma.table.findUnique.mockResolvedValue({ id: 'suggested-table', venueId: 'venue-1' });
-      prisma.reservation.update.mockResolvedValue({ ...pending, status: ReservationStatus.CONFIRMED });
+      prisma.reservation.update.mockResolvedValue({
+        ...pending,
+        status: ReservationStatus.CONFIRMED,
+        tables: withTables(['suggested-table']),
+      });
 
       await service.accept(admin, 'venue-1', 'res-1', undefined);
 
       expect(prisma.reservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: ReservationStatus.CONFIRMED, tableId: 'suggested-table' }),
+          data: expect.objectContaining({
+            status: ReservationStatus.CONFIRMED,
+            tables: { deleteMany: {}, create: [{ tableId: 'suggested-table' }] },
+          }),
         }),
       );
       expect(mail.sendConfirmed).toHaveBeenCalled();
+    });
+
+    it('accetta assegnando più tavoli insieme (gruppo grande accostato manualmente)', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({ ...pending, tables: [] });
+      prisma.table.findUnique.mockImplementation(({ where: { id } }) =>
+        Promise.resolve({ id, venueId: 'venue-1' }),
+      );
+      prisma.reservation.update.mockResolvedValue({
+        ...pending,
+        status: ReservationStatus.CONFIRMED,
+        tables: withTables(['t1', 't2']),
+      });
+
+      await service.accept(admin, 'venue-1', 'res-1', ['t1', 't2']);
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tables: { deleteMany: {}, create: [{ tableId: 't1' }, { tableId: 't2' }] },
+          }),
+        }),
+      );
     });
 
     it('rifiuta con motivo e invia l\'email al cliente', async () => {
@@ -365,6 +422,7 @@ describe('ReservationsService', () => {
         ...pending,
         status: ReservationStatus.REJECTED,
         rejectionReason: 'Tutto esaurito',
+        tables: [],
       });
 
       await service.reject(admin, 'venue-1', 'res-1', { reason: 'Tutto esaurito' });
@@ -401,15 +459,36 @@ describe('ReservationsService', () => {
         {
           id: 'other',
           reservedAt: pending.reservedAt,
-          tableId: 'suggested-table',
+          tables: overlapCandidate(['suggested-table']),
           slotDurationMinutes: null,
           status: ReservationStatus.CONFIRMED,
         },
       ]);
 
       await expect(
-        service.accept(admin, 'venue-1', 'res-1', 'suggested-table'),
+        service.accept(admin, 'venue-1', 'res-1', ['suggested-table']),
       ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.reservation.update).not.toHaveBeenCalled();
+    });
+
+    it('rifiuta se anche solo uno dei tavoli scelti in un gruppo multiplo è già occupato', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({ ...pending, tables: [] });
+      prisma.table.findUnique.mockImplementation(({ where: { id } }) =>
+        Promise.resolve({ id, venueId: 'venue-1' }),
+      );
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'other',
+          reservedAt: pending.reservedAt,
+          tables: overlapCandidate(['t2']),
+          slotDurationMinutes: null,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      await expect(service.accept(admin, 'venue-1', 'res-1', ['t1', 't2'])).rejects.toBeInstanceOf(
+        ConflictException,
+      );
       expect(prisma.reservation.update).not.toHaveBeenCalled();
     });
   });
@@ -424,6 +503,7 @@ describe('ReservationsService', () => {
         email: 'mario@test.it',
         partySize: 4,
         reservedAt: nextDinnerSlot(),
+        tables: [],
       };
       prisma.reservation.findUnique.mockResolvedValue(confirmed);
       prisma.reservation.update.mockResolvedValue({ ...confirmed, status: ReservationStatus.CANCELLED });
@@ -447,18 +527,19 @@ describe('ReservationsService', () => {
         id: 'res-1',
         venueId: 'venue-1',
         status: ReservationStatus.REJECTED,
+        tables: [],
       });
       await expect(service.cancel(admin, 'venue-1', 'res-1')).rejects.toBeInstanceOf(BadRequestException);
       expect(mail.sendCancelled).not.toHaveBeenCalled();
     });
   });
 
-  describe('reassignTable', () => {
+  describe('reassignTables', () => {
     const confirmed = {
       id: 'res-1',
       venueId: 'venue-1',
       status: ReservationStatus.CONFIRMED,
-      tableId: null,
+      tables: [],
       slotDurationMinutes: null,
       reservedAt: nextDinnerSlot(),
     };
@@ -466,12 +547,39 @@ describe('ReservationsService', () => {
     it('assegna il tavolo se è libero', async () => {
       prisma.reservation.findUnique.mockResolvedValue(confirmed);
       prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
-      prisma.reservation.update.mockResolvedValue({ ...confirmed, tableId: 'table-1' });
+      prisma.reservation.update.mockResolvedValue({ ...confirmed, tables: withTables(['table-1']) });
 
-      await service.reassignTable('venue-1', 'res-1', 'table-1');
+      await service.reassignTables('venue-1', 'res-1', ['table-1']);
 
       expect(prisma.reservation.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { tableId: 'table-1' } }),
+        expect.objectContaining({ data: { tables: { deleteMany: {}, create: [{ tableId: 'table-1' }] } } }),
+      );
+    });
+
+    it('assegna più tavoli insieme, accostati per un gruppo grande', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(confirmed);
+      prisma.table.findUnique.mockImplementation(({ where: { id } }) =>
+        Promise.resolve({ id, venueId: 'venue-1' }),
+      );
+      prisma.reservation.update.mockResolvedValue({ ...confirmed, tables: withTables(['table-1', 'table-2']) });
+
+      await service.reassignTables('venue-1', 'res-1', ['table-1', 'table-2']);
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { tables: { deleteMany: {}, create: [{ tableId: 'table-1' }, { tableId: 'table-2' }] } },
+        }),
+      );
+    });
+
+    it('un elenco vuoto rimuove ogni assegnazione', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({ ...confirmed, tables: withTables(['table-1']) });
+      prisma.reservation.update.mockResolvedValue({ ...confirmed, tables: [] });
+
+      await service.reassignTables('venue-1', 'res-1', []);
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { tables: { deleteMany: {}, create: [] } } }),
       );
     });
 
@@ -482,13 +590,13 @@ describe('ReservationsService', () => {
         {
           id: 'other',
           reservedAt: confirmed.reservedAt,
-          tableId: 'table-1',
+          tables: overlapCandidate(['table-1']),
           slotDurationMinutes: null,
           status: ReservationStatus.CONFIRMED,
         },
       ]);
 
-      await expect(service.reassignTable('venue-1', 'res-1', 'table-1')).rejects.toBeInstanceOf(
+      await expect(service.reassignTables('venue-1', 'res-1', ['table-1'])).rejects.toBeInstanceOf(
         ConflictException,
       );
       expect(prisma.reservation.update).not.toHaveBeenCalled();
@@ -500,7 +608,7 @@ describe('ReservationsService', () => {
       id: 'res-1',
       venueId: 'venue-1',
       status: ReservationStatus.PENDING,
-      tableId: 'suggested-table',
+      tables: withTables(['suggested-table']),
       firstName: 'Mario',
       email: 'mario@test.it',
       partySize: 4,
@@ -514,7 +622,8 @@ describe('ReservationsService', () => {
 
       const result = await service.getForManage('res-1', 'secret-token');
 
-      expect(result.reservation).toEqual(pending);
+      expect(result.reservation.id).toBe('res-1');
+      expect(result.reservation.tableIds).toEqual(['suggested-table']);
       expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true }]);
     });
 
@@ -529,7 +638,11 @@ describe('ReservationsService', () => {
       prisma.reservation.findUnique.mockResolvedValue(pending);
       prisma.table.findMany.mockResolvedValue([]);
       prisma.table.findUnique.mockResolvedValue({ id: 'suggested-table', venueId: 'venue-1' });
-      prisma.reservation.update.mockResolvedValue({ ...pending, status: ReservationStatus.CONFIRMED });
+      prisma.reservation.update.mockResolvedValue({
+        ...pending,
+        status: ReservationStatus.CONFIRMED,
+        tables: withTables(['suggested-table']),
+      });
 
       await service.acceptByToken('res-1', 'secret-token', undefined);
 
@@ -545,7 +658,11 @@ describe('ReservationsService', () => {
     it('rifiuta tramite token senza registrare un utente responsabile', async () => {
       prisma.reservation.findUnique.mockResolvedValue(pending);
       prisma.table.findMany.mockResolvedValue([]);
-      prisma.reservation.update.mockResolvedValue({ ...pending, status: ReservationStatus.REJECTED });
+      prisma.reservation.update.mockResolvedValue({
+        ...pending,
+        status: ReservationStatus.REJECTED,
+        tables: [],
+      });
 
       await service.rejectByToken('res-1', 'secret-token', 'Tutto esaurito');
 
@@ -586,10 +703,16 @@ describe('ReservationsService', () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingExtraSeats: 4 });
       prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        {
+          id: 'existing',
+          reservedAt,
+          partySize: 2,
+          tables: overlapCandidate(['t1']),
+          status: ReservationStatus.CONFIRMED,
+        },
       ]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: [] }),
       );
 
       const result = await service.createPublicReservation('venue-1', {
@@ -607,7 +730,13 @@ describe('ReservationsService', () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingExtraSeats: 1 });
       prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        {
+          id: 'existing',
+          reservedAt,
+          partySize: 2,
+          tables: overlapCandidate(['t1']),
+          status: ReservationStatus.CONFIRMED,
+        },
       ]);
 
       await expect(
@@ -624,10 +753,16 @@ describe('ReservationsService', () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingUnlimited: true });
       prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 2, active: true }]);
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+        {
+          id: 'existing',
+          reservedAt,
+          partySize: 2,
+          tables: overlapCandidate(['t1']),
+          status: ReservationStatus.CONFIRMED,
+        },
       ]);
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: [] }),
       );
 
       const result = await service.createPublicReservation('venue-1', {
@@ -655,7 +790,7 @@ describe('ReservationsService', () => {
       // Nessuna chiamata a table.findMany/reservation.findMany per il
       // calcolo disponibilità: la creazione manuale non lo esegue affatto.
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: [] }),
       );
 
       const result = await service.createManualReservation(admin, 'venue-1', manualDto);
@@ -664,7 +799,7 @@ describe('ReservationsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             status: ReservationStatus.CONFIRMED,
-            tableId: null,
+            tables: { create: [] },
             email: 'giulia.bianchi@test.it', // normalizzata in minuscolo
             respondedById: 'admin-1',
           }),
@@ -678,20 +813,39 @@ describe('ReservationsService', () => {
     it('assegna il tavolo indicato se fornito, verificandone la proprietà', async () => {
       prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
       prisma.reservation.create.mockImplementation(({ data }) =>
-        Promise.resolve({ id: 'res-1', ...data }),
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['table-1']) }),
       );
 
-      await service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' });
+      await service.createManualReservation(admin, 'venue-1', { ...manualDto, tableIds: ['table-1'] });
 
       expect(prisma.reservation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ tableId: 'table-1' }) }),
+        expect.objectContaining({ data: expect.objectContaining({ tables: { create: [{ tableId: 'table-1' }] } }) }),
+      );
+    });
+
+    it('assegna più tavoli insieme se il gruppo è troppo grande per uno solo', async () => {
+      prisma.table.findUnique.mockImplementation(({ where: { id } }) =>
+        Promise.resolve({ id, venueId: 'venue-1' }),
+      );
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['table-1', 'table-2']) }),
+      );
+
+      await service.createManualReservation(admin, 'venue-1', { ...manualDto, tableIds: ['table-1', 'table-2'] });
+
+      expect(prisma.reservation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tables: { create: [{ tableId: 'table-1' }, { tableId: 'table-2' }] },
+          }),
+        }),
       );
     });
 
     it('rifiuta se il tavolo indicato non appartiene al locale', async () => {
       prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-2' });
       await expect(
-        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' }),
+        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableIds: ['table-1'] }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.reservation.create).not.toHaveBeenCalled();
     });
@@ -702,14 +856,14 @@ describe('ReservationsService', () => {
         {
           id: 'other',
           reservedAt: new Date(manualDto.reservedAt),
-          tableId: 'table-1',
+          tables: overlapCandidate(['table-1']),
           slotDurationMinutes: null,
           status: ReservationStatus.CONFIRMED,
         },
       ]);
 
       await expect(
-        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' }),
+        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableIds: ['table-1'] }),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.reservation.create).not.toHaveBeenCalled();
     });
@@ -724,6 +878,7 @@ describe('ReservationsService', () => {
         email: 'mario@test.it',
         phone: '333111',
         reservedAt: new Date('2026-01-01T20:00:00Z'),
+        tables: [],
       },
       {
         id: 'r2',
@@ -732,6 +887,7 @@ describe('ReservationsService', () => {
         email: 'mario@test.it',
         phone: '333111',
         reservedAt: new Date('2026-02-01T20:00:00Z'),
+        tables: [],
       },
     ];
 
@@ -753,18 +909,19 @@ describe('ReservationsService', () => {
 
     it('restituisce lo storico di un cliente normalizzando l\'email', async () => {
       prisma.reservation.findMany.mockResolvedValue(reservationsByCustomer);
-      await service.getCustomerHistory('venue-1', 'Mario@Test.IT');
+      const result = await service.getCustomerHistory('venue-1', 'Mario@Test.IT');
       expect(prisma.reservation.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { venueId: 'venue-1', email: 'mario@test.it' } }),
       );
+      expect(result[0].tableIds).toEqual([]);
     });
   });
 
   describe('listReservations', () => {
     it('marca isReturningCustomer quando la stessa email ha più di una prenotazione', async () => {
       prisma.reservation.findMany.mockResolvedValue([
-        { id: 'r1', email: 'mario@test.it', reservedAt: nextDinnerSlot() },
-        { id: 'r2', email: 'unica@test.it', reservedAt: nextDinnerSlot() },
+        { id: 'r1', email: 'mario@test.it', reservedAt: nextDinnerSlot(), tables: [] },
+        { id: 'r2', email: 'unica@test.it', reservedAt: nextDinnerSlot(), tables: [] },
       ]);
       prisma.reservation.groupBy.mockResolvedValue([
         { email: 'mario@test.it', _count: { _all: 2 } },
@@ -777,7 +934,7 @@ describe('ReservationsService', () => {
       expect(result.find((r) => r.id === 'r2')?.isReturningCustomer).toBe(false);
     });
 
-    it('con withoutTable=true ignora lo stato e filtra tableId: null', async () => {
+    it('con withoutTable=true ignora lo stato e filtra le prenotazioni senza nessun tavolo assegnato', async () => {
       prisma.reservation.findMany.mockResolvedValue([]);
       await service.listReservations('venue-1', ReservationStatus.REJECTED, true);
 
@@ -786,7 +943,7 @@ describe('ReservationsService', () => {
           where: {
             venueId: 'venue-1',
             status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
-            tableId: null,
+            tables: { none: {} },
           },
         }),
       );
@@ -798,7 +955,7 @@ describe('ReservationsService', () => {
         id: 'r2',
         email: 'altro@test.it',
         reservedAt,
-        tableId: 't1',
+        tables: overlapCandidate(['t1']),
         slotDurationMinutes: null,
         status: ReservationStatus.CONFIRMED,
       };
@@ -806,12 +963,12 @@ describe('ReservationsService', () => {
         id: 'r1',
         email: 'mario@test.it',
         reservedAt,
-        tableId: null,
+        tables: [],
         slotDurationMinutes: null,
         status: ReservationStatus.PENDING,
       };
       // Il primo findMany è la lista filtrata, il secondo (activeWithTable)
-      // tutte le prenotazioni attive con un tavolo assegnato.
+      // tutte le prenotazioni attive con almeno un tavolo assegnato.
       prisma.reservation.findMany
         .mockResolvedValueOnce([target])
         .mockResolvedValueOnce([overlapping]);
@@ -819,6 +976,33 @@ describe('ReservationsService', () => {
       const result = await service.listReservations('venue-1');
 
       expect(result.find((r) => r.id === 'r1')?.busyTableIds).toEqual(['t1']);
+    });
+
+    it('segnala in busyTableIds TUTTI i tavoli di una prenotazione sovrapposta che ne occupa più di uno', async () => {
+      const reservedAt = nextDinnerSlot();
+      const overlapping = {
+        id: 'r2',
+        email: 'altro@test.it',
+        reservedAt,
+        tables: overlapCandidate(['t1', 't2']),
+        slotDurationMinutes: null,
+        status: ReservationStatus.CONFIRMED,
+      };
+      const target = {
+        id: 'r1',
+        email: 'mario@test.it',
+        reservedAt,
+        tables: [],
+        slotDurationMinutes: null,
+        status: ReservationStatus.PENDING,
+      };
+      prisma.reservation.findMany
+        .mockResolvedValueOnce([target])
+        .mockResolvedValueOnce([overlapping]);
+
+      const result = await service.listReservations('venue-1');
+
+      expect(result.find((r) => r.id === 'r1')?.busyTableIds).toEqual(['t1', 't2']);
     });
   });
 
@@ -838,7 +1022,7 @@ describe('ReservationsService', () => {
           id: 'existing',
           reservedAt: start,
           partySize: 4,
-          tableId: 't1',
+          tables: overlapCandidate(['t1']),
           slotDurationMinutes: 180,
           status: ReservationStatus.CONFIRMED,
         },
@@ -861,7 +1045,7 @@ describe('ReservationsService', () => {
         {
           id: 'existing',
           reservedAt: start,
-          tableId: 't1',
+          tables: overlapCandidate(['t1']),
           slotDurationMinutes: 180,
           status: ReservationStatus.CONFIRMED,
         },
@@ -883,7 +1067,7 @@ describe('ReservationsService', () => {
         {
           id: 'existing',
           reservedAt: start,
-          tableId: 't1',
+          tables: overlapCandidate(['t1']),
           slotDurationMinutes: 180,
           status: ReservationStatus.CONFIRMED,
         },
@@ -904,6 +1088,7 @@ describe('ReservationsService', () => {
       lastName: 'Rossi',
       email: 'mario@test.it',
       partySize: 4,
+      tables: [],
     };
 
     it('aggiorna solo i campi passati e traccia in audit', async () => {

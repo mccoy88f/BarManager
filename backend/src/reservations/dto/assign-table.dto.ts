@@ -1,8 +1,9 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 
-/** tableId assente/null = rimuove l'assegnazione. */
+/** tableIds assente/vuoto = rimuove ogni assegnazione. Più id = tavoli accostati per un gruppo grande. */
 export class AssignTableDto {
   @IsOptional()
-  @IsString()
-  tableId?: string | null;
+  @IsArray()
+  @IsString({ each: true })
+  tableIds?: string[];
 }

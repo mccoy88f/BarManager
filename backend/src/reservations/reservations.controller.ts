@@ -82,7 +82,7 @@ export class ReservationsController {
     @Param('id') id: string,
     @Body() dto: AcceptReservationDto,
   ) {
-    return this.reservationsService.accept(user, requireVenueId(user), id, dto.tableId);
+    return this.reservationsService.accept(user, requireVenueId(user), id, dto.tableIds);
   }
 
   @Patch(':id/reject')
@@ -105,7 +105,7 @@ export class ReservationsController {
     @Param('id') id: string,
     @Body() dto: AssignTableDto,
   ) {
-    return this.reservationsService.reassignTable(requireVenueId(user), id, dto.tableId);
+    return this.reservationsService.reassignTables(requireVenueId(user), id, dto.tableIds ?? []);
   }
 
   /** Propone un nuovo orario al cliente (all'accettazione o dopo): non cambia subito la prenotazione, chiede conferma via email. */

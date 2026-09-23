@@ -1,8 +1,9 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 
-/** tableId opzionale: sovrascrive il tavolo eventualmente suggerito in automatico. */
+/** tableIds opzionale: sovrascrive il/i tavolo/i eventualmente suggeriti in automatico. */
 export class AcceptReservationDto {
   @IsOptional()
-  @IsString()
-  tableId?: string | null;
+  @IsArray()
+  @IsString({ each: true })
+  tableIds?: string[];
 }

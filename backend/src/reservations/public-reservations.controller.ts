@@ -80,7 +80,7 @@ export class PublicReservationsController {
 
   @Patch(':id/manage/accept')
   manageAccept(@Param('id') id: string, @Body() dto: ManageAcceptDto) {
-    return this.reservationsService.acceptByToken(id, dto.token, dto.tableId);
+    return this.reservationsService.acceptByToken(id, dto.token, dto.tableIds);
   }
 
   @Patch(':id/manage/reject')

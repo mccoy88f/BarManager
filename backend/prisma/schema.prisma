@@ -841,12 +841,29 @@ model Table {
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
-  reservations Reservation[]
+  reservations ReservationTable[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([venueId])
+}
+
+/// Assegnazione di un tavolo a una prenotazione: relazione molti-a-molti
+/// esplicita (non più un semplice tableId singolo) perché un gruppo grande
+/// può occupare più tavoli contemporaneamente, accostati manualmente
+/// dall'admin (§10 di DEVELOPMENT.md — prima non modellato, un solo tavolo
+/// per prenotazione). onDelete Cascade su entrambi i lati: se la
+/// prenotazione o il tavolo vengono eliminati, l'assegnazione decade con
+/// loro senza lasciare righe orfane.
+model ReservationTable {
+  reservationId String
+  tableId       String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  table         Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@id([reservationId, tableId])
+  @@index([tableId])
 }
 
 enum ReservationStatus {
@@ -890,8 +907,7 @@ model Reservation {
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
-  tableId String?
-  table   Table?  @relation(fields: [tableId], references: [id])
+  tables ReservationTable[]
 
   respondedById String?
   respondedBy   User?     @relation("ReservationRespondedBy", fields: [respondedById], references: [id])
@@ -901,5 +917,4 @@ model Reservation {
   updatedAt DateTime @updatedAt
 
   @@index([venueId, reservedAt])
-  @@index([tableId])
 }

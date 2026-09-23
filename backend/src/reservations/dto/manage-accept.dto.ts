@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsOptional, IsString, MinLength } from 'class-validator';
 
 /** Accetta senza login, dal link nell'email al locale. */
 export class ManageAcceptDto {
@@ -7,6 +7,7 @@ export class ManageAcceptDto {
   token: string;
 
   @IsOptional()
-  @IsString()
-  tableId?: string | null;
+  @IsArray()
+  @IsString({ each: true })
+  tableIds?: string[];
 }

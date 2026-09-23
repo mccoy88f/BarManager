@@ -40,6 +40,25 @@ const VENUE_SELECT = {
   openingHours: true,
 } as const;
 
+/** Include standard per portare i tavoli assegnati (relazione molti-a-molti) dentro ogni prenotazione. */
+const TABLES_INCLUDE = { tables: { include: { table: true } } } as const;
+
+type ReservationWithTables = Reservation & { tables: { table: Table }[] };
+
+/**
+ * Appiattisce la relazione molti-a-molti `tables` (righe `ReservationTable`
+ * con dentro il `Table` completo) in un semplice `tables: Table[]` +
+ * `tableIds: string[]`, comodo sia per il frontend che per la logica di
+ * disponibilità qui sotto. Una prenotazione può avere più di un tavolo
+ * (gruppo grande accostato manualmente dall'admin, §10 di DEVELOPMENT.md).
+ */
+function flattenTables<T extends { tables: { table: Table }[] }>(
+  reservation: T,
+): Omit<T, 'tables'> & { tables: Table[]; tableIds: string[] } {
+  const tables = reservation.tables.map((rt) => rt.table);
+  return { ...reservation, tables, tableIds: tables.map((t) => t.id) };
+}
+
 /**
  * Disponibilità/assegnazione tavoli (§5.7 di DEVELOPMENT.md).
  *
@@ -117,10 +136,11 @@ export class ReservationsService {
 
   /**
    * Prenotazioni attive (contano per capienza/tavoli occupati) sovrapposte
-   * alla finestra data. Ogni candidata usa la PROPRIA durata (impostata
-   * per quella singola prenotazione dall'admin, altrimenti il default del
-   * locale) — non quella della finestra che si sta controllando: due
-   * prenotazioni con durate diverse possono sovrapporsi solo in parte.
+   * alla finestra data, coi tavoli assegnati a ciascuna. Ogni candidata usa
+   * la PROPRIA durata (impostata per quella singola prenotazione dall'admin,
+   * altrimenti il default del locale) — non quella della finestra che si
+   * sta controllando: due prenotazioni con durate diverse possono
+   * sovrapporsi solo in parte.
    */
   private async findOverlapping(
     venueId: string,
@@ -128,7 +148,7 @@ export class ReservationsService {
     targetDurationMinutes: number,
     defaultDurationMinutes: number,
     excludeReservationId?: string,
-  ): Promise<Reservation[]> {
+  ): Promise<(Reservation & { tables: { tableId: string }[] })[]> {
     const windowStart = reservedAt;
     const windowEnd = new Date(reservedAt.getTime() + targetDurationMinutes * 60000);
     const candidates = await this.prisma.reservation.findMany({
@@ -137,6 +157,7 @@ export class ReservationsService {
         status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
         id: excludeReservationId ? { not: excludeReservationId } : undefined,
       },
+      include: { tables: { select: { tableId: true } } },
     });
     return candidates.filter((r) =>
       this.windowsOverlap(r.reservedAt, this.effectiveDuration(r, defaultDurationMinutes), windowStart, windowEnd),
@@ -160,7 +181,7 @@ export class ReservationsService {
     return { totalSeats, occupiedSeats, availableSeats: Math.max(0, totalSeats - occupiedSeats) };
   }
 
-  /** Id dei tavoli attivi occupati (da altre prenotazioni) nella finestra data — per segnalarli come "occupato" in UI. */
+  /** Id dei tavoli attivi occupati (da altre prenotazioni, su TUTTI i tavoli che occupano) nella finestra data. */
   private async getBusyTableIds(
     venueId: string,
     reservedAt: Date,
@@ -175,26 +196,27 @@ export class ReservationsService {
       defaultDurationMinutes,
       excludeReservationId,
     );
-    return new Set(overlapping.map((r) => r.tableId).filter((id): id is string => !!id));
+    return new Set(overlapping.flatMap((r) => r.tables.map((t) => t.tableId)));
   }
 
   /**
    * Blocco vero (non solo segnalazione): impedisce di assegnare a una
-   * prenotazione un tavolo già occupato da un'altra prenotazione attiva
-   * nella stessa finestra oraria. Usato ovunque un admin scelga un tavolo
-   * per una prenotazione (accetta, riassegna, aggiunta manuale) — a
+   * prenotazione uno o più tavoli già occupati da un'altra prenotazione
+   * attiva nella stessa finestra oraria. Usato ovunque un admin scelga i
+   * tavoli per una prenotazione (accetta, riassegna, aggiunta manuale) — a
    * differenza del blocco per capienza totale del widget pubblico, questo
    * si applica sempre, anche in backoffice: due prenotazioni non possono
    * mai condividere lo stesso tavolo nello stesso momento.
    */
-  private async ensureTableAvailable(
+  private async ensureTablesAvailable(
     venueId: string,
-    tableId: string,
+    tableIds: string[],
     reservedAt: Date,
     durationMinutes: number,
     defaultDurationMinutes: number,
     excludeReservationId?: string,
   ) {
+    if (tableIds.length === 0) return;
     const busyTableIds = await this.getBusyTableIds(
       venueId,
       reservedAt,
@@ -202,16 +224,20 @@ export class ReservationsService {
       defaultDurationMinutes,
       excludeReservationId,
     );
-    if (busyTableIds.has(tableId)) {
-      throw new ConflictException('Tavolo già occupato in questo orario da un\'altra prenotazione');
+    if (tableIds.some((id) => busyTableIds.has(id))) {
+      throw new ConflictException(
+        "Uno o più tavoli scelti sono già occupati in questo orario da un'altra prenotazione",
+      );
     }
   }
 
   /**
    * Tavolo libero più piccolo che contiene partySize persone (best-fit):
    * massimizza l'occupazione non "sprecando" un tavolo grande su un
-   * gruppo piccolo. Se nessun tavolo singolo basta, v1 non combina tavoli
-   * (gestione manuale dell'admin, §10 di DEVELOPMENT.md).
+   * gruppo piccolo. Se nessun tavolo singolo basta, l'assegnazione
+   * automatica (solo per il widget pubblico) non combina tavoli: resta
+   * manuale per l'admin, che può farlo scegliendone più di uno (§10 di
+   * DEVELOPMENT.md).
    */
   private async findBestFitTable(
     venueId: string,
@@ -300,25 +326,27 @@ export class ReservationsService {
     const autoConfirm = dto.partySize <= venue.reservationAutoConfirmMaxSeats && !!bestFit;
     const status = autoConfirm ? ReservationStatus.CONFIRMED : ReservationStatus.PENDING;
 
-    const reservation = await this.prisma.reservation.create({
-      data: {
-        venueId,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        email: dto.email.trim().toLowerCase(),
-        phone: dto.phone,
-        partySize: dto.partySize,
-        reservedAt,
-        isEvent: dto.isEvent ?? false,
-        eventNote: dto.eventNote,
-        allergiesNote: dto.allergiesNote,
-        notes: dto.notes,
-        status,
-        tableId: bestFit?.id ?? null,
-        manageToken: randomUUID(),
-      },
-      include: { table: true },
-    });
+    const reservation = flattenTables(
+      await this.prisma.reservation.create({
+        data: {
+          venueId,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          email: dto.email.trim().toLowerCase(),
+          phone: dto.phone,
+          partySize: dto.partySize,
+          reservedAt,
+          isEvent: dto.isEvent ?? false,
+          eventNote: dto.eventNote,
+          allergiesNote: dto.allergiesNote,
+          notes: dto.notes,
+          status,
+          tables: bestFit ? { create: [{ tableId: bestFit.id }] } : undefined,
+          manageToken: randomUUID(),
+        },
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     if (status === ReservationStatus.CONFIRMED) {
       await this.mail.sendConfirmed(reservation, venue.name, venue.email);
@@ -356,8 +384,8 @@ export class ReservationsService {
 
   /**
    * `withoutTable`: ignora `status` e restituisce, indipendentemente dallo
-   * stato, tutte le prenotazioni attive (PENDING/CONFIRMED) senza un
-   * tavolo assegnato — la "coda prenotazioni" da assegnare, che raccoglie
+   * stato, tutte le prenotazioni attive (PENDING/CONFIRMED) senza nemmeno
+   * un tavolo assegnato — la "coda prenotazioni" da assegnare, che raccoglie
    * sia le richieste online rimaste manuali sia quelle aggiunte a mano in
    * backoffice senza scegliere un tavolo.
    *
@@ -370,9 +398,9 @@ export class ReservationsService {
       where: {
         venueId,
         status: withoutTable ? { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] } : status,
-        tableId: withoutTable ? null : undefined,
+        tables: withoutTable ? { none: {} } : undefined,
       },
-      include: { table: true },
+      include: TABLES_INCLUDE,
       orderBy: { reservedAt: 'asc' },
     });
 
@@ -395,8 +423,9 @@ export class ReservationsService {
       where: {
         venueId,
         status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
-        tableId: { not: null },
+        tables: { some: {} },
       },
+      include: { tables: { select: { tableId: true } } },
     });
 
     return reservations.map((r) => {
@@ -414,9 +443,9 @@ export class ReservationsService {
             windowEnd,
           ),
         )
-        .map((other) => other.tableId as string);
+        .flatMap((other) => other.tables.map((t) => t.tableId));
       return {
-        ...r,
+        ...flattenTables(r),
         isReturningCustomer: (countByEmail.get(r.email) ?? 1) > 1,
         busyTableIds,
       };
@@ -501,24 +530,26 @@ export class ReservationsService {
   }
 
   /** Storico completo di un cliente (per email), per il pulsante "storico cliente". */
-  getCustomerHistory(venueId: string, email: string) {
-    return this.prisma.reservation.findMany({
+  async getCustomerHistory(venueId: string, email: string) {
+    const reservations = await this.prisma.reservation.findMany({
       where: { venueId, email: email.trim().toLowerCase() },
-      include: { table: true },
+      include: TABLES_INCLUDE,
       orderBy: { reservedAt: 'desc' },
     });
+    return reservations.map(flattenTables);
   }
 
   /**
    * Prenotazione aggiunta a mano dallo staff (telefono, di persona, ecc.):
    * a differenza di createPublicReservation, non applica il calcolo di
    * disponibilità/capienza totale né il blocco overbooking — lo staff può
-   * sempre registrarla, con o senza tavolo assegnato (se senza, resta
-   * nella coda "senza tavolo" finché non viene assegnato). Il tavolo
-   * scelto, se indicato, deve però essere libero in quella finestra
+   * sempre registrarla, con o senza tavoli assegnati (se senza, resta
+   * nella coda "senza tavolo" finché non vengono assegnati). I tavoli
+   * scelti, se indicati, devono però essere liberi in quella finestra
    * oraria: due prenotazioni non possono mai condividere lo stesso
-   * tavolo, nemmeno dal backoffice. Considerata già accettata dallo
-   * staff: nasce direttamente CONFIRMED, non PENDING.
+   * tavolo, nemmeno dal backoffice. Più tavoli sono ammessi (un gruppo
+   * grande che ne occupa più di uno, §10 di DEVELOPMENT.md). Considerata
+   * già accettata dallo staff: nasce direttamente CONFIRMED, non PENDING.
    */
   async createManualReservation(user: AuthenticatedUser, venueId: string, dto: CreateManualReservationDto) {
     const venue = await this.getVenueSettings(venueId);
@@ -526,39 +557,42 @@ export class ReservationsService {
     if (Number.isNaN(reservedAt.getTime())) {
       throw new BadRequestException('Data/ora non valida');
     }
-    if (dto.tableId) {
-      await this.requireOwnTable(venueId, dto.tableId);
-      await this.ensureTableAvailable(
+    const tableIds = [...new Set(dto.tableIds ?? [])];
+    if (tableIds.length > 0) {
+      await this.requireOwnTables(venueId, tableIds);
+      await this.ensureTablesAvailable(
         venueId,
-        dto.tableId,
+        tableIds,
         reservedAt,
         this.effectiveDuration({ slotDurationMinutes: dto.slotDurationMinutes ?? null }, venue.reservationSlotDurationMinutes),
         venue.reservationSlotDurationMinutes,
       );
     }
 
-    const reservation = await this.prisma.reservation.create({
-      data: {
-        venueId,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        email: dto.email.trim().toLowerCase(),
-        phone: dto.phone,
-        partySize: dto.partySize,
-        reservedAt,
-        isEvent: dto.isEvent ?? false,
-        eventNote: dto.eventNote,
-        allergiesNote: dto.allergiesNote,
-        notes: dto.notes,
-        status: ReservationStatus.CONFIRMED,
-        tableId: dto.tableId ?? null,
-        slotDurationMinutes: dto.slotDurationMinutes ?? null,
-        manageToken: randomUUID(),
-        respondedById: user.userId,
-        respondedAt: new Date(),
-      },
-      include: { table: true },
-    });
+    const reservation = flattenTables(
+      await this.prisma.reservation.create({
+        data: {
+          venueId,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          email: dto.email.trim().toLowerCase(),
+          phone: dto.phone,
+          partySize: dto.partySize,
+          reservedAt,
+          isEvent: dto.isEvent ?? false,
+          eventNote: dto.eventNote,
+          allergiesNote: dto.allergiesNote,
+          notes: dto.notes,
+          status: ReservationStatus.CONFIRMED,
+          tables: { create: tableIds.map((tableId) => ({ tableId })) },
+          slotDurationMinutes: dto.slotDurationMinutes ?? null,
+          manageToken: randomUUID(),
+          respondedById: user.userId,
+          respondedAt: new Date(),
+        },
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     await this.audit.log({
       venueId,
@@ -572,15 +606,18 @@ export class ReservationsService {
     return reservation;
   }
 
-  private async requireReservation(venueId: string, reservationId: string) {
-    const reservation = await this.prisma.reservation.findUnique({ where: { id: reservationId } });
+  private async requireReservation(venueId: string, reservationId: string): Promise<ReservationWithTables> {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: TABLES_INCLUDE,
+    });
     if (!reservation || reservation.venueId !== venueId) {
       throw new NotFoundException('Prenotazione non trovata');
     }
     return reservation;
   }
 
-  private async requireOwnTable(venueId: string, tableId: string) {
+  private async requireOwnTable(venueId: string, tableId: string): Promise<Table> {
     const table = await this.prisma.table.findUnique({ where: { id: tableId } });
     if (!table || table.venueId !== venueId) {
       throw new NotFoundException('Tavolo non trovato');
@@ -588,13 +625,17 @@ export class ReservationsService {
     return table;
   }
 
-  async accept(user: AuthenticatedUser, venueId: string, reservationId: string, tableId?: string | null) {
-    const before = await this.requireReservation(venueId, reservationId);
-    return this.applyAccept(before, tableId, user.userId);
+  private async requireOwnTables(venueId: string, tableIds: string[]): Promise<void> {
+    await Promise.all(tableIds.map((tableId) => this.requireOwnTable(venueId, tableId)));
+  }
+
+  async accept(user: AuthenticatedUser, venueId: string, reservationId: string, tableIds?: string[]) {
+    const before = flattenTables(await this.requireReservation(venueId, reservationId));
+    return this.applyAccept(before, tableIds, user.userId);
   }
 
   async reject(user: AuthenticatedUser, venueId: string, reservationId: string, dto: RejectReservationDto) {
-    const before = await this.requireReservation(venueId, reservationId);
+    const before = flattenTables(await this.requireReservation(venueId, reservationId));
     return this.applyReject(before, dto.reason, user.userId);
   }
 
@@ -602,7 +643,7 @@ export class ReservationsService {
   async getForManage(reservationId: string, token: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: reservationId },
-      include: { table: true },
+      include: TABLES_INCLUDE,
     });
     if (!reservation || reservation.manageToken !== token) {
       throw new NotFoundException('Prenotazione non trovata');
@@ -620,13 +661,16 @@ export class ReservationsService {
       venue.reservationSlotDurationMinutes,
       reservation.id,
     );
-    return { reservation, tables: tables.filter((t) => !busyTableIds.has(t.id)) };
+    return {
+      reservation: flattenTables(reservation),
+      tables: tables.filter((t) => !busyTableIds.has(t.id)),
+    };
   }
 
   /** Accetta/rifiuta senza login, dal link Accetta/Rifiuta nell'email al locale. */
-  async acceptByToken(reservationId: string, token: string, tableId?: string | null) {
+  async acceptByToken(reservationId: string, token: string, tableIds?: string[]) {
     const { reservation } = await this.getForManage(reservationId, token);
-    return this.applyAccept(reservation, tableId, null);
+    return this.applyAccept(reservation, tableIds, null);
   }
 
   async rejectByToken(reservationId: string, token: string, reason: string) {
@@ -636,20 +680,20 @@ export class ReservationsService {
 
   /** `respondedById` è null quando l'azione arriva dal link email (nessun utente autenticato): niente audit log in quel caso, non essendo attribuibile a un account specifico. */
   private async applyAccept(
-    before: Reservation,
-    tableId: string | null | undefined,
+    before: Reservation & { tableIds: string[] },
+    tableIds: string[] | undefined,
     respondedById: string | null,
   ) {
     if (before.status !== ReservationStatus.PENDING) {
       throw new BadRequestException('Prenotazione già gestita');
     }
-    const finalTableId = tableId !== undefined ? tableId : before.tableId;
+    const finalTableIds = [...new Set(tableIds !== undefined ? tableIds : before.tableIds)];
     const venue = await this.getVenueSettings(before.venueId);
-    if (finalTableId) {
-      await this.requireOwnTable(before.venueId, finalTableId);
-      await this.ensureTableAvailable(
+    if (finalTableIds.length > 0) {
+      await this.requireOwnTables(before.venueId, finalTableIds);
+      await this.ensureTablesAvailable(
         before.venueId,
-        finalTableId,
+        finalTableIds,
         before.reservedAt,
         this.effectiveDuration(before, venue.reservationSlotDurationMinutes),
         venue.reservationSlotDurationMinutes,
@@ -657,16 +701,18 @@ export class ReservationsService {
       );
     }
 
-    const after = await this.prisma.reservation.update({
-      where: { id: before.id },
-      data: {
-        status: ReservationStatus.CONFIRMED,
-        tableId: finalTableId,
-        respondedById,
-        respondedAt: new Date(),
-      },
-      include: { table: true },
-    });
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: before.id },
+        data: {
+          status: ReservationStatus.CONFIRMED,
+          tables: { deleteMany: {}, create: finalTableIds.map((tableId) => ({ tableId })) },
+          respondedById,
+          respondedAt: new Date(),
+        },
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     if (respondedById) {
       await this.audit.log({
@@ -683,21 +729,27 @@ export class ReservationsService {
     return after;
   }
 
-  private async applyReject(before: Reservation, reason: string, respondedById: string | null) {
+  private async applyReject(
+    before: Reservation & { tableIds: string[] },
+    reason: string,
+    respondedById: string | null,
+  ) {
     if (before.status !== ReservationStatus.PENDING) {
       throw new BadRequestException('Prenotazione già gestita');
     }
     const venue = await this.getVenueSettings(before.venueId);
-    const after = await this.prisma.reservation.update({
-      where: { id: before.id },
-      data: {
-        status: ReservationStatus.REJECTED,
-        rejectionReason: reason,
-        respondedById,
-        respondedAt: new Date(),
-      },
-      include: { table: true },
-    });
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: before.id },
+        data: {
+          status: ReservationStatus.REJECTED,
+          rejectionReason: reason,
+          respondedById,
+          respondedAt: new Date(),
+        },
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     if (respondedById) {
       await this.audit.log({
@@ -721,11 +773,13 @@ export class ReservationsService {
       throw new BadRequestException('Prenotazione già chiusa');
     }
     const venue = await this.getVenueSettings(venueId);
-    const after = await this.prisma.reservation.update({
-      where: { id: reservationId },
-      data: { status: ReservationStatus.CANCELLED, respondedById: user.userId, respondedAt: new Date() },
-      include: { table: true },
-    });
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { status: ReservationStatus.CANCELLED, respondedById: user.userId, respondedAt: new Date() },
+        include: TABLES_INCLUDE,
+      }),
+    );
     await this.audit.log({
       venueId,
       userId: user.userId,
@@ -740,11 +794,13 @@ export class ReservationsService {
   }
 
   /**
-   * Riassegnazione manuale del tavolo, in qualunque momento (anche su una
+   * Riassegnazione manuale dei tavoli, in qualunque momento (anche su una
    * prenotazione già confermata) — rifiuta un tavolo già occupato da
-   * un'altra prenotazione attiva nella stessa finestra oraria.
+   * un'altra prenotazione attiva nella stessa finestra oraria. Più tavoli
+   * sono ammessi (gruppo grande accostato manualmente, §10 di
+   * DEVELOPMENT.md); un elenco vuoto rimuove ogni assegnazione.
    */
-  async reassignTable(venueId: string, reservationId: string, tableId?: string | null) {
+  async reassignTables(venueId: string, reservationId: string, tableIds: string[]) {
     const reservation = await this.requireReservation(venueId, reservationId);
     if (
       reservation.status === ReservationStatus.REJECTED ||
@@ -752,23 +808,26 @@ export class ReservationsService {
     ) {
       throw new BadRequestException('Prenotazione chiusa: non è possibile modificare il tavolo');
     }
-    if (tableId) {
-      await this.requireOwnTable(venueId, tableId);
+    const uniqueTableIds = [...new Set(tableIds)];
+    if (uniqueTableIds.length > 0) {
+      await this.requireOwnTables(venueId, uniqueTableIds);
       const venue = await this.getVenueSettings(venueId);
-      await this.ensureTableAvailable(
+      await this.ensureTablesAvailable(
         venueId,
-        tableId,
+        uniqueTableIds,
         reservation.reservedAt,
         this.effectiveDuration(reservation, venue.reservationSlotDurationMinutes),
         venue.reservationSlotDurationMinutes,
         reservationId,
       );
     }
-    return this.prisma.reservation.update({
-      where: { id: reservationId },
-      data: { tableId: tableId ?? null },
-      include: { table: true },
-    });
+    return flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { tables: { deleteMany: {}, create: uniqueTableIds.map((tableId) => ({ tableId })) } },
+        include: TABLES_INCLUDE,
+      }),
+    );
   }
 
   /**
@@ -798,11 +857,13 @@ export class ReservationsService {
     }
 
     const venue = await this.getVenueSettings(venueId);
-    const updated = await this.prisma.reservation.update({
-      where: { id: reservationId },
-      data: { proposedReservedAt },
-      include: { table: true },
-    });
+    const updated = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { proposedReservedAt },
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     await this.audit.log({
       venueId,
@@ -829,7 +890,7 @@ export class ReservationsService {
     const updated = await this.prisma.reservation.update({
       where: { id: reservationId },
       data: { reservedAt: reservation.proposedReservedAt, proposedReservedAt: null },
-      include: { table: true },
+      include: TABLES_INCLUDE,
     });
 
     const admins = await this.prisma.user.findMany({ where: { venueId: reservation.venueId, role: 'ADMIN' } });
@@ -841,7 +902,7 @@ export class ReservationsService {
       })),
     });
 
-    return updated;
+    return flattenTables(updated);
   }
 
   /**
@@ -888,11 +949,13 @@ export class ReservationsService {
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.slotDurationMinutes !== undefined) data.slotDurationMinutes = dto.slotDurationMinutes;
 
-    const after = await this.prisma.reservation.update({
-      where: { id: reservationId },
-      data,
-      include: { table: true },
-    });
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data,
+        include: TABLES_INCLUDE,
+      }),
+    );
 
     await this.audit.log({
       venueId,

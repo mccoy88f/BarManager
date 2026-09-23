@@ -26,11 +26,11 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CakeIcon from '@mui/icons-material/Cake';
-import EventSeatIcon from '@mui/icons-material/EventSeat';
 import HistoryIcon from '@mui/icons-material/History';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
@@ -59,11 +59,16 @@ interface ReservationRow {
   allergiesNote?: string | null;
   notes?: string | null;
   status: ReservationStatus;
-  tableId?: string | null;
-  table?: TableRow | null;
+  tableIds: string[];
+  tables: TableRow[];
   rejectionReason?: string | null;
   isReturningCustomer?: boolean;
   busyTableIds?: string[];
+}
+
+/** Etichetta comune per un tavolo nei campi di scelta (select/Autocomplete). */
+function tableLabel(t: TableRow): string {
+  return `${t.label} (${t.seats} posti)`;
 }
 
 interface CustomerSuggestion {
@@ -129,7 +134,7 @@ const emptyManualForm = {
   eventNote: '',
   allergiesNote: '',
   notes: '',
-  tableId: '',
+  tableIds: [] as string[],
   slotDurationMinutes: '',
 };
 
@@ -226,13 +231,14 @@ export function ReservationsAdmin() {
   });
   /** Senza data/ora scelte non c'è ancora nulla da escludere: si parte dall'elenco completo dei tavoli attivi. */
   const manualTableOptions: TableRow[] = manualAvailabilityQuery.data ?? activeTables;
-  // Se il tavolo scelto risulta diventato occupato (cambio data/ora/durata), deseleziona:
+  // Se un tavolo scelto risulta diventato occupato (cambio data/ora/durata), lo si deseleziona:
   // non deve restare un tavolo scelto che non è più nell'elenco disponibile.
   useEffect(() => {
-    if (manualForm.tableId && !manualTableOptions.some((t) => t.id === manualForm.tableId)) {
-      setManualForm((f) => ({ ...f, tableId: '' }));
-    }
-  }, [manualTableOptions, manualForm.tableId]);
+    setManualForm((f) => {
+      const stillAvailable = f.tableIds.filter((id) => manualTableOptions.some((t) => t.id === id));
+      return stillAvailable.length === f.tableIds.length ? f : { ...f, tableIds: stillAvailable };
+    });
+  }, [manualTableOptions]);
 
   const customerSearchQuery = useQuery({
     queryKey: ['reservations-customers-search', customerQuery],
@@ -259,8 +265,8 @@ export function ReservationsAdmin() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['reservations-admin'] });
 
   const acceptMutation = useMutation({
-    mutationFn: async ({ id, tableId }: { id: string; tableId?: string | null }) =>
-      (await api.patch(`/reservations/${id}/accept`, { tableId })).data,
+    mutationFn: async ({ id, tableIds }: { id: string; tableIds?: string[] }) =>
+      (await api.patch(`/reservations/${id}/accept`, { tableIds })).data,
     onSuccess: () => {
       invalidate();
       showToast('Prenotazione confermata');
@@ -292,8 +298,8 @@ export function ReservationsAdmin() {
   });
 
   const reassignMutation = useMutation({
-    mutationFn: async ({ id, tableId }: { id: string; tableId: string | null }) =>
-      (await api.patch(`/reservations/${id}/table`, { tableId })).data,
+    mutationFn: async ({ id, tableIds }: { id: string; tableIds: string[] }) =>
+      (await api.patch(`/reservations/${id}/table`, { tableIds })).data,
     onSuccess: () => {
       invalidate();
       showToast('Tavolo aggiornato');
@@ -319,7 +325,7 @@ export function ReservationsAdmin() {
           eventNote: manualForm.isEvent ? manualForm.eventNote.trim() : undefined,
           allergiesNote: manualForm.allergiesNote.trim() || undefined,
           notes: manualForm.notes.trim() || undefined,
-          tableId: manualForm.tableId || null,
+          tableIds: manualForm.tableIds,
           slotDurationMinutes: manualForm.slotDurationMinutes ? Number(manualForm.slotDurationMinutes) : undefined,
         })
       ).data;
@@ -458,26 +464,22 @@ export function ReservationsAdmin() {
 
                 <Stack spacing={1} alignItems="flex-end">
                   {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                    <TextField
-                      select
+                    <Autocomplete
+                      multiple
                       size="small"
-                      label="Tavolo"
-                      value={r.tableId ?? ''}
-                      sx={{ minWidth: 160 }}
-                      InputProps={{ startAdornment: <EventSeatIcon fontSize="small" sx={{ mr: 0.5 }} /> }}
-                      onChange={(e) =>
-                        reassignMutation.mutate({ id: r.id, tableId: e.target.value || null })
+                      disableCloseOnSelect
+                      sx={{ minWidth: 220 }}
+                      options={activeTables.filter((t) => r.tableIds.includes(t.id) || !r.busyTableIds?.includes(t.id))}
+                      value={activeTables.filter((t) => r.tableIds.includes(t.id))}
+                      getOptionLabel={tableLabel}
+                      isOptionEqualToValue={(a, b) => a.id === b.id}
+                      onChange={(_e, value) =>
+                        reassignMutation.mutate({ id: r.id, tableIds: value.map((t) => t.id) })
                       }
-                    >
-                      <MenuItem value="">Nessuno</MenuItem>
-                      {activeTables
-                        .filter((t) => t.id === r.tableId || !r.busyTableIds?.includes(t.id))
-                        .map((t) => (
-                          <MenuItem key={t.id} value={t.id}>
-                            {t.label} ({t.seats} posti)
-                          </MenuItem>
-                        ))}
-                    </TextField>
+                      renderInput={(params) => (
+                        <TextField {...params} label="Tavoli" placeholder="Cerca un tavolo..." />
+                      )}
+                    />
                   )}
 
                   {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
@@ -509,7 +511,7 @@ export function ReservationsAdmin() {
                         size="small"
                         variant="contained"
                         color="success"
-                        onClick={() => acceptMutation.mutate({ id: r.id, tableId: r.tableId })}
+                        onClick={() => acceptMutation.mutate({ id: r.id, tableIds: r.tableIds })}
                       >
                         Accetta
                       </Button>
@@ -602,14 +604,11 @@ export function ReservationsAdmin() {
               value={timeForm.date}
               onChange={(e) => setTimeForm((f) => ({ ...f, date: e.target.value }))}
             />
-            <TextField
+            <QuarterHourTimeField
               label="Orario"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ step: 900 }}
               fullWidth
               value={timeForm.time}
-              onChange={(e) => setTimeForm((f) => ({ ...f, time: e.target.value }))}
+              onChange={(time) => setTimeForm((f) => ({ ...f, time }))}
             />
           </Stack>
           {proposeTimeMutation.isError && (
@@ -843,13 +842,11 @@ export function ReservationsAdmin() {
               value={manualForm.date}
               onChange={(e) => setManualForm((f) => ({ ...f, date: e.target.value }))}
             />
-            <TextField
+            <QuarterHourTimeField
               label="Orario"
-              type="time"
-              InputLabelProps={{ shrink: true }}
               fullWidth
               value={manualForm.time}
-              onChange={(e) => setManualForm((f) => ({ ...f, time: e.target.value }))}
+              onChange={(time) => setManualForm((f) => ({ ...f, time }))}
             />
           </Stack>
           <TextField
@@ -867,20 +864,23 @@ export function ReservationsAdmin() {
             value={manualForm.slotDurationMinutes}
             onChange={(e) => setManualForm((f) => ({ ...f, slotDurationMinutes: e.target.value }))}
           />
-          <TextField
-            select
-            label="Tavolo (opzionale)"
-            value={manualForm.tableId}
-            helperText="Se non scelto, resta nella coda «Senza tavolo»"
-            onChange={(e) => setManualForm((f) => ({ ...f, tableId: e.target.value }))}
-          >
-            <MenuItem value="">Nessuno</MenuItem>
-            {manualTableOptions.map((t) => (
-              <MenuItem key={t.id} value={t.id}>
-                {t.label} ({t.seats} posti)
-              </MenuItem>
-            ))}
-          </TextField>
+          <Autocomplete
+            multiple
+            disableCloseOnSelect
+            options={manualTableOptions}
+            value={manualTableOptions.filter((t) => manualForm.tableIds.includes(t.id))}
+            getOptionLabel={tableLabel}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            onChange={(_e, value) => setManualForm((f) => ({ ...f, tableIds: value.map((t) => t.id) }))}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Tavoli (opzionale)"
+                placeholder="Cerca un tavolo..."
+                helperText="Se non scelto, resta nella coda «Senza tavolo»; più tavoli insieme per un gruppo grande"
+              />
+            )}
+          />
 
           <FormControlLabel
             control={

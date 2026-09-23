@@ -3,13 +3,13 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -39,8 +39,13 @@ interface ReservationDetail {
   allergiesNote?: string | null;
   notes?: string | null;
   status: ReservationStatus;
-  tableId?: string | null;
+  tableIds: string[];
   rejectionReason?: string | null;
+}
+
+/** Etichetta comune per un tavolo nel campo di scelta (Autocomplete multiplo, con ricerca testuale). */
+function tableLabel(t: TableRow): string {
+  return `${t.label} (${t.seats} posti)`;
 }
 
 const statusLabels: Record<ReservationStatus, string> = {
@@ -77,7 +82,7 @@ export function PublicReservationManage() {
   const token = params.get('token') ?? '';
   const initialAction = params.get('action');
 
-  const [tableId, setTableId] = useState('');
+  const [tableIds, setTableIds] = useState<string[]>([]);
   const [showRejectForm, setShowRejectForm] = useState(initialAction === 'reject');
   const [rejectReason, setRejectReason] = useState('');
   const [resolvedStatus, setResolvedStatus] = useState<ReservationStatus | null>(null);
@@ -89,7 +94,7 @@ export function PublicReservationManage() {
         `/public/reservations/${id}/manage`,
         { params: { token } },
       );
-      setTableId(data.reservation.tableId ?? '');
+      setTableIds(data.reservation.tableIds);
       return data;
     },
     enabled: !!id && !!token,
@@ -100,7 +105,7 @@ export function PublicReservationManage() {
       (
         await api.patch(`/public/reservations/${id}/manage/accept`, {
           token,
-          tableId: tableId || null,
+          tableIds,
         })
       ).data,
     onSuccess: () => setResolvedStatus('CONFIRMED'),
@@ -230,21 +235,20 @@ export function PublicReservationManage() {
           {isPending && !showRejectForm && (
             <>
               {tables.length > 0 && (
-                <TextField
-                  select
+                <Autocomplete
+                  multiple
                   size="small"
-                  label="Tavolo"
-                  value={tableId}
+                  disableCloseOnSelect
                   sx={{ mt: 1 }}
-                  onChange={(e) => setTableId(e.target.value)}
-                >
-                  <MenuItem value="">Nessuno</MenuItem>
-                  {tables.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>
-                      {t.label} ({t.seats} posti)
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  options={tables}
+                  value={tables.filter((t) => tableIds.includes(t.id))}
+                  getOptionLabel={tableLabel}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  onChange={(_e, value) => setTableIds(value.map((t) => t.id))}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Tavoli" placeholder="Cerca un tavolo..." />
+                  )}
+                />
               )}
 
               {acceptMutation.isError && (
