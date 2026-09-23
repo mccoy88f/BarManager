@@ -220,11 +220,16 @@ export function PublicMenu() {
     venue.address || venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
 
   return (
-    <Box sx={{ maxWidth: 640, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
       {venue.coverUrl ? (
         <Box
           onClick={() => setLightbox(venue.coverUrl!)}
-          sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220 }, cursor: 'zoom-in' }}
+          sx={{
+            position: 'relative',
+            width: '100%',
+            height: { xs: 160, sm: 220, md: 320 },
+            cursor: 'zoom-in',
+          }}
         >
           <Box
             component="img"
@@ -286,7 +291,7 @@ export function PublicMenu() {
         />
       </Box>
 
-      <Box sx={{ p: 2 }}>
+      <Box sx={{ p: { xs: 2, md: 4 } }}>
         {featuredItems.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1.5 }}>
@@ -295,11 +300,17 @@ export function PublicMenu() {
                 In evidenza
               </Typography>
             </Stack>
-            <Stack spacing={2}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                gap: 2,
+              }}
+            >
               {featuredItems.map((item) => (
                 <MenuItemCard key={item.id} item={item} onImageClick={setLightbox} />
               ))}
-            </Stack>
+            </Box>
           </Box>
         )}
 
@@ -317,11 +328,17 @@ export function PublicMenu() {
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <Stack spacing={2}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
                 {category.items.map((item) => (
                   <MenuItemCard key={item.id} item={item} onImageClick={setLightbox} />
                 ))}
-              </Stack>
+              </Box>
             </AccordionDetails>
           </Accordion>
         ))}
