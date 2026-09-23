@@ -5,6 +5,8 @@ export interface ReceiptSection {
   title: string;
   lines: string[];
   footer?: string[];
+  /** Intestazione (es. nome e indirizzo dell'attività), sopra il titolo. */
+  letterhead?: string[];
 }
 
 // 80mm di carta termica (formato scontrino/POS), 3mm di margine per lato:
@@ -69,6 +71,7 @@ export class PdfService {
 
       for (const section of sections) {
         const body = [
+          ...(section.letterhead?.length ? [...section.letterhead, ''] : []),
           section.title.toUpperCase(),
           RECEIPT_SEPARATOR,
           ...section.lines,

@@ -170,6 +170,7 @@ describe('OrdersService.sendOrders', () => {
     status: 'DRAFT',
     lines: [{ orderedQty: 2, product: { name: 'Prodotto', unit: 'pz' } }],
     supplier: { name: supplierName, email: `${supplierName}@test.it`, ccEmails: [] },
+    venue: { name: 'Bar Test', menuAddress: null },
   });
 
   beforeEach(() => {
@@ -211,6 +212,31 @@ describe('OrdersService.sendOrders', () => {
 
     expect(results[0].sent).toBe(false);
     expect(results[1].sent).toBe(true);
+  });
+
+  it('registra sull\'ordine l\'esito reale dell\'invio email, anche se fallisce', async () => {
+    prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+    mail.sendOrderEmail.mockResolvedValue({ sent: false, error: 'SMTP down' });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(prisma.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ emailSent: false, emailError: 'SMTP down' }),
+      }),
+    );
+  });
+
+  it('include nome e indirizzo del locale in cima al testo della mail', async () => {
+    prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(mail.sendOrderEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('Bar Test') }),
+    );
   });
 });
 
@@ -273,6 +299,7 @@ describe('OrdersService.exportPdf', () => {
     sentAt: new Date('2026-01-11'),
     supplier: { name: 'Fornitore SRL' },
     createdBy: { email: 'admin@venue1.test' },
+    venue: { name: 'Bar Test', menuAddress: 'Via Roma 1' },
     lines: [
       { orderedQty: 3, product: { name: 'Birra', unit: 'cassa', costPerUnit: 10 } },
       { orderedQty: 0, product: { name: 'Non ordinato', unit: 'pz', costPerUnit: 5 } },
@@ -304,7 +331,10 @@ describe('OrdersService.exportPdf', () => {
     const text = buffer.toString();
 
     expect(pdf.buildReceiptDocument).toHaveBeenCalledWith([
-      expect.objectContaining({ title: 'Ordine Fornitore SRL' }),
+      expect.objectContaining({
+        title: 'Ordine Fornitore SRL',
+        letterhead: ['Bar Test', 'Via Roma 1'],
+      }),
     ]);
     expect(text).toContain('Autore: admin@venue1.test');
     expect(text).toContain('TOTALE: €30.00');

@@ -10,7 +10,7 @@ export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks';
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   haccp: 'Controlli HACCP',
-  inventory: 'Inventario e ordini',
+  inventory: 'Ordini e inventario',
   menu: 'Menù online',
   tasks: 'Attività e scadenze',
 };

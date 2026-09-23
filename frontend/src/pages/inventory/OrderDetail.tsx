@@ -21,6 +21,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
+import { EmailStatusIndicator } from './OrderHistory';
 
 interface OrderLineRow {
   id: string;
@@ -33,6 +34,8 @@ interface OrderRow {
   status: 'DRAFT' | 'SENT' | 'CONFIRMED' | 'CLOSED';
   createdAt: string;
   sentAt?: string;
+  emailSent?: boolean | null;
+  emailError?: string | null;
   supplier: { name: string };
   createdBy: { email: string };
   lines: OrderLineRow[];
@@ -116,7 +119,10 @@ export function OrderDetail() {
             </Typography>
           )}
         </Box>
-        <Chip color={statusColor[order.status]} label={statusLabels[order.status]} />
+        <Stack direction="row" spacing={1} alignItems="center">
+          <EmailStatusIndicator emailSent={order.emailSent} emailError={order.emailError} />
+          <Chip color={statusColor[order.status]} label={statusLabels[order.status]} />
+        </Stack>
       </Stack>
 
       <Stack direction="row" spacing={1}>

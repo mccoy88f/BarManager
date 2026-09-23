@@ -24,6 +24,13 @@ export interface NavItem {
   /** In più, per Manager/Dipendente: governato da Employees.allowedModules. */
   moduleKey?: ModuleKey;
   children?: NavItem[];
+  /**
+   * Etichetta del primo sotto-voce che punta a `path` stesso (di norma
+   * "Panoramica"): da impostare solo quando quella pagina non è una vera
+   * panoramica ma qualcos'altro (es. il modulo Ordini apre direttamente la
+   * creazione di un nuovo ordine).
+   */
+  overviewLabel?: string;
 }
 
 /**
@@ -129,11 +136,12 @@ export const navigation: NavItem[] = [
   },
   {
     key: 'inventory',
-    label: 'Inventario e ordini',
+    label: 'Ordini e inventario',
     path: '/inventory',
     icon: Inventory2Icon,
     description: 'Prodotti, fornitori, nuovo ordine',
     moduleKey: 'inventory',
+    overviewLabel: 'Nuovo ordine',
     children: [
       {
         key: 'inventory-suppliers',

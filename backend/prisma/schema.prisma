@@ -507,8 +507,15 @@ model Order {
   createdById String
   createdBy   User      @relation(fields: [createdById], references: [id])
   sentAt      DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  // Esito dell'invio email al fornitore al momento di sentAt: null finché
+  // l'ordine è ancora una bozza. L'ordine passa comunque a SENT anche se
+  // l'email fallisce (l'admin può comunque averlo consegnato a voce/con
+  // altro mezzo), ma l'esito resta visibile nello storico invece di
+  // perdersi dopo il toast immediato.
+  emailSent  Boolean?
+  emailError String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model OrderLine {

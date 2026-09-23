@@ -183,6 +183,13 @@ export function NewOrder() {
   const allStockFilled =
     suggestions.length > 0 && suggestions.every((s) => stock[s.product.id]?.trim());
 
+  // Una volta creata la bozza, la giacenza è già stata usata per calcolare
+  // le quantità dell'ordine reale: continuare a modificarla qui sopra
+  // aggiornerebbe solo l'anteprima, senza toccare l'ordine creato, dando
+  // l'illusione di una modifica che poi però non c'è. Da qui in avanti la
+  // quantità si corregge solo nella tabella dell'ordine vero e proprio.
+  const draftCreated = !!createdOrderId || !!createdOrderIds;
+
   const linesPayload = () =>
     suggestions.map((s) => ({ productId: s.product.id, stockOnHand: s.stockOnHand }));
 
@@ -285,6 +292,7 @@ export function NewOrder() {
         <TableHead>
           <TableRow>
             <TableCell>Prodotto</TableCell>
+            <TableCell>Formato</TableCell>
             <TableCell>Da ordinare</TableCell>
             <TableCell>Costo</TableCell>
           </TableRow>
@@ -293,6 +301,7 @@ export function NewOrder() {
           {order.lines.map((line) => (
             <TableRow key={line.id}>
               <TableCell>{line.product.name}</TableCell>
+              <TableCell>{line.product.unit}</TableCell>
               <TableCell>
                 <TextField
                   type="number"
@@ -301,7 +310,6 @@ export function NewOrder() {
                   onChange={(e) => setEditedQty((q) => ({ ...q, [line.id]: e.target.value }))}
                   onBlur={(e) => saveLineQty(order.id, line.id, e.target.value)}
                   sx={{ width: 90 }}
-                  InputProps={{ endAdornment: line.product.unit }}
                 />
               </TableCell>
               <TableCell>
@@ -407,6 +415,7 @@ export function NewOrder() {
                           type="number"
                           size="small"
                           required
+                          disabled={draftCreated}
                           value={stock[product.id] ?? ''}
                           onChange={(e) =>
                             setStock((s) => ({ ...s, [product.id]: e.target.value }))

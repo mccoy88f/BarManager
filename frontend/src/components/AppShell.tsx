@@ -105,7 +105,7 @@ export function AppShell() {
                     selected={location.pathname === item.path}
                     onClick={() => goTo(item.path)}
                   >
-                    <ListItemText primary="Panoramica" />
+                    <ListItemText primary={item.overviewLabel ?? 'Panoramica'} />
                   </ListItemButton>
                   {visibleChildren.map((child) => (
                     <ListItemButton

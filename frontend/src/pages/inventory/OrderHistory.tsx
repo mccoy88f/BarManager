@@ -1,4 +1,6 @@
-import { Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material';
+import { Box, Card, CardContent, Chip, Stack, Tooltip, Typography } from '@mui/material';
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -14,8 +16,32 @@ interface OrderRow {
   status: 'DRAFT' | 'SENT' | 'CONFIRMED' | 'CLOSED';
   createdAt: string;
   sentAt?: string;
+  emailSent?: boolean | null;
+  emailError?: string | null;
   supplier: { name: string };
   lines: OrderLineRow[];
+}
+
+export function EmailStatusIndicator({
+  emailSent,
+  emailError,
+}: {
+  emailSent?: boolean | null;
+  emailError?: string | null;
+}) {
+  if (emailSent == null) return null;
+  if (emailSent) {
+    return (
+      <Tooltip title="Email inviata al fornitore">
+        <MarkEmailReadIcon color="success" fontSize="small" />
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip title={emailError ? `Invio email non riuscito: ${emailError}` : 'Invio email non riuscito'}>
+      <ErrorOutlineIcon color="error" fontSize="small" />
+    </Tooltip>
+  );
 }
 
 const statusLabels: Record<OrderRow['status'], string> = {
@@ -73,7 +99,10 @@ export function OrderHistory() {
                     {total > 0 && ` — Totale € ${total.toFixed(2)}`}
                   </Typography>
                 </Box>
-                <Chip size="small" color={statusColor[order.status]} label={statusLabels[order.status]} />
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <EmailStatusIndicator emailSent={order.emailSent} emailError={order.emailError} />
+                  <Chip size="small" color={statusColor[order.status]} label={statusLabels[order.status]} />
+                </Stack>
               </CardContent>
             </Card>
           );

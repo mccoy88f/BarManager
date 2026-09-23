@@ -12,6 +12,7 @@ const ORDER_INCLUDE = {
   lines: { include: { product: true } },
   supplier: true,
   createdBy: { select: { email: true } },
+  venue: { select: { name: true, menuAddress: true } },
 } as const;
 
 type OrderWithDetails = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
@@ -185,16 +186,22 @@ export class OrdersService {
     const bodyLines = onlyOrdered.map(
       (l) => `- ${l.product.name}: ${l.orderedQty} ${l.product.unit}`,
     );
+    const letterhead = [order.venue.name, order.venue.menuAddress].filter(Boolean).join('\n');
     const emailResult = await this.mail.sendOrderEmail({
       to: order.supplier.email,
       cc,
       subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
-      text: `Buongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
+      text: `${letterhead}\n\nBuongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
     });
 
     const updated = await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: OrderStatus.SENT, sentAt: new Date() },
+      data: {
+        status: OrderStatus.SENT,
+        sentAt: new Date(),
+        emailSent: emailResult.sent,
+        emailError: emailResult.error ?? null,
+      },
       include: ORDER_INCLUDE,
     });
 
@@ -243,6 +250,11 @@ export class OrdersService {
   private buildPrintPayload(order: OrderWithDetails) {
     const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
 
+    const letterhead = [
+      order.venue.name,
+      ...(order.venue.menuAddress ? [order.venue.menuAddress] : []),
+    ];
+
     const header = [
       `Data: ${order.createdAt.toLocaleDateString('it-IT')}`,
       ...(order.sentAt ? [`Inviato: ${order.sentAt.toLocaleDateString('it-IT')}`] : []),
@@ -267,7 +279,12 @@ export class OrdersService {
         ? ['Checklist per controllo scarico merce ->', '', `TOTALE: €${grandTotal.toFixed(2)}`]
         : ['Checklist per controllo scarico merce ->'];
 
-    return { title: `Ordine ${order.supplier.name}`, lines: [...header, ...productLines], footer };
+    return {
+      title: `Ordine ${order.supplier.name}`,
+      lines: [...header, ...productLines],
+      footer,
+      letterhead,
+    };
   }
 
   /** PDF di un singolo ordine, largo come uno scontrino: stesso PDF sia per l'esportazione che per la ristampa. */
