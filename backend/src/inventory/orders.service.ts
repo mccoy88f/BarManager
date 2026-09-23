@@ -238,14 +238,23 @@ export class OrdersService {
 
   /**
    * Righe/piè di pagina della checklist POS: condiviso tra l'invio
-   * dell'ordine e una ristampa richiesta più avanti dallo storico.
+   * dell'ordine, una ristampa richiesta più avanti dallo storico e
+   * l'esportazione PDF (stesso identico contenuto testuale, così un
+   * domani la stampa diretta su POS può riusarlo senza modifiche).
    */
   private buildPrintPayload(order: OrderWithDetails) {
     const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
 
+    const header = [
+      `Data: ${order.createdAt.toLocaleDateString('it-IT')}`,
+      ...(order.sentAt ? [`Inviato: ${order.sentAt.toLocaleDateString('it-IT')}`] : []),
+      `Autore: ${order.createdBy.email}`,
+      '',
+    ];
+
     // Se il prodotto ha un costo unitario impostato, la riga mostra anche
     // prezzo x colli ordinati = subtotale, e in fondo compare il totale.
-    const lines = onlyOrdered.map((l) => {
+    const productLines = onlyOrdered.map((l) => {
       const base = `${l.product.name.padEnd(24)} x ${l.orderedQty} ${l.product.unit}`;
       if (l.product.costPerUnit == null) return base;
       const lineTotal = l.product.costPerUnit * l.orderedQty;
@@ -260,7 +269,7 @@ export class OrdersService {
         ? ['Checklist per controllo scarico merce ->', '', `TOTALE: €${grandTotal.toFixed(2)}`]
         : ['Checklist per controllo scarico merce ->'];
 
-    return { title: `Ordine ${order.supplier.name}`, lines, footer };
+    return { title: `Ordine ${order.supplier.name}`, lines: [...header, ...productLines], footer };
   }
 
   /**
@@ -273,56 +282,19 @@ export class OrdersService {
     return this.printing.buildReportJob(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
   }
 
-  /** Sezione PDF di un ordine: fornitore, data, autore, righe con importi singoli e totale. */
-  private renderOrderSection(doc: PDFKit.PDFDocument, order: OrderWithDetails) {
-    const onlyOrdered = order.lines.filter((l) => l.orderedQty > 0);
-    const grandTotal = onlyOrdered.reduce(
-      (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
-      0,
-    );
-
-    doc.fontSize(16).text('Ordine fornitore', { align: 'center' }).moveDown();
-
-    doc.fontSize(11);
-    doc.text(`Fornitore: ${order.supplier.name}`);
-    doc.text(`Data ordine: ${order.createdAt.toLocaleDateString('it-IT')}`);
-    if (order.sentAt) doc.text(`Inviato il: ${order.sentAt.toLocaleDateString('it-IT')}`);
-    doc.text(`Autore: ${order.createdBy.email}`);
-    doc.moveDown();
-
-    doc.fontSize(10);
-    for (const line of onlyOrdered) {
-      const amount =
-        line.product.costPerUnit != null
-          ? `€ ${line.product.costPerUnit.toFixed(2)} = € ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
-          : '—';
-      doc.text(
-        `${line.product.name.padEnd(28)} ${String(line.orderedQty).padStart(6)} ${line.product.unit.padEnd(6)} ${amount}`,
-      );
-    }
-
-    if (grandTotal > 0) {
-      doc.moveDown().fontSize(12).text(`Totale: € ${grandTotal.toFixed(2)}`, { align: 'right' });
-    }
-  }
-
-  /** PDF di un singolo ordine. */
+  /** PDF di un singolo ordine, largo come uno scontrino (stesso contenuto della ristampa POS). */
   async exportPdf(venueId: string, orderId: string): Promise<Buffer> {
     const order = await this.getOrder(venueId, orderId);
-    return this.pdf.buildDocument((doc) => this.renderOrderSection(doc, order));
+    return this.pdf.buildReceiptDocument([this.buildPrintPayload(order)]);
   }
 
   /**
    * PDF di più ordini (uno per fornitore, dopo una creazione "per
-   * categoria"), con una pagina separata per ciascuno.
+   * categoria"), con una pagina separata per ciascuno, stesso formato a
+   * scontrino del singolo ordine.
    */
   async exportBatchPdf(venueId: string, orderIds: string[]): Promise<Buffer> {
     const orders = await Promise.all(orderIds.map((id) => this.getOrder(venueId, id)));
-    return this.pdf.buildDocument((doc) => {
-      orders.forEach((order, i) => {
-        if (i > 0) doc.addPage();
-        this.renderOrderSection(doc, order);
-      });
-    });
+    return this.pdf.buildReceiptDocument(orders.map((order) => this.buildPrintPayload(order)));
   }
 }

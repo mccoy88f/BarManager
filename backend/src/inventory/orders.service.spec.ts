@@ -269,7 +269,7 @@ describe('OrdersService.updateLineQty', () => {
 describe('OrdersService.buildPrintJob / exportPdf', () => {
   let prisma: { order: { findUnique: jest.Mock } };
   let printing: { buildReportJob: jest.Mock };
-  let pdf: { buildDocument: jest.Mock };
+  let pdf: { buildReceiptDocument: jest.Mock };
   let service: OrdersService;
 
   const order = {
@@ -289,19 +289,14 @@ describe('OrdersService.buildPrintJob / exportPdf', () => {
     prisma = { order: { findUnique: jest.fn().mockResolvedValue(order) } };
     printing = { buildReportJob: jest.fn().mockResolvedValue({ ready: true }) };
     pdf = {
-      buildDocument: jest.fn(async (build) => {
-        const calls: string[] = [];
-        const doc: Record<string, jest.Mock> = {};
-        const chain = () => doc as unknown as PDFKit.PDFDocument;
-        doc.fontSize = jest.fn(chain);
-        doc.moveDown = jest.fn(chain);
-        doc.text = jest.fn((t: string) => {
-          calls.push(t);
-          return chain();
-        });
-        build(doc as unknown as PDFKit.PDFDocument);
-        return Buffer.from(calls.join('\n'));
-      }),
+      buildReceiptDocument: jest.fn(
+        async (sections: { title: string; lines: string[]; footer?: string[] }[]) => {
+          const text = sections
+            .map((s) => [s.title, ...s.lines, ...(s.footer ?? [])].join('\n'))
+            .join('\n===PAGE===\n');
+          return Buffer.from(text);
+        },
+      ),
     };
     service = new OrdersService(
       prisma as unknown as PrismaService,
@@ -317,50 +312,42 @@ describe('OrdersService.buildPrintJob / exportPdf', () => {
 
     expect(printing.buildReportJob).toHaveBeenCalledWith('venue-1', 'ORDERS', {
       title: 'Ordine Fornitore SRL',
-      lines: [`${'Birra'.padEnd(24)} x 3 cassa  €10.00 = €30.00`],
+      lines: [
+        `Data: ${order.createdAt.toLocaleDateString('it-IT')}`,
+        `Inviato: ${order.sentAt.toLocaleDateString('it-IT')}`,
+        'Autore: admin@venue1.test',
+        '',
+        `${'Birra'.padEnd(24)} x 3 cassa  €10.00 = €30.00`,
+      ],
       footer: ['Checklist per controllo scarico merce ->', '', 'TOTALE: €30.00'],
     });
   });
 
-  it('genera il PDF con fornitore, data, autore e importi', async () => {
+  it('genera il PDF a scontrino con fornitore, data, autore e importi', async () => {
     const buffer = await service.exportPdf('venue-1', 'order-1');
     const text = buffer.toString();
 
-    expect(text).toContain('Fornitore: Fornitore SRL');
+    expect(pdf.buildReceiptDocument).toHaveBeenCalledWith([
+      expect.objectContaining({ title: 'Ordine Fornitore SRL' }),
+    ]);
     expect(text).toContain('Autore: admin@venue1.test');
-    expect(text).toContain('Totale: € 30.00');
+    expect(text).toContain('TOTALE: €30.00');
     expect(text).not.toContain('Non ordinato');
   });
 
-  it('genera un PDF con una pagina per ordine nel batch', async () => {
+  it('genera un PDF con una sezione per ordine nel batch', async () => {
     const otherOrder = { ...order, id: 'order-2', supplier: { name: 'Altro Fornitore' } };
     prisma.order.findUnique
       .mockResolvedValueOnce(order)
       .mockResolvedValueOnce(otherOrder);
-    let addPageCalls = 0;
-    pdf.buildDocument.mockImplementationOnce(async (build) => {
-      const calls: string[] = [];
-      const doc: Record<string, jest.Mock> = {};
-      const chain = () => doc as unknown as PDFKit.PDFDocument;
-      doc.fontSize = jest.fn(chain);
-      doc.moveDown = jest.fn(chain);
-      doc.addPage = jest.fn(() => {
-        addPageCalls += 1;
-        return chain();
-      });
-      doc.text = jest.fn((t: string) => {
-        calls.push(t);
-        return chain();
-      });
-      build(doc as unknown as PDFKit.PDFDocument);
-      return Buffer.from(calls.join('\n'));
-    });
 
     const buffer = await service.exportBatchPdf('venue-1', ['order-1', 'order-2']);
     const text = buffer.toString();
 
-    expect(addPageCalls).toBe(1); // una pagina nuova tra i due ordini, non prima del primo
-    expect(text).toContain('Fornitore: Fornitore SRL');
-    expect(text).toContain('Fornitore: Altro Fornitore');
+    expect(pdf.buildReceiptDocument).toHaveBeenCalledWith([
+      expect.objectContaining({ title: 'Ordine Fornitore SRL' }),
+      expect.objectContaining({ title: 'Ordine Altro Fornitore' }),
+    ]);
+    expect(text).toContain('===PAGE===');
   });
 });
