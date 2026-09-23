@@ -169,7 +169,7 @@ export function ClockInSettings() {
           </Typography>
 
           <Stack spacing={2} sx={{ mt: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography variant="subtitle2">QR di postazione</Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -183,7 +183,7 @@ export function ClockInSettings() {
               />
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography variant="subtitle2">Posizione GPS</Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -237,7 +237,7 @@ export function ClockInSettings() {
               </Box>
             )}
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography variant="subtitle2">Tag NFC</Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -279,7 +279,7 @@ export function ClockInSettings() {
             Storico presenze
           </Typography>
           <Stack spacing={2} sx={{ mt: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography variant="subtitle2">Storico visibile ai dipendenti</Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -290,7 +290,7 @@ export function ClockInSettings() {
               <Switch checked={historyVisible} onChange={(e) => setHistoryVisible(e.target.checked)} />
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography variant="subtitle2">Cancellazione automatica</Typography>
                 <Typography variant="caption" color="text.secondary">

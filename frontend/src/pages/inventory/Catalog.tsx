@@ -220,7 +220,7 @@ export function Catalog() {
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Card>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6">Categorie</Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCategoryDialog}>
               Aggiungi categoria
@@ -244,7 +244,7 @@ export function Catalog() {
         </CardContent>
       </Card>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Prodotti</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openProductDialog}>
           Aggiungi prodotto
@@ -253,8 +253,16 @@ export function Catalog() {
       <Stack spacing={1}>
         {productsQuery.data?.map((product) => (
           <Card key={product.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" fontWeight={600}>
                   {product.name}
                   {!product.active && (

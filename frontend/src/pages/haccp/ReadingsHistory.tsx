@@ -66,9 +66,15 @@ export function ReadingsHistory() {
           {readingsQuery.data?.map((reading) => (
             <Box
               key={reading.id}
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2">
                   <strong>{reading.fridge.label}</strong> — {reading.value}°C
                   {reading.correctiveAction && ` — Azione: ${reading.correctiveAction}`}

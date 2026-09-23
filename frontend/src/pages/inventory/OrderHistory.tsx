@@ -54,10 +54,17 @@ export function OrderHistory() {
           return (
             <Card key={order.id} variant="outlined">
               <CardContent
-                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  justifyContent: 'space-between',
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  gap: 1,
+                  cursor: 'pointer',
+                }}
                 onClick={() => navigate(`/inventory/orders-history/${order.id}`)}
               >
-                <Box>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="body2" fontWeight={600}>
                     {order.supplier.name}
                   </Typography>

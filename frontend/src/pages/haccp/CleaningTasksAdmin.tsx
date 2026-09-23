@@ -140,7 +140,7 @@ export function CleaningTasksAdmin() {
   return (
     <Card>
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6">Voci di pulizia</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
             Aggiungi
@@ -151,9 +151,15 @@ export function CleaningTasksAdmin() {
           {tasksQuery.data?.map((task) => (
             <Box
               key={task.id}
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" fontWeight={600}>
                   {task.description}
                 </Typography>

@@ -111,7 +111,7 @@ function SelfServiceLeaveRequests() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Le mie richieste</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
           Invia richiesta
@@ -120,14 +120,22 @@ function SelfServiceLeaveRequests() {
       <Stack spacing={1}>
         {listQuery.data?.map((r) => (
           <Card key={r.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2">{typeLabels[r.type]}</Typography>
                 <Typography variant="body2" color="text.secondary">
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
                 </Typography>
-              </div>
+              </Box>
               <Chip label={r.status} color={statusColor[r.status]} size="small" />
             </CardContent>
           </Card>
@@ -231,8 +239,16 @@ function ApprovedRequestsManager() {
       <Stack spacing={1}>
         {approvedQuery.data?.map((r) => (
           <Card key={r.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2">
                   {r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : ''} —{' '}
                   {typeLabels[r.type]}
@@ -241,7 +257,7 @@ function ApprovedRequestsManager() {
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
                 </Typography>
-              </div>
+              </Box>
               <IconButton
                 size="small"
                 title="Elimina"
@@ -356,7 +372,7 @@ function AdminLeaveRequests() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Richieste del locale</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
           Aggiungi richiesta
@@ -365,8 +381,16 @@ function AdminLeaveRequests() {
       <Stack spacing={1}>
         {listQuery.data?.map((r) => (
           <Card key={r.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2">
                   {r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : ''} —{' '}
                   {typeLabels[r.type]}
@@ -375,7 +399,7 @@ function AdminLeaveRequests() {
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
                 </Typography>
-              </div>
+              </Box>
               {r.status === 'PENDING' ? (
                 <Stack direction="row" spacing={0.5}>
                   <IconButton

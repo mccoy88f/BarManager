@@ -210,9 +210,15 @@ export function AttendanceRecords() {
               {pendingQuery.data.map((record) => (
                 <Box
                   key={record.id}
-                  sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    justifyContent: 'space-between',
+                    alignItems: { xs: 'flex-start', sm: 'center' },
+                    gap: 1,
+                  }}
                 >
-                  <Typography variant="body2">
+                  <Typography variant="body2" sx={{ minWidth: 0 }}>
                     {record.employee.firstName} {record.employee.lastName} —{' '}
                     {record.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno —{' '}
                     {new Date(record.timestamp).toLocaleString('it-IT')}
@@ -242,7 +248,7 @@ export function AttendanceRecords() {
         </Card>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Timbrature</Typography>
         <Button
           variant="contained"
@@ -304,14 +310,22 @@ export function AttendanceRecords() {
       <Stack spacing={1}>
         {recordsQuery.data?.map((record) => (
           <Card key={record.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2">
                   {record.employee.firstName} {record.employee.lastName} —{' '}
                   {record.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno
                   {record.note && ` — ${record.note}`}
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 0.5 }}>
                   <Typography variant="body2" color="text.secondary">
                     {new Date(record.timestamp).toLocaleString('it-IT')}
                   </Typography>

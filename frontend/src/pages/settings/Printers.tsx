@@ -160,7 +160,7 @@ export function Printers() {
   return (
     <Card>
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6">Stampanti di rete</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
             Aggiungi
@@ -184,9 +184,15 @@ export function Printers() {
           {printersQuery.data?.map((printer) => (
             <Box
               key={printer.id}
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" fontWeight={600} component="div">
                   {printer.name}{' '}
                   {printer.usages.map((usage) => (

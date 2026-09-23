@@ -122,7 +122,7 @@ export function TemperatureEntry() {
   return (
     <Card>
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6">
             Rilevazione temperature — {new Date().toLocaleDateString('it-IT')}
           </Typography>

@@ -219,7 +219,7 @@ export function Employees() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Dipendenti</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
           Aggiungi
@@ -228,8 +228,16 @@ export function Employees() {
       <Stack spacing={2}>
         {employeesQuery.data?.map((employee) => (
           <Card key={employee.id} variant="outlined">
-            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box>
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle1" fontWeight={600}>
                   {employee.firstName} {employee.lastName}
                   {employee.isManager && (

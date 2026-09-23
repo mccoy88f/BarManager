@@ -86,9 +86,15 @@ export function MyAttendanceHistory() {
                       {day.shifts.map((shift, i) => (
                         <Box
                           key={i}
-                          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          sx={{
+                            display: 'flex',
+                            flexDirection: { xs: 'column', sm: 'row' },
+                            justifyContent: 'space-between',
+                            alignItems: { xs: 'flex-start', sm: 'center' },
+                            gap: 1,
+                          }}
                         >
-                          <Box>
+                          <Box sx={{ minWidth: 0 }}>
                             <Typography variant="body2">
                               {formatTime(shift.clockIn)} ({shift.methodIn}) →{' '}
                               {formatTime(shift.clockOut)} ({shift.methodOut})

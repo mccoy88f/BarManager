@@ -114,7 +114,7 @@ export function Fridges() {
   return (
     <Card>
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6">Frigoriferi e congelatori</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
             Aggiungi

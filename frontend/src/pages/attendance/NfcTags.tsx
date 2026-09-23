@@ -104,7 +104,7 @@ export function NfcTags() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Tag NFC</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
           Aggiungi
@@ -115,9 +115,15 @@ export function NfcTags() {
         {tagsQuery.data?.map((tag) => (
           <Card key={tag.id} variant="outlined">
             <CardContent
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 1,
+              }}
             >
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" fontWeight={600}>
                   {tag.label}
                 </Typography>

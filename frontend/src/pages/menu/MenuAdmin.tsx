@@ -511,7 +511,7 @@ export function MenuAdmin() {
 
       <Card>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6">Menù</Typography>
             <Stack direction="row" spacing={1}>
               {!locked && (

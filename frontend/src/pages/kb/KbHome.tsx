@@ -24,7 +24,7 @@ export function KbHome() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">KBpedia</Typography>
         {isAdmin && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/kb/new')}>
