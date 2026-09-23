@@ -31,12 +31,17 @@ import { BoardPage } from './pages/board/BoardPage';
 import { KbHome } from './pages/kb/KbHome';
 import { KbArticleView } from './pages/kb/KbArticleView';
 import { KbEditor } from './pages/kb/KbEditor';
+import { ReservationsAdmin } from './pages/reservations/ReservationsAdmin';
+import { Tables } from './pages/reservations/Tables';
+import { ReservationSettings } from './pages/reservations/ReservationSettings';
+import { PublicReservation } from './pages/reservations/PublicReservation';
 
 export default function App() {
   return (
     <Routes>
-      {/* Menù pubblico: nessun login, nessuna shell applicativa */}
+      {/* Menù pubblico e widget prenotazioni: nessun login, nessuna shell applicativa */}
       <Route path="/menu" element={<PublicMenu />} />
+      <Route path="/prenota" element={<PublicReservation />} />
 
       <Route path="/login" element={<Login />} />
 
@@ -68,6 +73,7 @@ export default function App() {
             <Route path="/attendance/nfc-tags" element={<NfcTags />} />
             <Route path="/attendance/clock-in-settings" element={<ClockInSettings />} />
             <Route path="/settings" element={<SettingsHome />} />
+            <Route path="/reservations/settings" element={<ReservationSettings />} />
           </Route>
 
           {/* Moduli concedibili per singolo dipendente (Employees.allowedModules):
@@ -91,6 +97,10 @@ export default function App() {
           <Route element={<ProtectedRoute moduleKey="tasks" />}>
             <Route path="/tasks" element={<TasksAdmin />} />
             <Route path="/tasks/history" element={<TasksHistory />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="reservations" />}>
+            <Route path="/reservations" element={<ReservationsAdmin />} />
+            <Route path="/reservations/tables" element={<Tables />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>

@@ -29,6 +29,7 @@ import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
+import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -119,5 +120,15 @@ export class VenuesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.venuesService.setMenuCover(requireVenueId(user), `/uploads/menu/${file.filename}`);
+  }
+
+  /** Impostazioni del modulo Prenotazioni (§5.7): soglia conferma automatica, durata slot, orizzonte. */
+  @Patch('me/reservation-settings')
+  @Roles(Role.ADMIN)
+  updateOwnReservationSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateReservationSettingsDto,
+  ) {
+    return this.venuesService.updateReservationSettings(requireVenueId(user), dto);
   }
 }

@@ -6,17 +6,20 @@ import type { Role } from '../store/authStore';
  * backend/src/common/decorators/require-module.decorator.ts — se cambi le
  * chiavi qui, cambiale anche lì.
  */
-export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks';
+export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks' | 'reservations';
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   haccp: 'Controlli HACCP',
   inventory: 'Ordini e inventario',
   menu: 'Menù online',
   tasks: 'Attività e scadenze',
+  reservations: 'Prenotazioni',
 };
 
 // Permessi di default quando il dipendente non ha mai avuto un elenco
 // esplicito impostato dall'admin: specchia ModuleAccessGuard lato backend.
+// "reservations" non compare qui: è un modulo opzionale (spento di default
+// per il locale), l'admin lo concede esplicitamente a chi deve gestirlo.
 const DEFAULT_MODULES_BY_ROLE: Partial<Record<Role, ModuleKey[]>> = {
   MANAGER: ['haccp', 'inventory', 'menu', 'tasks'],
   EMPLOYEE: ['haccp'],

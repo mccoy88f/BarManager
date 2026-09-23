@@ -116,8 +116,8 @@ Schema completo in `backend/prisma/schema.prisma`. Entità principali:
 - **Task** — attività/scadenza (es. pagamento fornitore, visita medica dipendente, scadenza attestato): `type` (enum), `dueDate`, `status` (`OPEN/DONE`), `recurrence` (`NONE/MONTHLY/YEARLY`, genera automaticamente l'occorrenza successiva al completamento), `reminderDaysBefore` (da quanti giorni prima segnalarla come imminente in home), collegabile a un `Employee` (`relatedEmployeeId`, es. di chi è la visita medica).
 - **AuditLog** — traccia di ogni operazione sensibile (chi, cosa, quando, prima/dopo), sempre scoperta per `venueId`.
 - **Notification** — notifiche in-app (richieste ferie, temperature fuori soglia, ordini inviati, ...), esposte via API (lista/segna come letta) e riprese nella home amministrazione.
-- **Table** *(proposta, §5.7, non ancora implementata)* — tavolo censito dall'admin: `label` (numero o nome, es. "12" o "Terrazza 2"), `seats` (posti), `active` (per togliere temporaneamente un tavolo, es. in manutenzione, senza perdere lo storico delle prenotazioni già assegnate).
-- **Reservation** *(proposta, §5.7)* — richiesta di prenotazione di un cliente: nome, cognome, email, telefono, `partySize`, data/ora, `isEvent`+nota libera (es. "Compleanno"), note su intolleranze/allergie, altre note, `status` (`PENDING/CONFIRMED/REJECTED/CANCELLED`), `tableId` assegnato (manualmente o in automatico), `rejectionReason` (obbligatoria se rifiutata). Isolata per `venueId` come tutte le altre entità.
+- **Table** *(§5.7, implementata)* — tavolo censito dall'admin: `label` (numero o nome, es. "12" o "Terrazza 2"), `seats` (posti), `active` (per togliere temporaneamente un tavolo, es. in manutenzione, senza perdere lo storico delle prenotazioni già assegnate).
+- **Reservation** *(§5.7, implementata)* — richiesta di prenotazione di un cliente: nome, cognome, email, telefono, `partySize`, data/ora, `isEvent`+nota libera (es. "Compleanno"), note su intolleranze/allergie, altre note, `status` (`PENDING/CONFIRMED/REJECTED/CANCELLED`), `tableId` assegnato (manualmente o in automatico), `rejectionReason` (obbligatoria se rifiutata). Isolata per `venueId` come tutte le altre entità.
 - Nuovi campi previsti su **Venue** per le impostazioni del modulo prenotazioni: `reservationsEnabled`, `reservationAutoConfirmMaxSeats` (soglia sopra la quale serve sempre conferma manuale), `reservationSlotDurationMinutes` (durata di occupazione di un tavolo, per calcolare sovrapposizioni/turni).
 
 Diagramma ER semplificato:
@@ -216,7 +216,7 @@ All'accesso, Admin e Manager vedono in cima alla home un riepilogo di ciò che r
 
 Se non c'è nulla che richiede attenzione, la sezione lo segnala esplicitamente invece di restare vuota. I moduli operativi restano comunque disponibili come tile sotto il riepilogo, per l'uso normale.
 
-### 5.7 Prenotazioni tavoli *(proposta di progettazione — non ancora implementata)*
+### 5.7 Prenotazioni tavoli *(implementata — v1: assegnazione a un solo tavolo, blocco rigido su overbooking, nessun accorpamento tavoli, nessuna cancellazione self-service; vedi §10 per le estensioni ancora aperte)*
 
 Modulo per raccogliere prenotazioni online senza che il cliente debba telefonare: conferma automatica per le richieste piccole quando c'è posto, revisione manuale del locale per quelle grandi o quando la capienza è al limite.
 
@@ -269,7 +269,7 @@ Modulo per raccogliere prenotazioni online senza che il cliente debba telefonare
 11. **Modalità offline-first per HACCP/presenze** — service worker con coda locale (IndexedDB).
 12. **QR per tavolo con ordinazione** — evoluzione naturale del menù online: dal semplice "consulta" a un vero e proprio invio ordine al tavolo (fuori scope v1, ma il modello `MenuItem` è già compatibile).
 13. **Integrazione futura con cassa/POS di vendita** — collegamento a incassi/consumi reali per suggerire automaticamente la `standardQty`.
-14. ~~Prenotazioni tavoli online~~ — **progettato** in dettaglio in §5.7 (non ancora implementato): widget pubblico di prenotazione, tavoli con posti, assegnazione automatica/manuale che massimizza l'occupazione, conferma automatica sotto una soglia di posti configurabile, blocco delle richieste che superano la capienza con alert admin.
+14. ~~Prenotazioni tavoli online~~ — **implementato** in dettaglio in §5.7: widget pubblico di prenotazione, tavoli con posti, assegnazione automatica/manuale che massimizza l'occupazione, conferma automatica sotto una soglia di posti configurabile, blocco delle richieste che superano la capienza con alert admin.
 
 Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità aggiuntiva) o v2/v3 (da valutare con l'utente).
 
@@ -325,9 +325,14 @@ Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità 
 
 Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/email), allegati alle attività/scadenze.
 
+**Fase 1-bis — Prenotazioni tavoli (completata, §5.7)**
+- Backend: modelli `Table`/`Reservation`, calcolo disponibilità/sovrapposizioni, assegnazione automatica best-fit, soglia di conferma automatica, blocco rigido su overbooking con alert admin (`Notification`), email al cliente (ricevuta/confermata/rifiutata con motivo), impostazioni per locale.
+- Frontend: admin Tavoli (CRUD), coda Prenotazioni (accetta/rifiuta con motivo, riassegnazione tavolo), Impostazioni prenotazioni (soglia, durata slot, orizzonte, link/QR pubblico), widget pubblico `/prenota`.
+- Test Jest sulla logica di disponibilità/best-fit/soglia/overbooking.
+- Resta aperto (§10): accorpamento automatico di più tavoli, lista d'attesa in caso di overbooking, cancellazione self-service dal cliente, giorni di chiusura, promemoria SMS/WhatsApp, integrazione "Reserve with Google" di livello 3.
+
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
-- **Prenotazioni tavoli** (progettato in §5.7): tavoli, widget pubblico, assegnazione automatica/manuale, conferma automatica sotto soglia, blocco overbooking con alert admin.
 - App Android via Capacitor.
 - Offline-first per HACCP/presenze.
 
@@ -379,14 +384,14 @@ Il motivo di questa scelta: nessuna libreria browser può aprire una connessione
 - Dove verrà ospitato in produzione: server on-premise vs VPS cloud (impatta la strategia stampanti, vedi §9.2).
 - Provider SMTP: globale di piattaforma (un solo mittente per tutti i locali) oppure configurabile per singolo locale.
 - Contratto orario dipendenti (per calcolo straordinari/ferie maturate): regole CCNL da applicare.
-- **Prenotazioni (§5.7)** — da confermare prima di iniziare l'implementazione:
-  - Durata standard di occupazione di un tavolo (default proposto 120 minuti) e se un locale userà davvero il turnover (più prenotazioni sullo stesso tavolo in orari diversi dello stesso servizio) o preferisce "un turno = tutto il servizio".
-  - Se serve, fin da v1, la combinazione automatica di più tavoli per un unico gruppo grande, o basta l'assegnazione manuale dell'admin (v1 proposta: solo manuale).
-  - Se le richieste bloccate per overbooking vanno solo rifiutate o messe in una "lista d'attesa" consultabile dall'admin, nel caso si liberi un posto per cancellazione.
-  - Se, oltre all'email, serve un promemoria via SMS/WhatsApp al cliente (richiederebbe un provider terzo, es. Twilio — fuori scope v1).
-  - Se il cliente deve poter annullare/modificare la propria prenotazione da un link nell'email di conferma (self-service), o solo l'admin può farlo.
-  - Giorni di chiusura/ferie del locale da bloccare esplicitamente nel calendario prenotazioni: oggi il `Venue` ha solo fasce orarie pranzo/cena, non giorni di chiusura.
-  - Se e quando perseguire l'integrazione "Reserve with Google" di **livello 3** (§5.7): richiede una domanda di partnership a Google **a nome di BarManager come piattaforma**, non del singolo locale, con impegni tecnici e di affidabilità continui — da trattare come progetto separato, non come parte del rilascio v1. I livelli 1 e 2 (link su Google Business Profile, dati strutturati sulla pagina pubblica) sono invece adottabili da subito, a costo quasi nullo, non appena la pagina `/prenota` esiste.
+- **Prenotazioni (§5.7)** — implementata in v1 con queste scelte di default (da confermare/rivedere con l'utente):
+  - Durata di occupazione di un tavolo impostata a 120 minuti di default (`Venue.reservationSlotDurationMinutes`, configurabile in Impostazioni prenotazioni). Resta da capire se un locale userà davvero il turnover (più prenotazioni sullo stesso tavolo in orari diversi dello stesso servizio) o preferisce "un turno = tutto il servizio" (in tal caso basta impostare una durata pari all'intero servizio).
+  - v1 **non combina automaticamente più tavoli** per un unico gruppo grande: se nessun tavolo singolo basta, la prenotazione resta `PENDING` senza tavolo assegnato e l'admin decide a mano (anche accostando fisicamente due tavoli). Estensione v2 possibile se richiesta.
+  - Le richieste bloccate per overbooking oggi vengono **solo rifiutate** (nessuna prenotazione creata, solo un Alert admin): non esiste ancora una "lista d'attesa" consultabile in caso di cancellazione successiva.
+  - Nessun promemoria SMS/WhatsApp al cliente (solo email): richiederebbe un provider terzo, es. Twilio — fuori scope v1.
+  - Il cliente **non può** annullare/modificare la propria prenotazione da solo: solo l'admin può farlo (accetta/rifiuta/annulla), non c'è un link di self-service nell'email.
+  - Giorni di chiusura/ferie del locale non sono ancora bloccabili nel calendario prenotazioni: oggi il `Venue` ha solo fasce orarie pranzo/cena, non giorni di chiusura (una richiesta in un giorno di chiusura verrebbe accettata se l'orario cade in una fascia valida).
+  - Se e quando perseguire l'integrazione "Reserve with Google" di **livello 3** (§5.7): richiede una domanda di partnership a Google **a nome di BarManager come piattaforma**, non del singolo locale, con impegni tecnici e di affidabilità continui — da trattare come progetto separato, non come parte del rilascio v1. I livelli 1 e 2 (link su Google Business Profile, dati strutturati sulla pagina pubblica) sono invece adottabili da subito, a costo quasi nullo, ora che la pagina `/prenota` esiste.
 
 ---
 
@@ -413,7 +418,7 @@ BarManager/
 │       ├── dashboard/           (riepilogo home amministrazione)
 │       ├── printing/            (client ESC/POS)
 │       ├── reports/             (PDF/XLS)
-│       └── reservations/        (§5.7 — proposta, non ancora creata: tavoli, prenotazioni, widget pubblico)
+│       └── reservations/        (§5.7 — tavoli, prenotazioni, endpoint pubblico)
 └── frontend/                   (React + MUI PWA)
     └── src/
         ├── components/AdminSummary.tsx  (riepilogo in home)
@@ -423,5 +428,5 @@ BarManager/
         ├── pages/inventory/     (nuovo ordine + fornitori/giorni ordine)
         ├── pages/menu/          (admin + pagina pubblica)
         ├── pages/tasks/
-        └── pages/reservations/  (§5.7 — proposta, non ancora creata: admin tavoli/prenotazioni + pagina pubblica /prenota)
+        └── pages/reservations/  (§5.7 — admin tavoli/prenotazioni/impostazioni + pagina pubblica /prenota)
 ```

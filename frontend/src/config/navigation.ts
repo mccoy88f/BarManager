@@ -10,6 +10,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import StoreIcon from '@mui/icons-material/Store';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
+import EventSeatIcon from '@mui/icons-material/EventSeat';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -185,6 +186,29 @@ export const navigation: NavItem[] = [
         path: '/tasks/history',
         icon: EventNoteIcon,
         description: 'Attività completate',
+      },
+    ],
+  },
+  {
+    key: 'reservations',
+    label: 'Prenotazioni',
+    path: '/reservations',
+    icon: EventSeatIcon,
+    description: 'Richieste, tavoli, widget pubblico',
+    moduleKey: 'reservations',
+    children: [
+      {
+        key: 'reservations-tables',
+        label: 'Tavoli',
+        path: '/reservations/tables',
+        icon: EventSeatIcon,
+      },
+      {
+        key: 'reservations-settings',
+        label: 'Impostazioni prenotazioni',
+        path: '/reservations/settings',
+        icon: EventSeatIcon,
+        roles: ['ADMIN'],
       },
     ],
   },

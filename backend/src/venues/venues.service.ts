@@ -8,6 +8,7 @@ import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
+import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -93,6 +94,10 @@ export class VenuesService {
         menuInstagramUrl: true,
         menuFacebookUrl: true,
         menuWebsiteUrl: true,
+        reservationsEnabled: true,
+        reservationAutoConfirmMaxSeats: true,
+        reservationSlotDurationMinutes: true,
+        reservationHorizonDays: true,
       },
     });
   }
@@ -115,5 +120,9 @@ export class VenuesService {
 
   setMenuCover(venueId: string, menuCoverUrl: string) {
     return this.prisma.venue.update({ where: { id: venueId }, data: { menuCoverUrl } });
+  }
+
+  updateReservationSettings(venueId: string, dto: UpdateReservationSettingsDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 }

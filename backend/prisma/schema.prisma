@@ -88,6 +88,19 @@ model Venue {
   attendanceRetentionValue            Int?
   attendanceRetentionUnit             AttendanceRetentionUnit?
 
+  // Prenotazioni tavoli (§5.7 di DEVELOPMENT.md): modulo opzionale,
+  // disattivato di default finché l'admin non censisce i tavoli.
+  reservationsEnabled Boolean @default(false)
+  // Sopra questa soglia di posti la prenotazione richiede sempre conferma
+  // manuale, anche se l'assegnazione automatica del tavolo ha successo.
+  reservationAutoConfirmMaxSeats Int @default(6)
+  // Durata (minuti) per cui una prenotazione occupa il tavolo assegnato:
+  // usata per calcolare le sovrapposizioni fra prenotazioni.
+  reservationSlotDurationMinutes Int @default(120)
+  // Quanti giorni in avanti dal momento della richiesta è possibile
+  // prenotare dal widget pubblico.
+  reservationHorizonDays Int @default(30)
+
   users             User[]
   employees         Employee[]
   fridges           Fridge[]
@@ -105,6 +118,8 @@ model Venue {
   tasks             Task[]
   boardMessages     BoardMessage[]
   kbArticles        KbArticle[]
+  tables            Table[]
+  reservations      Reservation[]
 }
 
 model User {
@@ -131,6 +146,7 @@ model User {
   kbArticles              KbArticle[]
   ordersCreated           Order[]
   cleaningLogs            CleaningLog[]
+  reservationsHandled     Reservation[]       @relation("ReservationRespondedBy")
 }
 
 // ---------------------------------------------------------------------------
@@ -781,6 +797,8 @@ enum NotificationType {
   TEMPERATURE_OUT_OF_RANGE
   STOCK_LOW
   ORDER_SENT
+  RESERVATION_PENDING
+  RESERVATION_BLOCKED
 }
 
 model Notification {
@@ -793,4 +811,69 @@ model Notification {
   user   User   @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Prenotazioni tavoli (§5.7 di DEVELOPMENT.md)
+// ---------------------------------------------------------------------------
+
+/// Tavolo censito dall'admin. "active: false" lo ritira dalle nuove
+/// prenotazioni senza perdere lo storico di quelle già assegnate.
+model Table {
+  id     String  @id @default(cuid())
+  label  String // numero o nome, es. "12" o "Terrazza 2"
+  seats  Int
+  active Boolean @default(true)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  reservations Reservation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId])
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+/// Richiesta di prenotazione da parte di un cliente (widget pubblico,
+/// nessun login). Isolata per venueId come tutte le altre entità.
+model Reservation {
+  id            String            @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String
+  phone         String
+  partySize     Int
+  reservedAt    DateTime // data/ora richiesta
+  isEvent       Boolean           @default(false)
+  eventNote     String? // es. "Compleanno"
+  allergiesNote String?
+  notes         String?
+  status        ReservationStatus @default(PENDING)
+  // Obbligatoria solo se status = REJECTED.
+  rejectionReason String?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id])
+
+  respondedById String?
+  respondedBy   User?     @relation("ReservationRespondedBy", fields: [respondedById], references: [id])
+  respondedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, reservedAt])
+  @@index([tableId])
 }
