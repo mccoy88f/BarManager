@@ -246,6 +246,12 @@ Modulo per raccogliere prenotazioni online senza che il cliente debba telefonare
 - **Impostazioni prenotazioni**: attiva/disattiva il modulo, soglia posti per conferma automatica, durata di occupazione del tavolo (minuti), orizzonte massimo di prenotabilità.
 - Una volta implementato, le prenotazioni in attesa di conferma e i blocchi per overbooking alimenterebbero anche la home dell'amministrazione (§5.6), sullo stesso principio delle richieste ferie e degli ordini del giorno.
 
+**Integrazione con Google (ricerca/Maps):** tre livelli possibili, con impegno molto diverso — dal semplice link a un vero progetto a parte:
+
+1. **Link di prenotazione su Google Business Profile** *(subito, zero sviluppo lato BarManager)* — ogni locale, dal proprio account Google Business Profile ("Prenotazioni" → "Aggiungi link"), può incollare l'URL della pagina pubblica `/prenota`. Compare come link generico ("Prenota") nella scheda del locale su Search/Maps, di norma attivo entro 24-48 ore. È una configurazione che fa il gestore del locale sul proprio account Google, non richiede nessuna integrazione né codice da parte nostra. Non dà il bottone blu nativo "Prenota" né la disponibilità in tempo reale — solo un link verso il nostro widget.
+2. **Dati strutturati sulla pagina pubblica** (`ReserveAction`/`FoodEstablishmentReservation`, schema.org — sviluppo minimo: un blocco JSON-LD con nome locale, orari e l'azione di prenotazione con URL, sulla pagina `/prenota`) — può far comparire un'azione "Prenota" nei risultati di ricerca, ma **non è garantito**: è Google a decidere autonomamente se e quando mostrarlo, non è un'integrazione formale né richiede approvazione.
+3. **"Reserve with Google" vero e proprio** (bottone blu nativo + disponibilità in tempo reale su Search/Maps) — richiede che **BarManager stesso** (non il singolo locale) diventi **partner approvato** di Google tramite l'Actions Center (API "Reservations end-to-end"): relazione contrattuale diretta con i locali, indirizzo di ciascuno corrispondente alla sua scheda Google Maps, ed esposizione a Google — in tempo reale — di disponibilità e stato prenotazione nel formato standard richiesto (persone, fasce orarie, conferma), che ricalca bene il modello `Table`/`Reservation` già progettato sopra. È un impegno molto più grande della sola app: domanda di partnership, revisione tecnica di Google, requisiti di affidabilità/performance continui (Google monitora ad es. il tempo medio di completamento di una prenotazione). Va trattato come **progetto separato**, da confermare esplicitamente (§10), non come parte del rilascio v1. Alternativa più rapida ma meno indipendente: integrarsi non direttamente con Google ma con un aggregatore già partner (es. Eat App, Tableo, resOS, SevenRooms) che fa da tramite — a costo di una dipendenza (spesso un abbonamento) da quella piattaforma terza, che finirebbe in parte a sovrapporsi con quanto BarManager offrirebbe già in proprio.
+
 ---
 
 ## 6. Altri moduli utili individuati (proposte)
@@ -327,6 +333,7 @@ Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/ema
 
 **Fase 3 — Estensioni**
 - Permessi granulari, multi-lingua (incluso menù pubblico), backup gestito, QR tavolo con ordinazione, integrazione cassa/vendite.
+- *(se confermato, progetto separato)* Partnership "Reserve with Google" di livello 3 per le Prenotazioni (§5.7): richiede domanda a Google come piattaforma, non è collegata al rilascio v1 del modulo.
 
 ---
 
@@ -379,6 +386,7 @@ Il motivo di questa scelta: nessuna libreria browser può aprire una connessione
   - Se, oltre all'email, serve un promemoria via SMS/WhatsApp al cliente (richiederebbe un provider terzo, es. Twilio — fuori scope v1).
   - Se il cliente deve poter annullare/modificare la propria prenotazione da un link nell'email di conferma (self-service), o solo l'admin può farlo.
   - Giorni di chiusura/ferie del locale da bloccare esplicitamente nel calendario prenotazioni: oggi il `Venue` ha solo fasce orarie pranzo/cena, non giorni di chiusura.
+  - Se e quando perseguire l'integrazione "Reserve with Google" di **livello 3** (§5.7): richiede una domanda di partnership a Google **a nome di BarManager come piattaforma**, non del singolo locale, con impegni tecnici e di affidabilità continui — da trattare come progetto separato, non come parte del rilascio v1. I livelli 1 e 2 (link su Google Business Profile, dati strutturati sulla pagina pubblica) sono invece adottabili da subito, a costo quasi nullo, non appena la pagina `/prenota` esiste.
 
 ---
 
