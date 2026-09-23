@@ -6,6 +6,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
+import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
 
 interface ReservationVenueSettings {
@@ -17,6 +18,8 @@ interface ReservationVenueSettings {
   reservationAutoConfirmMaxSeats: number;
   reservationSlotDurationMinutes: number;
   reservationHorizonDays: number;
+  reservationOverbookingUnlimited: boolean;
+  reservationOverbookingExtraSeats: number;
   lunchStart: string;
   lunchEnd: string;
   dinnerStart: string;
@@ -32,6 +35,8 @@ const VENUE_SELECT = {
   reservationAutoConfirmMaxSeats: true,
   reservationSlotDurationMinutes: true,
   reservationHorizonDays: true,
+  reservationOverbookingUnlimited: true,
+  reservationOverbookingExtraSeats: true,
   lunchStart: true,
   lunchEnd: true,
   dinnerStart: true,
@@ -182,7 +187,14 @@ export class ReservationsService {
     const overlapping = await this.findOverlapping(venueId, reservedAt, venue.reservationSlotDurationMinutes);
     const occupiedSeats = overlapping.reduce((sum, r) => sum + r.partySize, 0);
 
-    if (occupiedSeats + dto.partySize > totalSeats) {
+    // Tolleranza di overbooking configurabile in Impostazioni prenotazioni
+    // (§10 di DEVELOPMENT.md): "unlimited" disattiva del tutto il blocco,
+    // altrimenti si accetta di superare la capienza fino a extraSeats posti.
+    const capacityWithTolerance = totalSeats + venue.reservationOverbookingExtraSeats;
+    const exceedsCapacity =
+      !venue.reservationOverbookingUnlimited && occupiedSeats + dto.partySize > capacityWithTolerance;
+
+    if (exceedsCapacity) {
       const admins = await this.prisma.user.findMany({ where: { venueId, role: 'ADMIN' } });
       await this.prisma.notification.createMany({
         data: admins.map((a) => ({
@@ -210,7 +222,7 @@ export class ReservationsService {
         venueId,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        email: dto.email,
+        email: dto.email.trim().toLowerCase(),
         phone: dto.phone,
         partySize: dto.partySize,
         reservedAt,
@@ -259,12 +271,158 @@ export class ReservationsService {
 
   // ---- Amministrazione -----------------------------------------------------
 
-  listReservations(venueId: string, status?: ReservationStatus) {
-    return this.prisma.reservation.findMany({
-      where: { venueId, status },
+  /**
+   * `withoutTable`: ignora `status` e restituisce, indipendentemente dallo
+   * stato, tutte le prenotazioni attive (PENDING/CONFIRMED) senza un
+   * tavolo assegnato — la "coda prenotazioni" da assegnare, che raccoglie
+   * sia le richieste online rimaste manuali sia quelle aggiunte a mano in
+   * backoffice senza scegliere un tavolo.
+   *
+   * Ogni riga porta anche `isReturningCustomer`: true se la stessa email
+   * ha più di una prenotazione presso questo locale, per mostrare in UI il
+   * pulsante "storico cliente".
+   */
+  async listReservations(venueId: string, status?: ReservationStatus, withoutTable?: boolean) {
+    const reservations = await this.prisma.reservation.findMany({
+      where: {
+        venueId,
+        status: withoutTable ? { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] } : status,
+        tableId: withoutTable ? null : undefined,
+      },
       include: { table: true },
       orderBy: { reservedAt: 'asc' },
     });
+
+    const emails = [...new Set(reservations.map((r) => r.email))];
+    const counts =
+      emails.length === 0
+        ? []
+        : await this.prisma.reservation.groupBy({
+            by: ['email'],
+            where: { venueId, email: { in: emails } },
+            _count: { _all: true },
+          });
+    const countByEmail = new Map(counts.map((c) => [c.email, c._count._all]));
+
+    return reservations.map((r) => ({
+      ...r,
+      isReturningCustomer: (countByEmail.get(r.email) ?? 1) > 1,
+    }));
+  }
+
+  /**
+   * Clienti già prenotati che combaciano con la ricerca (nome, cognome,
+   * email o telefono): usato per "pescare" i dati di un cliente esistente
+   * quando si aggiunge una prenotazione a mano in backoffice. Un cliente è
+   * qui solo una email distinta fra le prenotazioni passate — non esiste
+   * un'anagrafica clienti separata (v1).
+   */
+  async searchCustomers(venueId: string, query: string) {
+    const q = query?.trim();
+    if (!q || q.length < 2) return [];
+
+    const matches = await this.prisma.reservation.findMany({
+      where: {
+        venueId,
+        OR: [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { reservedAt: 'desc' },
+      take: 200,
+    });
+
+    const byEmail = new Map<
+      string,
+      { firstName: string; lastName: string; email: string; phone: string; count: number; lastReservedAt: Date }
+    >();
+    for (const r of matches) {
+      const existing = byEmail.get(r.email);
+      if (existing) {
+        existing.count += 1;
+        if (r.reservedAt > existing.lastReservedAt) {
+          existing.lastReservedAt = r.reservedAt;
+          existing.firstName = r.firstName;
+          existing.lastName = r.lastName;
+          existing.phone = r.phone;
+        }
+      } else {
+        byEmail.set(r.email, {
+          firstName: r.firstName,
+          lastName: r.lastName,
+          email: r.email,
+          phone: r.phone,
+          count: 1,
+          lastReservedAt: r.reservedAt,
+        });
+      }
+    }
+
+    return [...byEmail.values()]
+      .sort((a, b) => b.lastReservedAt.getTime() - a.lastReservedAt.getTime())
+      .slice(0, 10);
+  }
+
+  /** Storico completo di un cliente (per email), per il pulsante "storico cliente". */
+  getCustomerHistory(venueId: string, email: string) {
+    return this.prisma.reservation.findMany({
+      where: { venueId, email: email.trim().toLowerCase() },
+      include: { table: true },
+      orderBy: { reservedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Prenotazione aggiunta a mano dallo staff (telefono, di persona, ecc.):
+   * a differenza di createPublicReservation, non applica MAI il calcolo di
+   * disponibilità né il blocco overbooking — lo staff può sempre
+   * registrarla, con o senza tavolo assegnato (se senza, resta nella coda
+   * "senza tavolo" finché non viene assegnato). Considerata già accettata
+   * dallo staff: nasce direttamente CONFIRMED, non PENDING.
+   */
+  async createManualReservation(user: AuthenticatedUser, venueId: string, dto: CreateManualReservationDto) {
+    const venue = await this.getVenueSettings(venueId);
+    const reservedAt = new Date(dto.reservedAt);
+    if (Number.isNaN(reservedAt.getTime())) {
+      throw new BadRequestException('Data/ora non valida');
+    }
+    if (dto.tableId) await this.requireOwnTable(venueId, dto.tableId);
+
+    const reservation = await this.prisma.reservation.create({
+      data: {
+        venueId,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email.trim().toLowerCase(),
+        phone: dto.phone,
+        partySize: dto.partySize,
+        reservedAt,
+        isEvent: dto.isEvent ?? false,
+        eventNote: dto.eventNote,
+        allergiesNote: dto.allergiesNote,
+        notes: dto.notes,
+        status: ReservationStatus.CONFIRMED,
+        tableId: dto.tableId ?? null,
+        manageToken: randomUUID(),
+        respondedById: user.userId,
+        respondedAt: new Date(),
+      },
+      include: { table: true },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: user.userId,
+      entity: 'Reservation',
+      entityId: reservation.id,
+      action: 'CREATE',
+      after: reservation,
+    });
+    await this.mail.sendConfirmed(reservation, venue.name, venue.email);
+    return reservation;
   }
 
   private async requireReservation(venueId: string, reservationId: string) {

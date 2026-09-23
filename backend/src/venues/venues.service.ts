@@ -98,6 +98,8 @@ export class VenuesService {
         reservationAutoConfirmMaxSeats: true,
         reservationSlotDurationMinutes: true,
         reservationHorizonDays: true,
+        reservationOverbookingUnlimited: true,
+        reservationOverbookingExtraSeats: true,
       },
     });
   }

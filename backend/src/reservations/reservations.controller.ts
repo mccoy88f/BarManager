@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ReservationStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -13,6 +13,7 @@ import { ReservationsService } from './reservations.service';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
 import { AcceptReservationDto } from './dto/accept-reservation.dto';
 import { AssignTableDto } from './dto/assign-table.dto';
+import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
 
 /** Coda prenotazioni, lato admin/manager autorizzato (§5.7). */
 @Controller('reservations')
@@ -21,15 +22,42 @@ import { AssignTableDto } from './dto/assign-table.dto';
 export class ReservationsController {
   constructor(private reservationsService: ReservationsService) {}
 
+  /**
+   * `withoutTable=true` ignora `status` e restituisce la coda delle
+   * prenotazioni attive senza tavolo assegnato, qualunque sia il loro
+   * stato (PENDING dal widget pubblico o CONFIRMED aggiunte a mano).
+   */
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser, @Query('status') status?: ReservationStatus) {
-    return this.reservationsService.listReservations(requireVenueId(user), status);
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('status') status?: ReservationStatus,
+    @Query('withoutTable') withoutTable?: string,
+  ) {
+    return this.reservationsService.listReservations(requireVenueId(user), status, withoutTable === 'true');
   }
 
   /** Posti disponibili per un orario/party size dato, per il conteggio sempre visibile in coda. */
   @Get('availability')
   availability(@CurrentUser() user: AuthenticatedUser, @Query('reservedAt') reservedAt: string) {
     return this.reservationsService.getAvailability(requireVenueId(user), reservedAt);
+  }
+
+  /** Clienti già prenotati che combaciano con la ricerca, per "pescare" i dati in fase di aggiunta manuale. */
+  @Get('customers/search')
+  searchCustomers(@CurrentUser() user: AuthenticatedUser, @Query('query') query?: string) {
+    return this.reservationsService.searchCustomers(requireVenueId(user), query ?? '');
+  }
+
+  /** Storico completo di un cliente (per email), per il pulsante "storico cliente". */
+  @Get('customers/history')
+  customerHistory(@CurrentUser() user: AuthenticatedUser, @Query('email') email: string) {
+    return this.reservationsService.getCustomerHistory(requireVenueId(user), email);
+  }
+
+  /** Aggiunta manuale in backoffice (telefono, di persona, ...): nessun vincolo di disponibilità, tavolo opzionale. */
+  @Post('manual')
+  createManual(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateManualReservationDto) {
+    return this.reservationsService.createManualReservation(user, requireVenueId(user), dto);
   }
 
   @Patch(':id/accept')

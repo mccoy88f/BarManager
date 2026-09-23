@@ -20,6 +20,8 @@ interface VenueReservationSettings {
   reservationAutoConfirmMaxSeats: number;
   reservationSlotDurationMinutes: number;
   reservationHorizonDays: number;
+  reservationOverbookingUnlimited: boolean;
+  reservationOverbookingExtraSeats: number;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -45,6 +47,8 @@ export function ReservationSettings() {
     reservationAutoConfirmMaxSeats: '',
     reservationSlotDurationMinutes: '',
     reservationHorizonDays: '',
+    reservationOverbookingUnlimited: false,
+    reservationOverbookingExtraSeats: '',
   });
 
   const venueQuery = useQuery({
@@ -59,6 +63,8 @@ export function ReservationSettings() {
         reservationAutoConfirmMaxSeats: String(venueQuery.data.reservationAutoConfirmMaxSeats),
         reservationSlotDurationMinutes: String(venueQuery.data.reservationSlotDurationMinutes),
         reservationHorizonDays: String(venueQuery.data.reservationHorizonDays),
+        reservationOverbookingUnlimited: venueQuery.data.reservationOverbookingUnlimited,
+        reservationOverbookingExtraSeats: String(venueQuery.data.reservationOverbookingExtraSeats),
       });
     }
   }, [venueQuery.data]);
@@ -71,6 +77,8 @@ export function ReservationSettings() {
           reservationAutoConfirmMaxSeats: Number(form.reservationAutoConfirmMaxSeats),
           reservationSlotDurationMinutes: Number(form.reservationSlotDurationMinutes),
           reservationHorizonDays: Number(form.reservationHorizonDays),
+          reservationOverbookingUnlimited: form.reservationOverbookingUnlimited,
+          reservationOverbookingExtraSeats: Number(form.reservationOverbookingExtraSeats),
         })
       ).data,
     onSuccess: () => {
@@ -132,6 +140,43 @@ export function ReservationSettings() {
               sx={{ gridColumn: '1 / -1' }}
             />
           </Box>
+
+          <Typography variant="subtitle2" sx={{ mt: 3 }} gutterBottom>
+            Overbooking
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Tolleranza sul blocco automatico del widget pubblico quando le richieste superano la
+            capienza dei tavoli attivi. Non riguarda le prenotazioni aggiunte a mano in backoffice,
+            che non hanno mai questo vincolo.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.reservationOverbookingUnlimited}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, reservationOverbookingUnlimited: e.target.checked }))
+                }
+              />
+            }
+            label={
+              form.reservationOverbookingUnlimited
+                ? 'Overbooking illimitato (il widget non blocca mai per capienza)'
+                : 'Overbooking limitato a una soglia di posti extra'
+            }
+          />
+          {!form.reservationOverbookingUnlimited && (
+            <TextField
+              label="Posti extra tollerati sopra la capienza"
+              type="number"
+              inputProps={{ min: 0 }}
+              helperText="0 = blocco rigido non appena la capienza è superata (comportamento storico)."
+              value={form.reservationOverbookingExtraSeats}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, reservationOverbookingExtraSeats: e.target.value }))
+              }
+              sx={{ mt: 1, maxWidth: 300, display: 'block' }}
+            />
+          )}
 
           <Button
             variant="contained"

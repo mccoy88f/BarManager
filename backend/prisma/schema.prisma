@@ -100,6 +100,14 @@ model Venue {
   // Quanti giorni in avanti dal momento della richiesta è possibile
   // prenotare dal widget pubblico.
   reservationHorizonDays Int @default(30)
+  // Tolleranza sul blocco overbooking del widget pubblico: se
+  // "unlimited" è true, le richieste non vengono mai bloccate per
+  // capienza; altrimenti si accetta di superare la capienza totale dei
+  // tavoli attivi fino a "extraSeats" posti in più (0 = blocco rigido,
+  // comportamento storico). Non riguarda le prenotazioni aggiunte
+  // manualmente in backoffice, che non hanno mai questo vincolo.
+  reservationOverbookingUnlimited  Boolean @default(false)
+  reservationOverbookingExtraSeats Int     @default(0)
 
   users             User[]
   employees         Employee[]

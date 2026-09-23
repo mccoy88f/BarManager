@@ -22,6 +22,8 @@ const baseVenue = {
   reservationAutoConfirmMaxSeats: 6,
   reservationSlotDurationMinutes: 120,
   reservationHorizonDays: 30,
+  reservationOverbookingUnlimited: false,
+  reservationOverbookingExtraSeats: 0,
   lunchStart: '12:00',
   lunchEnd: '15:00',
   dinnerStart: '19:00',
@@ -45,6 +47,7 @@ describe('ReservationsService', () => {
       findUnique: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      groupBy: jest.Mock;
     };
     user: { findMany: jest.Mock };
     notification: { createMany: jest.Mock };
@@ -67,6 +70,7 @@ describe('ReservationsService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        groupBy: jest.fn().mockResolvedValue([]),
       },
       user: { findMany: jest.fn().mockResolvedValue([]) },
       notification: { createMany: jest.fn() },
@@ -461,6 +465,210 @@ describe('ReservationsService', () => {
       prisma.table.findMany.mockResolvedValue([]);
       await expect(service.acceptByToken('res-1', 'secret-token', undefined)).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+    });
+  });
+
+  describe('tolleranza overbooking configurabile', () => {
+    const dto = {
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      email: 'mario@test.it',
+      phone: '3331234567',
+      partySize: 4,
+      reservedAt: '',
+    };
+
+    it('accetta di superare la capienza entro la soglia di posti extra', async () => {
+      const reservedAt = nextDinnerSlot();
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingExtraSeats: 4 });
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+      ]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      const result = await service.createPublicReservation('venue-1', {
+        ...dto,
+        partySize: 4, // 2 già occupati + 4 = 6, sopra i 4 totali ma dentro i +4 di tolleranza
+        reservedAt: reservedAt.toISOString(),
+      });
+
+      expect(result.status).toBeDefined();
+      expect(prisma.reservation.create).toHaveBeenCalled();
+    });
+
+    it('blocca comunque se si supera anche la soglia di posti extra', async () => {
+      const reservedAt = nextDinnerSlot();
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingExtraSeats: 1 });
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+      ]);
+
+      await expect(
+        service.createPublicReservation('venue-1', {
+          ...dto,
+          partySize: 4, // 2 + 4 = 6 > 4 totali + 1 di tolleranza
+          reservedAt: reservedAt.toISOString(),
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('non blocca mai se l\'overbooking è impostato come illimitato', async () => {
+      const reservedAt = nextDinnerSlot();
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationOverbookingUnlimited: true });
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 2, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        { id: 'existing', reservedAt, partySize: 2, tableId: 't1', status: ReservationStatus.CONFIRMED },
+      ]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      const result = await service.createPublicReservation('venue-1', {
+        ...dto,
+        partySize: 20, // ben oltre la capienza (2 posti totali)
+        reservedAt: reservedAt.toISOString(),
+      });
+
+      expect(result).toBeDefined();
+      expect(prisma.reservation.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('creazione manuale in backoffice', () => {
+    const manualDto = {
+      firstName: 'Giulia',
+      lastName: 'Bianchi',
+      email: 'Giulia.Bianchi@Test.IT',
+      phone: '3339876543',
+      partySize: 12,
+      reservedAt: '2026-01-15T20:00:00.000Z',
+    };
+
+    it('crea sempre la prenotazione, anche oltre la capienza e senza tavolo, già CONFIRMED', async () => {
+      // Nessuna chiamata a table.findMany/reservation.findMany per il
+      // calcolo disponibilità: la creazione manuale non lo esegue affatto.
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      const result = await service.createManualReservation(admin, 'venue-1', manualDto);
+
+      expect(prisma.reservation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: ReservationStatus.CONFIRMED,
+            tableId: null,
+            email: 'giulia.bianchi@test.it', // normalizzata in minuscolo
+            respondedById: 'admin-1',
+          }),
+        }),
+      );
+      expect(audit.log).toHaveBeenCalled();
+      expect(mail.sendConfirmed).toHaveBeenCalled();
+      expect(result.status).toBe(ReservationStatus.CONFIRMED);
+    });
+
+    it('assegna il tavolo indicato se fornito, verificandone la proprietà', async () => {
+      prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      await service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' });
+
+      expect(prisma.reservation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ tableId: 'table-1' }) }),
+      );
+    });
+
+    it('rifiuta se il tavolo indicato non appartiene al locale', async () => {
+      prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-2' });
+      await expect(
+        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.reservation.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('clienti (ricerca e storico)', () => {
+    const reservationsByCustomer = [
+      {
+        id: 'r1',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333111',
+        reservedAt: new Date('2026-01-01T20:00:00Z'),
+      },
+      {
+        id: 'r2',
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333111',
+        reservedAt: new Date('2026-02-01T20:00:00Z'),
+      },
+    ];
+
+    it('raggruppa i risultati della ricerca per email, con conteggio e ultima prenotazione', async () => {
+      prisma.reservation.findMany.mockResolvedValue(reservationsByCustomer);
+
+      const result = await service.searchCustomers('venue-1', 'Mario');
+
+      expect(result).toEqual([
+        expect.objectContaining({ email: 'mario@test.it', count: 2 }),
+      ]);
+    });
+
+    it('non effettua ricerche troppo corte', async () => {
+      const result = await service.searchCustomers('venue-1', 'M');
+      expect(result).toEqual([]);
+      expect(prisma.reservation.findMany).not.toHaveBeenCalled();
+    });
+
+    it('restituisce lo storico di un cliente normalizzando l\'email', async () => {
+      prisma.reservation.findMany.mockResolvedValue(reservationsByCustomer);
+      await service.getCustomerHistory('venue-1', 'Mario@Test.IT');
+      expect(prisma.reservation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { venueId: 'venue-1', email: 'mario@test.it' } }),
+      );
+    });
+  });
+
+  describe('listReservations', () => {
+    it('marca isReturningCustomer quando la stessa email ha più di una prenotazione', async () => {
+      prisma.reservation.findMany.mockResolvedValue([
+        { id: 'r1', email: 'mario@test.it', reservedAt: nextDinnerSlot() },
+        { id: 'r2', email: 'unica@test.it', reservedAt: nextDinnerSlot() },
+      ]);
+      prisma.reservation.groupBy.mockResolvedValue([
+        { email: 'mario@test.it', _count: { _all: 2 } },
+        { email: 'unica@test.it', _count: { _all: 1 } },
+      ]);
+
+      const result = await service.listReservations('venue-1');
+
+      expect(result.find((r) => r.id === 'r1')?.isReturningCustomer).toBe(true);
+      expect(result.find((r) => r.id === 'r2')?.isReturningCustomer).toBe(false);
+    });
+
+    it('con withoutTable=true ignora lo stato e filtra tableId: null', async () => {
+      prisma.reservation.findMany.mockResolvedValue([]);
+      await service.listReservations('venue-1', ReservationStatus.REJECTED, true);
+
+      expect(prisma.reservation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            venueId: 'venue-1',
+            status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
+            tableId: null,
+          },
+        }),
       );
     });
   });

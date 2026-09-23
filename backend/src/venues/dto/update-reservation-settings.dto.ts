@@ -22,4 +22,15 @@ export class UpdateReservationSettingsDto {
   @IsInt()
   @Min(1)
   reservationHorizonDays?: number;
+
+  /** Se true, il widget pubblico non blocca mai per capienza superata. */
+  @IsOptional()
+  @IsBoolean()
+  reservationOverbookingUnlimited?: boolean;
+
+  /** Posti extra tollerati sopra la capienza totale prima di bloccare (0 = blocco rigido). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reservationOverbookingExtraSeats?: number;
 }
