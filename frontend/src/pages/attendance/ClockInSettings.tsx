@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   MenuItem,
   Stack,
   Switch,
@@ -16,6 +17,12 @@ import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { Link as RouterLink } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+
+// Leaflet è una libreria pesante usata solo in questa pagina: caricata a
+// parte (chunk separato) invece che nel bundle principale dell'app.
+const LocationPicker = lazy(() =>
+  import('../../components/LocationPicker').then((m) => ({ default: m.LocationPicker })),
+);
 
 type RetentionUnit = 'DAYS' | 'MONTHS' | 'YEARS';
 
@@ -227,13 +234,32 @@ export function ClockInSettings() {
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   Vai fisicamente al locale prima di premere il pulsante, così la posizione
-                  catturata è quella corretta.
+                  catturata è quella corretta, oppure imposta la posizione manualmente sulla mappa.
                 </Typography>
                 {gpsCaptureError && (
                   <Alert severity="error" sx={{ mt: 1 }} onClose={() => setGpsCaptureError(null)}>
                     {gpsCaptureError}
                   </Alert>
                 )}
+                <Box sx={{ mt: 2 }}>
+                  <Suspense
+                    fallback={
+                      <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    }
+                  >
+                    <LocationPicker
+                      lat={gpsLat}
+                      lng={gpsLng}
+                      radiusMeters={Number(gpsRadius) || undefined}
+                      onChange={(lat, lng) => {
+                        setGpsLat(lat);
+                        setGpsLng(lng);
+                      }}
+                    />
+                  </Suspense>
+                </Box>
               </Box>
             )}
 
