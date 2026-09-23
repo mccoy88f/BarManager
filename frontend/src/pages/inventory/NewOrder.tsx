@@ -7,6 +7,7 @@ import {
   CardContent,
   MenuItem,
   TextField,
+  Tooltip,
   Typography,
   Table,
   TableBody,
@@ -19,10 +20,44 @@ import {
   ToggleButtonGroup,
   Stack,
 } from '@mui/material';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
+
+type ProductTrend = 'UP' | 'DOWN' | 'STABLE' | null;
+
+const trendTooltips: Record<Exclude<ProductTrend, null>, string> = {
+  UP: 'Vendite in crescita rispetto allo standard: rischio rottura di stock.',
+  DOWN: 'Vendite più basse dello standard: rischio magazzino pieno.',
+  STABLE: 'Livello di stock coerente con lo standard.',
+};
+
+function TrendIndicator({ trend }: { trend: ProductTrend }) {
+  if (!trend) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        —
+      </Typography>
+    );
+  }
+  const icon =
+    trend === 'UP' ? (
+      <TrendingUpIcon color="success" fontSize="small" />
+    ) : trend === 'DOWN' ? (
+      <TrendingDownIcon color="error" fontSize="small" />
+    ) : (
+      <TrendingFlatIcon color="action" fontSize="small" />
+    );
+  return (
+    <Tooltip title={trendTooltips[trend]}>
+      <Box sx={{ display: 'inline-flex' }}>{icon}</Box>
+    </Tooltip>
+  );
+}
 
 interface Supplier {
   id: string;
@@ -125,15 +160,31 @@ export function NewOrder() {
     });
   }, [productsQuery.data, stock]);
 
+  const productIds = productsQuery.data?.map((p) => p.id) ?? [];
+  const trendsQuery = useQuery({
+    queryKey: ['products-trend', productIds],
+    queryFn: async () =>
+      (
+        await api.get<Record<string, ProductTrend>>('/inventory/products/trend', {
+          params: { ids: productIds.join(',') },
+        })
+      ).data,
+    enabled: productIds.length > 0,
+  });
+
   const estimatedTotal = suggestions.reduce(
     (sum, s) => sum + (s.product.costPerUnit ?? 0) * s.suggestedQty,
     0,
   );
 
+  // La giacenza è obbligatoria per ogni prodotto elencato: solo così ogni
+  // ordine porta con sé il dato completo, necessario a calcolare il trend
+  // sugli ordini successivi (v. CatalogService.getProductTrends).
+  const allStockFilled =
+    suggestions.length > 0 && suggestions.every((s) => stock[s.product.id]?.trim());
+
   const linesPayload = () =>
-    suggestions
-      .filter((s) => stock[s.product.id] !== undefined)
-      .map((s) => ({ productId: s.product.id, stockOnHand: s.stockOnHand }));
+    suggestions.map((s) => ({ productId: s.product.id, stockOnHand: s.stockOnHand }));
 
   const createMutation = useMutation({
     mutationFn: async () =>
@@ -336,10 +387,12 @@ export function NewOrder() {
                   <TableRow>
                     <TableCell>Prodotto</TableCell>
                     {mode === 'category' && <TableCell>Fornitore</TableCell>}
+                    <TableCell>Formato</TableCell>
                     <TableCell>Standard</TableCell>
                     <TableCell>Giacenza</TableCell>
                     <TableCell>Da ordinare</TableCell>
                     <TableCell>Costo stimato</TableCell>
+                    <TableCell>Trend</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -347,13 +400,13 @@ export function NewOrder() {
                     <TableRow key={product.id}>
                       <TableCell>{product.name}</TableCell>
                       {mode === 'category' && <TableCell>{product.supplier.name}</TableCell>}
-                      <TableCell>
-                        {product.standardQty} {product.unit}
-                      </TableCell>
+                      <TableCell>{product.unit}</TableCell>
+                      <TableCell>{product.standardQty}</TableCell>
                       <TableCell>
                         <TextField
                           type="number"
                           size="small"
+                          required
                           value={stock[product.id] ?? ''}
                           onChange={(e) =>
                             setStock((s) => ({ ...s, [product.id]: e.target.value }))
@@ -361,13 +414,14 @@ export function NewOrder() {
                           sx={{ width: 90 }}
                         />
                       </TableCell>
-                      <TableCell>
-                        {suggestedQty} {product.unit}
-                      </TableCell>
+                      <TableCell>{suggestedQty}</TableCell>
                       <TableCell>
                         {product.costPerUnit != null
                           ? `€ ${(product.costPerUnit * suggestedQty).toFixed(2)}`
                           : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <TrendIndicator trend={trendsQuery.data?.[product.id] ?? null} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -383,14 +437,20 @@ export function NewOrder() {
 
             {mode === 'supplier' ? (
               !createdOrderId ? (
-                <Button
-                  variant="contained"
-                  sx={{ mt: 2 }}
-                  disabled={createMutation.isPending}
-                  onClick={() => createMutation.mutate()}
-                >
-                  Crea bozza ordine
-                </Button>
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    disabled={createMutation.isPending || !allStockFilled}
+                    onClick={() => createMutation.mutate()}
+                  >
+                    Crea bozza ordine
+                  </Button>
+                  {!allStockFilled && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      Inserisci la giacenza di tutti i prodotti per creare l'ordine.
+                    </Typography>
+                  )}
+                </Box>
               ) : (
                 <Box sx={{ mt: 2 }}>
                   <Alert severity="info" sx={{ mb: 2 }}>
@@ -417,14 +477,20 @@ export function NewOrder() {
                 </Box>
               )
             ) : !createdOrderIds ? (
-              <Button
-                variant="contained"
-                sx={{ mt: 2 }}
-                disabled={createByCategoryMutation.isPending}
-                onClick={() => createByCategoryMutation.mutate()}
-              >
-                Crea bozze ordine (una per fornitore)
-              </Button>
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="contained"
+                  disabled={createByCategoryMutation.isPending || !allStockFilled}
+                  onClick={() => createByCategoryMutation.mutate()}
+                >
+                  Crea bozze ordine (una per fornitore)
+                </Button>
+                {!allStockFilled && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    Inserisci la giacenza di tutti i prodotti per creare gli ordini.
+                  </Typography>
+                )}
+              </Box>
             ) : (
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" sx={{ mb: 2 }}>

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -6,6 +7,39 @@ import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+
+export type ProductTrend = 'UP' | 'DOWN' | 'STABLE' | null;
+
+// Quanti ordini inviati recenti al fornitore servono per valutare il
+// trend: con meno dati storici di questi non si azzarda una valutazione.
+const RECENT_ORDERS_FOR_TREND = 4;
+
+/**
+ * UP: la giacenza media rilevata negli ultimi ordini è sempre sotto la
+ * metà dello standard -> si vende più del previsto (rischio rottura di
+ * stock se si ordina poco). DOWN: sempre sopra la metà -> si vende meno
+ * del previsto (rischio magazzino pieno). STABLE: la media coincide
+ * esattamente con la metà dello standard.
+ */
+function computeTrend(
+  standardQty: number,
+  recentOrders: { lines: { productId: string; stockOnHand: number }[] }[],
+  productId: string,
+): ProductTrend {
+  if (recentOrders.length < RECENT_ORDERS_FOR_TREND) return null;
+
+  const stockValues = recentOrders.map(
+    (order) => order.lines.find((line) => line.productId === productId)?.stockOnHand,
+  );
+  if (stockValues.some((v) => v == null)) return null;
+
+  const average =
+    (stockValues as number[]).reduce((sum, v) => sum + v, 0) / stockValues.length;
+  const half = standardQty / 2;
+  if (average < half) return 'UP';
+  if (average > half) return 'DOWN';
+  return 'STABLE';
+}
 
 @Injectable()
 export class CatalogService {
@@ -142,5 +176,54 @@ export class CatalogService {
       include: { category: true, supplier: true },
       orderBy: { name: 'asc' },
     });
+  }
+
+  /**
+   * Trend di vendita per prodotto, dedotto dagli ultimi ordini inviati
+   * allo stesso fornitore (v. computeTrend). Un giro di query per
+   * fornitore coinvolto, non per prodotto.
+   */
+  async getProductTrends(
+    venueId: string,
+    productIds: string[],
+  ): Promise<Record<string, ProductTrend>> {
+    if (productIds.length === 0) return {};
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, category: { venueId } },
+      select: { id: true, standardQty: true, supplierId: true },
+    });
+
+    const bySupplier = new Map<string, typeof products>();
+    for (const product of products) {
+      const list = bySupplier.get(product.supplierId) ?? [];
+      list.push(product);
+      bySupplier.set(product.supplierId, list);
+    }
+
+    const result: Record<string, ProductTrend> = {};
+    for (const [supplierId, supplierProducts] of bySupplier) {
+      const recentOrders = await this.prisma.order.findMany({
+        where: {
+          venueId,
+          supplierId,
+          status: { in: [OrderStatus.SENT, OrderStatus.CONFIRMED, OrderStatus.CLOSED] },
+        },
+        orderBy: { sentAt: 'desc' },
+        take: RECENT_ORDERS_FOR_TREND,
+        include: {
+          lines: {
+            where: { productId: { in: supplierProducts.map((p) => p.id) } },
+            select: { productId: true, stockOnHand: true },
+          },
+        },
+      });
+
+      for (const product of supplierProducts) {
+        result[product.id] = computeTrend(product.standardQty, recentOrders, product.id);
+      }
+    }
+
+    return result;
   }
 }

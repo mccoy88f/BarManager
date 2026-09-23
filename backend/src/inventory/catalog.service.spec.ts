@@ -54,3 +54,91 @@ describe('CatalogService.createProduct — isolamento tenant', () => {
     expect(prisma.product.create).not.toHaveBeenCalled();
   });
 });
+
+describe('CatalogService.getProductTrends', () => {
+  let prisma: {
+    product: { findMany: jest.Mock };
+    order: { findMany: jest.Mock };
+  };
+  let service: CatalogService;
+
+  const ordersWithStock = (values: number[]) =>
+    values.map((stockOnHand) => ({ lines: [{ productId: 'p1', stockOnHand }] }));
+
+  beforeEach(() => {
+    prisma = {
+      product: { findMany: jest.fn() },
+      order: { findMany: jest.fn() },
+    };
+    service = new CatalogService(prisma as unknown as PrismaService);
+  });
+
+  it('UP quando la giacenza media è sotto la metà dello standard', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 4, supplierId: 'sup-1' },
+    ]);
+    prisma.order.findMany.mockResolvedValue(ordersWithStock([1, 1, 1, 1])); // media 1, metà standard = 2
+
+    const trends = await service.getProductTrends('venue-1', ['p1']);
+    expect(trends.p1).toBe('UP');
+  });
+
+  it('DOWN quando la giacenza media è sopra la metà dello standard', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 4, supplierId: 'sup-1' },
+    ]);
+    prisma.order.findMany.mockResolvedValue(ordersWithStock([3, 3, 3, 3])); // media 3, metà standard = 2
+
+    const trends = await service.getProductTrends('venue-1', ['p1']);
+    expect(trends.p1).toBe('DOWN');
+  });
+
+  it('STABLE quando la giacenza media coincide con la metà dello standard', async () => {
+    // media di [0,0,1,1] = 0.5, metà di uno standard di 1 = 0.5.
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 1, supplierId: 'sup-1' },
+    ]);
+    prisma.order.findMany.mockResolvedValue(ordersWithStock([0, 0, 1, 1]));
+
+    const trends = await service.getProductTrends('venue-1', ['p1']);
+    expect(trends.p1).toBe('STABLE');
+  });
+
+  it('nessun trend con meno di 4 ordini inviati recenti', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 4, supplierId: 'sup-1' },
+    ]);
+    prisma.order.findMany.mockResolvedValue(ordersWithStock([1, 1, 1]));
+
+    const trends = await service.getProductTrends('venue-1', ['p1']);
+    expect(trends.p1).toBeNull();
+  });
+
+  it('nessun trend se il prodotto manca in uno degli ultimi ordini al fornitore', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 4, supplierId: 'sup-1' },
+    ]);
+    prisma.order.findMany.mockResolvedValue([
+      { lines: [{ productId: 'p1', stockOnHand: 1 }] },
+      { lines: [{ productId: 'p1', stockOnHand: 1 }] },
+      { lines: [{ productId: 'p1', stockOnHand: 1 }] },
+      { lines: [] }, // ordine senza una riga per questo prodotto
+    ]);
+
+    const trends = await service.getProductTrends('venue-1', ['p1']);
+    expect(trends.p1).toBeNull();
+  });
+
+  it('raggruppa i prodotti per fornitore: una sola query di ordini per fornitore coinvolto', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', standardQty: 4, supplierId: 'sup-1' },
+      { id: 'p2', standardQty: 4, supplierId: 'sup-1' },
+      { id: 'p3', standardQty: 4, supplierId: 'sup-2' },
+    ]);
+    prisma.order.findMany.mockResolvedValue([]);
+
+    await service.getProductTrends('venue-1', ['p1', 'p2', 'p3']);
+
+    expect(prisma.order.findMany).toHaveBeenCalledTimes(2);
+  });
+});

@@ -98,6 +98,13 @@ export class CatalogController {
     });
   }
 
+  /** Trend di vendita per prodotto dedotto dagli ultimi ordini al fornitore. */
+  @Get('products/trend')
+  getProductTrends(@CurrentUser() user: AuthenticatedUser, @Query('ids') ids: string) {
+    const productIds = (ids ?? '').split(',').filter(Boolean);
+    return this.catalog.getProductTrends(requireVenueId(user), productIds);
+  }
+
   @Patch('products/:id')
   @Roles(Role.ADMIN)
   updateProduct(
