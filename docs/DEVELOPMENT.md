@@ -116,6 +116,9 @@ Schema completo in `backend/prisma/schema.prisma`. Entità principali:
 - **Task** — attività/scadenza (es. pagamento fornitore, visita medica dipendente, scadenza attestato): `type` (enum), `dueDate`, `status` (`OPEN/DONE`), `recurrence` (`NONE/MONTHLY/YEARLY`, genera automaticamente l'occorrenza successiva al completamento), `reminderDaysBefore` (da quanti giorni prima segnalarla come imminente in home), collegabile a un `Employee` (`relatedEmployeeId`, es. di chi è la visita medica).
 - **AuditLog** — traccia di ogni operazione sensibile (chi, cosa, quando, prima/dopo), sempre scoperta per `venueId`.
 - **Notification** — notifiche in-app (richieste ferie, temperature fuori soglia, ordini inviati, ...), esposte via API (lista/segna come letta) e riprese nella home amministrazione.
+- **Table** *(proposta, §5.7, non ancora implementata)* — tavolo censito dall'admin: `label` (numero o nome, es. "12" o "Terrazza 2"), `seats` (posti), `active` (per togliere temporaneamente un tavolo, es. in manutenzione, senza perdere lo storico delle prenotazioni già assegnate).
+- **Reservation** *(proposta, §5.7)* — richiesta di prenotazione di un cliente: nome, cognome, email, telefono, `partySize`, data/ora, `isEvent`+nota libera (es. "Compleanno"), note su intolleranze/allergie, altre note, `status` (`PENDING/CONFIRMED/REJECTED/CANCELLED`), `tableId` assegnato (manualmente o in automatico), `rejectionReason` (obbligatoria se rifiutata). Isolata per `venueId` come tutte le altre entità.
+- Nuovi campi previsti su **Venue** per le impostazioni del modulo prenotazioni: `reservationsEnabled`, `reservationAutoConfirmMaxSeats` (soglia sopra la quale serve sempre conferma manuale), `reservationSlotDurationMinutes` (durata di occupazione di un tavolo, per calcolare sovrapposizioni/turni).
 
 Diagramma ER semplificato:
 
@@ -213,6 +216,36 @@ All'accesso, Admin e Manager vedono in cima alla home un riepilogo di ciò che r
 
 Se non c'è nulla che richiede attenzione, la sezione lo segnala esplicitamente invece di restare vuota. I moduli operativi restano comunque disponibili come tile sotto il riepilogo, per l'uso normale.
 
+### 5.7 Prenotazioni tavoli *(proposta di progettazione — non ancora implementata)*
+
+Modulo per raccogliere prenotazioni online senza che il cliente debba telefonare: conferma automatica per le richieste piccole quando c'è posto, revisione manuale del locale per quelle grandi o quando la capienza è al limite.
+
+**Pagina/widget pubblico (nessun login):**
+- Raggiungibile su `https://locale1.tuodominio.it/prenota`, stessa risoluzione per sotto-dominio del menù pubblico (§5.4); pensata anche per essere **embeddata come widget** (`<iframe>`) nel sito esterno del locale, se ne ha uno.
+- Il cliente inserisce: nome, cognome, email, telefono, numero di persone, data e orario, note libere, eventuali intolleranze/allergie ed **evento** opzionale (interruttore "È per un'occasione speciale?" + testo libero, es. "Compleanno").
+- L'orario proponibile è vincolato alle fasce pranzo/cena del locale (`Venue.lunchStart/lunchEnd/dinnerStart/dinnerEnd`, già esistenti per il menù, §5.4) e a un orizzonte massimo di prenotabilità (es. 30 giorni, configurabile).
+- All'invio il cliente riceve subito un'email: "richiesta ricevuta, in attesa di conferma" oppure, se confermata automaticamente (vedi sotto), "prenotazione confermata" con data/ora/numero di persone.
+
+**Calcolo disponibilità e blocco overbooking:**
+- Ogni prenotazione occupa i tavoli per una finestra di tempo pari a `data/ora scelta` + `Venue.reservationSlotDurationMinutes` (default proposto: 120 minuti — impostabile per gestire sia "un turno = tutto il servizio" sia più turni nello stesso servizio, cioè il tavolo si libera e può essere riprenotato più avanti nella stessa fascia).
+- I **posti disponibili** per una data/ora richiesta = somma dei posti di tutti i tavoli attivi − somma dei posti delle prenotazioni (`PENDING` o `CONFIRMED`) la cui finestra si sovrappone a quella richiesta.
+- Se la nuova richiesta supererebbe i posti disponibili, viene **bloccata**: il cliente vede un messaggio del tipo "al momento non ci sono posti disponibili per l'orario scelto" (con eventuale proposta di un orario alternativo), e viene generato un **Alert per l'admin** (notifica in-app, riusando il modello `Notification` già esistente, §4) — utile per capire quando la domanda supera la capienza e valutare se aprire altri turni/tavoli.
+
+**Conferma automatica vs manuale:**
+- Impostazione admin: **soglia massima di posti per la conferma automatica** (`x`, default proposto 6, in "Impostazioni prenotazioni").
+- Richiesta con posti **≤ x** e capienza disponibile: il sistema tenta l'**assegnazione automatica del tavolo** (algoritmo sotto); se trova un tavolo adatto, la prenotazione passa subito a `CONFIRMED` e il cliente riceve l'email di conferma senza attese. Se non lo trova (es. nessun tavolo singolo con posti sufficienti, anche se la capienza totale ci sarebbe combinando più tavoli — la combinazione automatica di più tavoli è fuori scope v1, vedi §10), resta `PENDING` per revisione manuale.
+- Richiesta con posti **> x**: resta **sempre** `PENDING` e richiede conferma manuale dell'admin, **anche se** l'assegnazione automatica ha già trovato un tavolo adatto (in tal caso il tavolo suggerito è già precompilato: l'admin deve solo confermarlo o cambiarlo). I gruppi grandi/gli eventi meritano un controllo umano — disponibilità reale, esigenze particolari, eventuale conferma telefonica.
+
+**Algoritmo di assegnazione automatica (massimizzare l'occupazione):**
+- Tra i tavoli attivi e liberi nella finestra richiesta (nessuna prenotazione `PENDING`/`CONFIRMED` sovrapposta su quel tavolo), si sceglie il **più piccolo tavolo con posti sufficienti** (posti ≥ persone richieste, tavoli ordinati per posti crescenti — strategia *best-fit*): lascia liberi i tavoli grandi per i gruppi che ne hanno davvero bisogno, invece di sprecare un tavolo da 8 per una coppia.
+- Se nessun tavolo singolo basta, in v1 la richiesta resta manuale: l'admin può decidere di accostare fisicamente due tavoli e assegnarli entrambi a mano (la modellazione esplicita di più tavoli per la stessa prenotazione è una possibile estensione v2, vedi §10).
+
+**Amministrazione:**
+- **Tavoli**: CRUD — numero/nome e posti per tavolo, disattivabile senza perdere lo storico delle prenotazioni già assegnate.
+- **Prenotazioni**: coda delle richieste in attesa (`PENDING`) con azioni rapide **Accetta**/**Rifiuta** (il rifiuto richiede un motivo, riportato al cliente via email); vista per giornata/servizio con tavolo assegnato, stato, contatti e note; **riassegnazione manuale** del tavolo in qualsiasi momento, anche su una prenotazione già confermata. Contatore "posti disponibili" per data/servizio sempre visibile.
+- **Impostazioni prenotazioni**: attiva/disattiva il modulo, soglia posti per conferma automatica, durata di occupazione del tavolo (minuti), orizzonte massimo di prenotabilità.
+- Una volta implementato, le prenotazioni in attesa di conferma e i blocchi per overbooking alimenterebbero anche la home dell'amministrazione (§5.6), sullo stesso principio delle richieste ferie e degli ordini del giorno.
+
 ---
 
 ## 6. Altri moduli utili individuati (proposte)
@@ -230,6 +263,7 @@ Se non c'è nulla che richiede attenzione, la sezione lo segnala esplicitamente 
 11. **Modalità offline-first per HACCP/presenze** — service worker con coda locale (IndexedDB).
 12. **QR per tavolo con ordinazione** — evoluzione naturale del menù online: dal semplice "consulta" a un vero e proprio invio ordine al tavolo (fuori scope v1, ma il modello `MenuItem` è già compatibile).
 13. **Integrazione futura con cassa/POS di vendita** — collegamento a incassi/consumi reali per suggerire automaticamente la `standardQty`.
+14. ~~Prenotazioni tavoli online~~ — **progettato** in dettaglio in §5.7 (non ancora implementato): widget pubblico di prenotazione, tavoli con posti, assegnazione automatica/manuale che massimizza l'occupazione, conferma automatica sotto una soglia di posti configurabile, blocco delle richieste che superano la capienza con alert admin.
 
 Nel roadmap (§8) questi sono marcati come v1 (fondamentali, bassa complessità aggiuntiva) o v2/v3 (da valutare con l'utente).
 
@@ -287,6 +321,7 @@ Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/ema
 
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
+- **Prenotazioni tavoli** (progettato in §5.7): tavoli, widget pubblico, assegnazione automatica/manuale, conferma automatica sotto soglia, blocco overbooking con alert admin.
 - App Android via Capacitor.
 - Offline-first per HACCP/presenze.
 
@@ -337,6 +372,13 @@ Il motivo di questa scelta: nessuna libreria browser può aprire una connessione
 - Dove verrà ospitato in produzione: server on-premise vs VPS cloud (impatta la strategia stampanti, vedi §9.2).
 - Provider SMTP: globale di piattaforma (un solo mittente per tutti i locali) oppure configurabile per singolo locale.
 - Contratto orario dipendenti (per calcolo straordinari/ferie maturate): regole CCNL da applicare.
+- **Prenotazioni (§5.7)** — da confermare prima di iniziare l'implementazione:
+  - Durata standard di occupazione di un tavolo (default proposto 120 minuti) e se un locale userà davvero il turnover (più prenotazioni sullo stesso tavolo in orari diversi dello stesso servizio) o preferisce "un turno = tutto il servizio".
+  - Se serve, fin da v1, la combinazione automatica di più tavoli per un unico gruppo grande, o basta l'assegnazione manuale dell'admin (v1 proposta: solo manuale).
+  - Se le richieste bloccate per overbooking vanno solo rifiutate o messe in una "lista d'attesa" consultabile dall'admin, nel caso si liberi un posto per cancellazione.
+  - Se, oltre all'email, serve un promemoria via SMS/WhatsApp al cliente (richiederebbe un provider terzo, es. Twilio — fuori scope v1).
+  - Se il cliente deve poter annullare/modificare la propria prenotazione da un link nell'email di conferma (self-service), o solo l'admin può farlo.
+  - Giorni di chiusura/ferie del locale da bloccare esplicitamente nel calendario prenotazioni: oggi il `Venue` ha solo fasce orarie pranzo/cena, non giorni di chiusura.
 
 ---
 
@@ -362,7 +404,8 @@ BarManager/
 │       ├── notifications/       (lista/segna come letta)
 │       ├── dashboard/           (riepilogo home amministrazione)
 │       ├── printing/            (client ESC/POS)
-│       └── reports/             (PDF/XLS)
+│       ├── reports/             (PDF/XLS)
+│       └── reservations/        (§5.7 — proposta, non ancora creata: tavoli, prenotazioni, widget pubblico)
 └── frontend/                   (React + MUI PWA)
     └── src/
         ├── components/AdminSummary.tsx  (riepilogo in home)
@@ -371,5 +414,6 @@ BarManager/
         ├── pages/haccp/
         ├── pages/inventory/     (nuovo ordine + fornitori/giorni ordine)
         ├── pages/menu/          (admin + pagina pubblica)
-        └── pages/tasks/
+        ├── pages/tasks/
+        └── pages/reservations/  (§5.7 — proposta, non ancora creata: admin tavoli/prenotazioni + pagina pubblica /prenota)
 ```
