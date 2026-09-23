@@ -16,6 +16,7 @@ const admin: AuthenticatedUser = {
 const baseVenue = {
   id: 'venue-1',
   name: 'Bar Test',
+  slug: 'bar-test',
   email: null as string | null,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: 6,
@@ -53,6 +54,7 @@ describe('ReservationsService', () => {
     sendReceived: jest.Mock;
     sendConfirmed: jest.Mock;
     sendRejected: jest.Mock;
+    sendVenueNotification: jest.Mock;
   };
   let service: ReservationsService;
 
@@ -74,6 +76,7 @@ describe('ReservationsService', () => {
       sendReceived: jest.fn(),
       sendConfirmed: jest.fn(),
       sendRejected: jest.fn(),
+      sendVenueNotification: jest.fn(),
     };
     service = new ReservationsService(
       prisma as unknown as PrismaService,
@@ -270,6 +273,57 @@ describe('ReservationsService', () => {
         service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('avvisa l\'email del locale con i pulsanti azione se resta PENDING', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, email: 'info@bartest.it' });
+      prisma.table.findMany.mockResolvedValue([{ id: 't-big', seats: 10, active: true }]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      await service.createPublicReservation('venue-1', {
+        ...dto,
+        partySize: 8, // sopra soglia auto-confirm -> resta PENDING
+        reservedAt: nextDinnerSlot().toISOString(),
+      });
+
+      expect(mail.sendVenueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'res-1' }),
+        'Bar Test',
+        'info@bartest.it',
+        expect.stringContaining('/prenota/gestisci/res-1?token='),
+        true,
+      );
+    });
+
+    it('avvisa l\'email del locale senza pulsanti azione se confermata in automatico', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, email: 'info@bartest.it' });
+      prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      await service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() });
+
+      expect(mail.sendVenueNotification).toHaveBeenCalledWith(
+        expect.anything(),
+        'Bar Test',
+        'info@bartest.it',
+        expect.any(String),
+        false,
+      );
+    });
+
+    it('non tenta di avvisare il locale se non ha impostato un\'email', async () => {
+      prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data }),
+      );
+
+      await service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() });
+
+      expect(mail.sendVenueNotification).not.toHaveBeenCalled();
+    });
   });
 
   describe('accept/reject', () => {
@@ -331,6 +385,82 @@ describe('ReservationsService', () => {
       prisma.reservation.findUnique.mockResolvedValue({ ...pending, venueId: 'venue-2' });
       await expect(service.accept(admin, 'venue-1', 'res-1', undefined)).rejects.toBeInstanceOf(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('gestione via token (link nell\'email al locale)', () => {
+    const pending = {
+      id: 'res-1',
+      venueId: 'venue-1',
+      status: ReservationStatus.PENDING,
+      tableId: 'suggested-table',
+      firstName: 'Mario',
+      email: 'mario@test.it',
+      partySize: 4,
+      reservedAt: nextDinnerSlot(),
+      manageToken: 'secret-token',
+    };
+
+    it('restituisce la prenotazione e i tavoli attivi se il token combacia', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(pending);
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+
+      const result = await service.getForManage('res-1', 'secret-token');
+
+      expect(result.reservation).toEqual(pending);
+      expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true }]);
+    });
+
+    it('rifiuta con NotFoundException se il token non combacia', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(pending);
+      await expect(service.getForManage('res-1', 'wrong-token')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('accetta tramite token senza registrare un utente responsabile', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(pending);
+      prisma.table.findMany.mockResolvedValue([]);
+      prisma.table.findUnique.mockResolvedValue({ id: 'suggested-table', venueId: 'venue-1' });
+      prisma.reservation.update.mockResolvedValue({ ...pending, status: ReservationStatus.CONFIRMED });
+
+      await service.acceptByToken('res-1', 'secret-token', undefined);
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: ReservationStatus.CONFIRMED, respondedById: null }),
+        }),
+      );
+      expect(audit.log).not.toHaveBeenCalled();
+      expect(mail.sendConfirmed).toHaveBeenCalled();
+    });
+
+    it('rifiuta tramite token senza registrare un utente responsabile', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(pending);
+      prisma.table.findMany.mockResolvedValue([]);
+      prisma.reservation.update.mockResolvedValue({ ...pending, status: ReservationStatus.REJECTED });
+
+      await service.rejectByToken('res-1', 'secret-token', 'Tutto esaurito');
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: ReservationStatus.REJECTED,
+            rejectionReason: 'Tutto esaurito',
+            respondedById: null,
+          }),
+        }),
+      );
+      expect(audit.log).not.toHaveBeenCalled();
+      expect(mail.sendRejected).toHaveBeenCalled();
+    });
+
+    it('rifiuta di gestire due volte la stessa prenotazione via token', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({ ...pending, status: ReservationStatus.CONFIRMED });
+      prisma.table.findMany.mockResolvedValue([]);
+      await expect(service.acceptByToken('res-1', 'secret-token', undefined)).rejects.toBeInstanceOf(
+        BadRequestException,
       );
     });
   });

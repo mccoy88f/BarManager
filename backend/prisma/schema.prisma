@@ -860,6 +860,10 @@ model Reservation {
   status        ReservationStatus @default(PENDING)
   // Obbligatoria solo se status = REJECTED.
   rejectionReason String?
+  // Token opaco incluso nel link "Accetta/Rifiuta" mandato all'email del
+  // locale: permette di gestire la richiesta senza login (§5.7). Non è
+  // derivabile dall'id della prenotazione.
+  manageToken String @unique
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

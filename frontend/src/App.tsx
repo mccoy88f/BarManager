@@ -35,6 +35,7 @@ import { ReservationsAdmin } from './pages/reservations/ReservationsAdmin';
 import { Tables } from './pages/reservations/Tables';
 import { ReservationSettings } from './pages/reservations/ReservationSettings';
 import { PublicReservation } from './pages/reservations/PublicReservation';
+import { PublicReservationManage } from './pages/reservations/PublicReservationManage';
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
       {/* Menù pubblico e widget prenotazioni: nessun login, nessuna shell applicativa */}
       <Route path="/menu" element={<PublicMenu />} />
       <Route path="/prenota" element={<PublicReservation />} />
+      <Route path="/prenota/gestisci/:id" element={<PublicReservationManage />} />
 
       <Route path="/login" element={<Login />} />
 

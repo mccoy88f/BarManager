@@ -1,8 +1,10 @@
-import { Controller, Get, NotFoundException, Post, Body, Query, Req } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Patch, Post, Body, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
+import { ManageAcceptDto } from './dto/manage-accept.dto';
+import { ManageRejectDto } from './dto/manage-reject.dto';
 
 /**
  * Widget pubblico di prenotazione, nessun login: risolto dal sotto-dominio
@@ -66,5 +68,25 @@ export class PublicReservationsController {
   ) {
     const venueId = await this.resolveVenueId(req, venueSlug);
     return this.reservationsService.createPublicReservation(venueId, dto);
+  }
+
+  /**
+   * Pagina di gestione senza login (link Accetta/Rifiuta nell'email al
+   * locale, §5.7): identificata dal token della prenotazione, non dal
+   * sotto-dominio, quindi non serve risolvere il locale qui.
+   */
+  @Get(':id/manage')
+  manage(@Param('id') id: string, @Query('token') token: string) {
+    return this.reservationsService.getForManage(id, token);
+  }
+
+  @Patch(':id/manage/accept')
+  manageAccept(@Param('id') id: string, @Body() dto: ManageAcceptDto) {
+    return this.reservationsService.acceptByToken(id, dto.token, dto.tableId);
+  }
+
+  @Patch(':id/manage/reject')
+  manageReject(@Param('id') id: string, @Body() dto: ManageRejectDto) {
+    return this.reservationsService.rejectByToken(id, dto.token, dto.reason);
   }
 }

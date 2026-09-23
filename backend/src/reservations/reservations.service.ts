@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Reservation, ReservationStatus, Table } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -10,6 +11,7 @@ import { RejectReservationDto } from './dto/reject-reservation.dto';
 interface ReservationVenueSettings {
   id: string;
   name: string;
+  slug: string;
   email: string | null;
   reservationsEnabled: boolean;
   reservationAutoConfirmMaxSeats: number;
@@ -24,6 +26,7 @@ interface ReservationVenueSettings {
 const VENUE_SELECT = {
   id: true,
   name: true,
+  slug: true,
   email: true,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: true,
@@ -150,6 +153,21 @@ export class ReservationsService {
     return tables.find((t) => t.seats >= partySize && !busyTableIds.has(t.id)) ?? null;
   }
 
+  /**
+   * URL della pagina pubblica di gestione (accetta/rifiuta senza login,
+   * §5.7), mandata all'email del locale. Usa il sotto-dominio del locale
+   * quando ROOT_DOMAIN è configurato (produzione), altrimenti PUBLIC_APP_URL
+   * come base per lo sviluppo locale.
+   */
+  private buildManageUrl(venue: ReservationVenueSettings, reservationId: string, token: string): string {
+    const path = `/prenota/gestisci/${reservationId}?token=${token}`;
+    const rootDomain = process.env.ROOT_DOMAIN;
+    const base = rootDomain
+      ? `https://${venue.slug}.${rootDomain}`
+      : process.env.PUBLIC_APP_URL || 'http://localhost:5173';
+    return `${base}${path}`;
+  }
+
   // ---- Prenotazione pubblica ----------------------------------------------
 
   async createPublicReservation(venueId: string, dto: CreateReservationDto) {
@@ -202,6 +220,7 @@ export class ReservationsService {
         notes: dto.notes,
         status,
         tableId: bestFit?.id ?? null,
+        manageToken: randomUUID(),
       },
       include: { table: true },
     });
@@ -218,6 +237,21 @@ export class ReservationsService {
           message: `Nuova prenotazione da confermare: ${dto.firstName} ${dto.lastName}, ${dto.partySize} persone`,
         })),
       });
+    }
+
+    // Ogni prenotazione avvisa anche l'email del locale (Impostazioni
+    // locale), con i pulsanti Accetta/Rifiuta se serve conferma manuale:
+    // un canale in più, indipendente dal login, rispetto alla sola
+    // Notification in-app già creata sopra per le richieste PENDING.
+    if (venue.email) {
+      const manageUrl = this.buildManageUrl(venue, reservation.id, reservation.manageToken);
+      await this.mail.sendVenueNotification(
+        reservation,
+        venue.name,
+        venue.email,
+        manageUrl,
+        status === ReservationStatus.PENDING,
+      );
     }
 
     return { id: reservation.id, status: reservation.status };
@@ -251,64 +285,108 @@ export class ReservationsService {
 
   async accept(user: AuthenticatedUser, venueId: string, reservationId: string, tableId?: string | null) {
     const before = await this.requireReservation(venueId, reservationId);
-    if (before.status !== ReservationStatus.PENDING) {
-      throw new BadRequestException('Prenotazione già gestita');
-    }
-    const finalTableId = tableId !== undefined ? tableId : before.tableId;
-    if (finalTableId) await this.requireOwnTable(venueId, finalTableId);
-
-    const venue = await this.getVenueSettings(venueId);
-    const after = await this.prisma.reservation.update({
-      where: { id: reservationId },
-      data: {
-        status: ReservationStatus.CONFIRMED,
-        tableId: finalTableId,
-        respondedById: user.userId,
-        respondedAt: new Date(),
-      },
-      include: { table: true },
-    });
-
-    await this.audit.log({
-      venueId,
-      userId: user.userId,
-      entity: 'Reservation',
-      entityId: reservationId,
-      action: 'UPDATE',
-      before,
-      after,
-    });
-    await this.mail.sendConfirmed(after, venue.name, venue.email);
-    return after;
+    return this.applyAccept(before, tableId, user.userId);
   }
 
   async reject(user: AuthenticatedUser, venueId: string, reservationId: string, dto: RejectReservationDto) {
     const before = await this.requireReservation(venueId, reservationId);
+    return this.applyReject(before, dto.reason, user.userId);
+  }
+
+  /** Prenotazione + tavoli attivi del locale, per la pagina pubblica di gestione (link nell'email al locale). */
+  async getForManage(reservationId: string, token: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: { table: true },
+    });
+    if (!reservation || reservation.manageToken !== token) {
+      throw new NotFoundException('Prenotazione non trovata');
+    }
+    const tables = await this.prisma.table.findMany({
+      where: { venueId: reservation.venueId, active: true },
+      orderBy: { seats: 'asc' },
+    });
+    return { reservation, tables };
+  }
+
+  /** Accetta/rifiuta senza login, dal link Accetta/Rifiuta nell'email al locale. */
+  async acceptByToken(reservationId: string, token: string, tableId?: string | null) {
+    const { reservation } = await this.getForManage(reservationId, token);
+    return this.applyAccept(reservation, tableId, null);
+  }
+
+  async rejectByToken(reservationId: string, token: string, reason: string) {
+    const { reservation } = await this.getForManage(reservationId, token);
+    return this.applyReject(reservation, reason, null);
+  }
+
+  /** `respondedById` è null quando l'azione arriva dal link email (nessun utente autenticato): niente audit log in quel caso, non essendo attribuibile a un account specifico. */
+  private async applyAccept(
+    before: Reservation,
+    tableId: string | null | undefined,
+    respondedById: string | null,
+  ) {
     if (before.status !== ReservationStatus.PENDING) {
       throw new BadRequestException('Prenotazione già gestita');
     }
-    const venue = await this.getVenueSettings(venueId);
+    const finalTableId = tableId !== undefined ? tableId : before.tableId;
+    if (finalTableId) await this.requireOwnTable(before.venueId, finalTableId);
+
+    const venue = await this.getVenueSettings(before.venueId);
     const after = await this.prisma.reservation.update({
-      where: { id: reservationId },
+      where: { id: before.id },
       data: {
-        status: ReservationStatus.REJECTED,
-        rejectionReason: dto.reason,
-        respondedById: user.userId,
+        status: ReservationStatus.CONFIRMED,
+        tableId: finalTableId,
+        respondedById,
         respondedAt: new Date(),
       },
       include: { table: true },
     });
 
-    await this.audit.log({
-      venueId,
-      userId: user.userId,
-      entity: 'Reservation',
-      entityId: reservationId,
-      action: 'UPDATE',
-      before,
-      after,
+    if (respondedById) {
+      await this.audit.log({
+        venueId: before.venueId,
+        userId: respondedById,
+        entity: 'Reservation',
+        entityId: before.id,
+        action: 'UPDATE',
+        before,
+        after,
+      });
+    }
+    await this.mail.sendConfirmed(after, venue.name, venue.email);
+    return after;
+  }
+
+  private async applyReject(before: Reservation, reason: string, respondedById: string | null) {
+    if (before.status !== ReservationStatus.PENDING) {
+      throw new BadRequestException('Prenotazione già gestita');
+    }
+    const venue = await this.getVenueSettings(before.venueId);
+    const after = await this.prisma.reservation.update({
+      where: { id: before.id },
+      data: {
+        status: ReservationStatus.REJECTED,
+        rejectionReason: reason,
+        respondedById,
+        respondedAt: new Date(),
+      },
+      include: { table: true },
     });
-    await this.mail.sendRejected(after, venue.name, dto.reason, venue.email);
+
+    if (respondedById) {
+      await this.audit.log({
+        venueId: before.venueId,
+        userId: respondedById,
+        entity: 'Reservation',
+        entityId: before.id,
+        action: 'UPDATE',
+        before,
+        after,
+      });
+    }
+    await this.mail.sendRejected(after, venue.name, reason, venue.email);
     return after;
   }
 
