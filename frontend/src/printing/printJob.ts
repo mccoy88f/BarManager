@@ -1,3 +1,5 @@
+import { api } from '../api/client';
+
 /** Contenuto testuale preparato dal backend (titolo/righe/piè di pagina). */
 export type PrintJobResponse =
   | { ready: true; title: string; lines: string[]; footer?: string[] }
@@ -8,94 +10,56 @@ export interface PrintOutcome {
   reason?: string;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function receiptFileName(title: string): string {
+  const safe = title.replace(/[^\w\- ]+/g, '').trim();
+  return `${safe || 'ricevuta'}.pdf`;
 }
 
 /**
- * Stampa un contenuto testuale con la stampa standard del browser:
- * apre un iframe nascosto con una pagina formattata a larghezza
- * scontrino e chiama print(). Su Windows/macOS/Linux usa la stampante
- * di sistema; su Android, se installato, RawBT compare come stampante
- * nel dialogo e consegna il contenuto a una stampante ESC/POS via
- * WiFi/LAN, Bluetooth o USB — nessuna libreria browser può parlare
- * direttamente a una stampante di rete (v. docs/DEVELOPMENT.md §9.2).
+ * Consegna un contenuto testuale come vero PDF largo come uno scontrino
+ * (80mm, stesso formato dell'esportazione PDF degli ordini): il dialogo
+ * di stampa di sistema, su alcuni dispositivi Android, ignora la
+ * dimensione pagina richiesta via CSS e stampa comunque su un foglio A4
+ * (v. docs/DEVELOPMENT.md §9.2); un PDF vero invece porta la sua
+ * dimensione pagina nei metadati, che l'app di stampa (RawBT) legge e usa
+ * correttamente. Con la Web Share API disponibile (Android/iOS) il PDF
+ * viene condiviso direttamente con RawBT; altrimenti si apre in una
+ * nuova scheda per la stampa/il salvataggio standard del browser.
  */
-function printContent(content: { title: string; lines: string[]; footer?: string[] }): void {
-  const iframe = document.createElement('iframe');
-  Object.assign(iframe.style, {
-    position: 'fixed',
-    right: '0',
-    bottom: '0',
-    width: '0',
-    height: '0',
-    border: '0',
-  });
-  document.body.appendChild(iframe);
+async function deliverReceipt(content: {
+  title: string;
+  lines: string[];
+  footer?: string[];
+}): Promise<void> {
+  const response = await api.post('/printing/render-pdf', content, { responseType: 'blob' });
+  const blob = response.data as Blob;
+  const file = new File([blob], receiptFileName(content.title), { type: 'application/pdf' });
 
-  const doc = iframe.contentDocument;
-  if (!doc) {
-    document.body.removeChild(iframe);
-    return;
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: content.title });
+      return;
+    } catch (err) {
+      // Condivisione annullata dall'utente: non è un errore, semplicemente non si stampa.
+      if (err instanceof Error && err.name === 'AbortError') return;
+      // Altri errori (nessuna app compatibile, ecc.): prosegui con il fallback sotto.
+    }
   }
 
-  const body = [content.title.toUpperCase(), '-'.repeat(32), ...content.lines];
-  if (content.footer?.length) {
-    body.push('-'.repeat(32), ...content.footer);
-  }
-
-  // Altezza fissa (non "auto": con "auto" alcuni browser scartano la
-  // dimensione personalizzata e tornano a un foglio A4/Letter intero) ma
-  // proporzionata al contenuto, non un valore enorme fisso: con una pagina
-  // di migliaia di mm e solo poche righe di testo in cima, l'anteprima di
-  // stampa mostra quel testo rimpicciolito a un puntino, praticamente
-  // indistinguibile da una pagina vuota.
-  const heightMm = Math.max(40, body.length * 4.2 + 10);
-
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      @page { size: 80mm ${heightMm}mm; margin: 0; }
-      body {
-        margin: 0;
-        padding: 3mm;
-        width: 74mm;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
-        white-space: pre-wrap;
-      }
-    </style>
-  </head>
-  <body>${body.map(escapeHtml).join('\n')}</body>
-</html>`);
-  doc.close();
-
-  let triggered = false;
-  const triggerPrint = () => {
-    if (triggered) return;
-    triggered = true;
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => iframe.remove(), 1000);
-  };
-
-  iframe.onload = triggerPrint;
-  setTimeout(triggerPrint, 300); // alcuni browser non emettono onload dopo document.write
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /**
  * Consegna un lavoro di stampa preparato dal backend: se non era pronto
- * (nessuna stampante configurata, non trovata...) restituisce il
- * motivo così com'è; altrimenti apre il dialogo di stampa standard del
- * browser con il contenuto. Non c'è modo di sapere se l'utente ha
- * effettivamente confermato la stampa dal dialogo: si considera
- * "stampato" appena il dialogo viene aperto.
+ * (nessuna stampante configurata, non trovata...) restituisce il motivo
+ * così com'è; altrimenti genera e consegna il PDF a scontrino. Non c'è
+ * modo di sapere se l'utente ha effettivamente confermato la stampa: si
+ * considera "stampato" appena la condivisione/apertura del PDF avviene.
  */
-export function deliverPrintJob(job: PrintJobResponse): PrintOutcome {
+export async function deliverPrintJob(job: PrintJobResponse): Promise<PrintOutcome> {
   if (!job.ready) return { printed: false, reason: job.reason };
-  printContent(job);
+  await deliverReceipt(job);
   return { printed: true };
 }
