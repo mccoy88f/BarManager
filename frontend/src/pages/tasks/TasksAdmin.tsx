@@ -163,9 +163,15 @@ export function TasksAdmin() {
           return (
             <Card key={task.id} variant="outlined">
               <CardContent
-                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  justifyContent: 'space-between',
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  gap: 1,
+                }}
               >
-                <Box>
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle2">{task.title}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {typeLabels[task.type]}
@@ -173,7 +179,7 @@ export function TasksAdmin() {
                       ` — ${task.relatedEmployee.firstName} ${task.relatedEmployee.lastName}`}
                     {task.description && ` — ${task.description}`}
                   </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
                     <Chip
                       size="small"
                       color={overdue ? 'error' : 'default'}
