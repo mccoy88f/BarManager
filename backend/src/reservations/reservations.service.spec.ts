@@ -57,6 +57,7 @@ describe('ReservationsService', () => {
     sendReceived: jest.Mock;
     sendConfirmed: jest.Mock;
     sendRejected: jest.Mock;
+    sendCancelled: jest.Mock;
     sendVenueNotification: jest.Mock;
   };
   let service: ReservationsService;
@@ -80,6 +81,7 @@ describe('ReservationsService', () => {
       sendReceived: jest.fn(),
       sendConfirmed: jest.fn(),
       sendRejected: jest.fn(),
+      sendCancelled: jest.fn(),
       sendVenueNotification: jest.fn(),
     };
     service = new ReservationsService(
@@ -390,6 +392,45 @@ describe('ReservationsService', () => {
       await expect(service.accept(admin, 'venue-1', 'res-1', undefined)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('cancel', () => {
+    it('annulla una prenotazione confermata e avvisa il cliente via email', async () => {
+      const confirmed = {
+        id: 'res-1',
+        venueId: 'venue-1',
+        status: ReservationStatus.CONFIRMED,
+        firstName: 'Mario',
+        email: 'mario@test.it',
+        partySize: 4,
+        reservedAt: nextDinnerSlot(),
+      };
+      prisma.reservation.findUnique.mockResolvedValue(confirmed);
+      prisma.reservation.update.mockResolvedValue({ ...confirmed, status: ReservationStatus.CANCELLED });
+
+      await service.cancel(admin, 'venue-1', 'res-1');
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: ReservationStatus.CANCELLED, respondedById: 'admin-1' }),
+        }),
+      );
+      expect(mail.sendCancelled).toHaveBeenCalledWith(
+        expect.objectContaining({ status: ReservationStatus.CANCELLED }),
+        'Bar Test',
+        null,
+      );
+    });
+
+    it('rifiuta di annullare una prenotazione già rifiutata o già annullata', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({
+        id: 'res-1',
+        venueId: 'venue-1',
+        status: ReservationStatus.REJECTED,
+      });
+      await expect(service.cancel(admin, 'venue-1', 'res-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(mail.sendCancelled).not.toHaveBeenCalled();
     });
   });
 

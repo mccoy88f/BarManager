@@ -554,6 +554,7 @@ export class ReservationsService {
     if (before.status !== ReservationStatus.CONFIRMED && before.status !== ReservationStatus.PENDING) {
       throw new BadRequestException('Prenotazione già chiusa');
     }
+    const venue = await this.getVenueSettings(venueId);
     const after = await this.prisma.reservation.update({
       where: { id: reservationId },
       data: { status: ReservationStatus.CANCELLED, respondedById: user.userId, respondedAt: new Date() },
@@ -568,6 +569,7 @@ export class ReservationsService {
       before,
       after,
     });
+    await this.mail.sendCancelled(after, venue.name, venue.email);
     return after;
   }
 

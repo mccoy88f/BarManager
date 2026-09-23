@@ -92,6 +92,16 @@ export class ReservationsMailService {
     });
   }
 
+  /** Annullamento da parte del locale (es. il cliente disdice per telefono, o l'admin corregge un errore). */
+  sendCancelled(reservation: Reservation, venueName: string, venueEmail?: string | null) {
+    return this.send({
+      to: reservation.email,
+      subject: `${venueName} — prenotazione annullata`,
+      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.\n\n${venueName}`,
+      from: this.fromAddress(venueName, venueEmail),
+    });
+  }
+
   /**
    * Ogni nuova prenotazione avvisa l'email del locale (Impostazioni
    * locale): con i pulsanti Accetta/Rifiuta se serve conferma manuale
