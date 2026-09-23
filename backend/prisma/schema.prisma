@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // "native" per lo sviluppo fuori Docker (macOS/Linux glibc); il target
   // musl esplicito serve per i container node:20-alpine (Dockerfile),
   // così l'engine giusto viene scaricato anche se l'auto-detect di
@@ -37,20 +37,24 @@ model Venue {
   // d'ambiente). Se assente si ricade su SMTP_FROM.
   email String?
 
-  // Fasce orarie del menù, personalizzabili per locale ("HH:mm")
-  lunchStart  String @default("12:00")
-  lunchEnd    String @default("15:00")
-  dinnerStart String @default("19:00")
-  dinnerEnd   String @default("23:00")
+  // Orari di apertura settimanali del locale: un array di 7 giorni
+  // (0=domenica..6=sabato, come Date#getDay()), ciascuno "chiuso" oppure
+  // aperto con una o due fasce orarie (es. pranzo+cena, con pausa fra le
+  // due). Usati sia dal menù pubblico (voci "solo pranzo"/"solo cena")
+  // sia dal modulo Prenotazioni (§5.7) per validare l'orario richiesto.
+  // Se null, non ancora configurato: si usa il default (aperto tutti i
+  // giorni, 12:00-15:00 e 19:00-23:00) calcolato in codice, vedi
+  // backend/src/common/opening-hours/opening-hours.ts.
+  openingHours Json?
 
   // Aspetto del menù pubblico: immagine di copertina in alto e informazioni
   // di contatto in fondo (social, telefono), impostati dall'admin.
-  menuCoverUrl      String?
-  menuAddress       String?
-  menuPhone         String?
-  menuInstagramUrl  String?
-  menuFacebookUrl   String?
-  menuWebsiteUrl    String?
+  menuCoverUrl     String?
+  menuAddress      String?
+  menuPhone        String?
+  menuInstagramUrl String?
+  menuFacebookUrl  String?
+  menuWebsiteUrl   String?
 
   // Integrazione Loyverse: quando attiva, categorie/voci/prezzi/immagini del
   // menù arrivano da Loyverse (fonte unica per il catalogo) e in BarManager
@@ -90,16 +94,16 @@ model Venue {
 
   // Prenotazioni tavoli (§5.7 di DEVELOPMENT.md): modulo opzionale,
   // disattivato di default finché l'admin non censisce i tavoli.
-  reservationsEnabled Boolean @default(false)
+  reservationsEnabled              Boolean @default(false)
   // Sopra questa soglia di posti la prenotazione richiede sempre conferma
   // manuale, anche se l'assegnazione automatica del tavolo ha successo.
-  reservationAutoConfirmMaxSeats Int @default(6)
+  reservationAutoConfirmMaxSeats   Int     @default(6)
   // Durata (minuti) per cui una prenotazione occupa il tavolo assegnato:
   // usata per calcolare le sovrapposizioni fra prenotazioni.
-  reservationSlotDurationMinutes Int @default(120)
+  reservationSlotDurationMinutes   Int     @default(120)
   // Quanti giorni in avanti dal momento della richiesta è possibile
   // prenotare dal widget pubblico.
-  reservationHorizonDays Int @default(30)
+  reservationHorizonDays           Int     @default(30)
   // Tolleranza sul blocco overbooking del widget pubblico: se
   // "unlimited" è true, le richieste non vengono mai bloccate per
   // capienza; altrimenti si accetta di superare la capienza totale dei
@@ -144,17 +148,17 @@ model User {
 
   employee Employee?
 
-  reviewedLeaveRequests   LeaveRequest[]      @relation("LeaveReviewedBy")
-  temperatureReadings     TemperatureReading[]
-  auditLogs               AuditLog[]
-  notifications           Notification[]
-  tasksAssigned           Task[]              @relation("TaskAssignedTo")
-  tasksCreated            Task[]              @relation("TaskCreatedBy")
-  boardMessages           BoardMessage[]
-  kbArticles              KbArticle[]
-  ordersCreated           Order[]
-  cleaningLogs            CleaningLog[]
-  reservationsHandled     Reservation[]       @relation("ReservationRespondedBy")
+  reviewedLeaveRequests LeaveRequest[]       @relation("LeaveReviewedBy")
+  temperatureReadings   TemperatureReading[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  tasksAssigned         Task[]               @relation("TaskAssignedTo")
+  tasksCreated          Task[]               @relation("TaskCreatedBy")
+  boardMessages         BoardMessage[]
+  kbArticles            KbArticle[]
+  ordersCreated         Order[]
+  cleaningLogs          CleaningLog[]
+  reservationsHandled   Reservation[]        @relation("ReservationRespondedBy")
 }
 
 // ---------------------------------------------------------------------------
@@ -162,16 +166,16 @@ model User {
 // ---------------------------------------------------------------------------
 
 model Employee {
-  id          String   @id @default(cuid())
-  firstName   String
-  lastName    String
-  role        String? // mansione (es. "Cameriere", "Cuoco")
-  department  String? // reparto, usato anche per CC ordini/approvazioni
-  email       String? // email di contatto (usata per CC ordini se non ha un account utente)
-  phone       String?
-  hiredAt     DateTime?
-  isManager   Boolean  @default(false) // responsabile di reparto (CC ordini, approvazione ferie del team)
-  active      Boolean  @default(true)
+  id         String    @id @default(cuid())
+  firstName  String
+  lastName   String
+  role       String? // mansione (es. "Cameriere", "Cuoco")
+  department String? // reparto, usato anche per CC ordini/approvazioni
+  email      String? // email di contatto (usata per CC ordini se non ha un account utente)
+  phone      String?
+  hiredAt    DateTime?
+  isManager  Boolean   @default(false) // responsabile di reparto (CC ordini, approvazione ferie del team)
+  active     Boolean   @default(true)
 
   // Moduli extra a cui il dipendente può accedere (es. "haccp", "inventory",
   // "menu", "tasks"), indipendentemente dal ruolo: impostati dall'admin
@@ -306,7 +310,7 @@ model LeaveRequest {
   employee   Employee @relation(fields: [employeeId], references: [id])
 
   reviewedById String?
-  reviewedBy   User?    @relation("LeaveReviewedBy", fields: [reviewedById], references: [id])
+  reviewedBy   User?     @relation("LeaveReviewedBy", fields: [reviewedById], references: [id])
   reviewNote   String?
   reviewedAt   DateTime?
 
@@ -319,12 +323,12 @@ model LeaveRequest {
 // ---------------------------------------------------------------------------
 
 model Fridge {
-  id        String  @id @default(cuid())
-  label     String // es. "Frigo 1 - Bancone"
-  location  String?
-  minTemp   Float // soglia minima accettabile (°C)
-  maxTemp   Float // soglia massima accettabile (°C)
-  active    Boolean @default(true)
+  id       String  @id @default(cuid())
+  label    String // es. "Frigo 1 - Bancone"
+  location String?
+  minTemp  Float // soglia minima accettabile (°C)
+  maxTemp  Float // soglia massima accettabile (°C)
+  active   Boolean @default(true)
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -335,10 +339,10 @@ model Fridge {
 }
 
 model TemperatureReading {
-  id              String   @id @default(cuid())
-  value           Float
-  recordedAt      DateTime @default(now())
-  outOfRange      Boolean  @default(false)
+  id               String   @id @default(cuid())
+  value            Float
+  recordedAt       DateTime @default(now())
+  outOfRange       Boolean  @default(false)
   correctiveAction String?
 
   fridgeId String
@@ -469,15 +473,15 @@ model ProductCategory {
 }
 
 model Supplier {
-  id           String   @id @default(cuid())
-  name         String
-  email        String
-  ccEmails     String[] @default([]) // email extra fisse (oltre ai responsabili reparto)
-  phone        String?
-  active       Boolean  @default(true)
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  ccEmails  String[] @default([]) // email extra fisse (oltre ai responsabili reparto)
+  phone     String?
+  active    Boolean  @default(true)
   // Giorni della settimana in cui va fatto l'ordine (1=lunedì .. 7=domenica),
   // impostati dall'admin ("impostazioni"): usati per il promemoria in home.
-  orderDays    Int[]    @default([])
+  orderDays Int[]    @default([])
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -489,18 +493,18 @@ model Supplier {
 }
 
 model Product {
-  id          String  @id @default(cuid())
-  name        String
-  unit        String // es. "pz", "kg", "cartone da 6"
-  standardQty Float // scorta standard/obiettivo
-  reorderAt   Float? // soglia minima sotto la quale segnalare urgenza
-  supplierCode String? // codice prodotto presso il fornitore
-  costPerUnit Float? // costo unitario per collo/unità, opzionale: usato per il totale ordine
+  id              String  @id @default(cuid())
+  name            String
+  unit            String // es. "pz", "kg", "cartone da 6"
+  standardQty     Float // scorta standard/obiettivo
+  reorderAt       Float? // soglia minima sotto la quale segnalare urgenza
+  supplierCode    String? // codice prodotto presso il fornitore
+  costPerUnit     Float? // costo unitario per collo/unità, opzionale: usato per il totale ordine
   // Quante unità/porzioni singole contiene una unità d'acquisto (es. un
   // cartone di birre contiene 24 lattine): puramente informativo, non
   // entra nei calcoli di scorta/ordine che restano espressi in "unit".
   unitsPerPackage Int?
-  active      Boolean @default(true)
+  active          Boolean @default(true)
 
   categoryId String
   category   ProductCategory @relation(fields: [categoryId], references: [id])
@@ -541,10 +545,10 @@ model Order {
   // l'email fallisce (l'admin può comunque averlo consegnato a voce/con
   // altro mezzo), ma l'esito resta visibile nello storico invece di
   // perdersi dopo il toast immediato.
-  emailSent  Boolean?
-  emailError String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  emailSent   Boolean?
+  emailError  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model OrderLine {
@@ -556,7 +560,7 @@ model OrderLine {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
-  stockOnHand Float // giacenza rilevata al momento dell'ordine
+  stockOnHand  Float // giacenza rilevata al momento dell'ordine
   suggestedQty Float // calcolata: max(0, standardQty - stockOnHand)
   orderedQty   Float // quantità effettiva ordinata (editabile dall'utente)
 }
@@ -611,7 +615,7 @@ model MenuCategory {
 }
 
 model MenuItem {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   description String?
   photoUrl    String?
@@ -619,10 +623,10 @@ model MenuItem {
 
   availability MenuAvailability @default(ALL_DAY)
 
-  visible         Boolean   @default(true) // mostra/nascondi dal menù pubblico
+  visible          Boolean   @default(true) // mostra/nascondi dal menù pubblico
   unavailableUntil DateTime? // "esaurito fino a": nel menù ma non ordinabile finché non passa
   // In evidenza in cima al menù pubblico, in aggiunta alla propria categoria.
-  featured Boolean @default(false)
+  featured         Boolean   @default(false)
 
   sortOrder Int @default(0)
 
@@ -641,8 +645,8 @@ model MenuItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([venueId, categoryId])
   @@unique([venueId, loyverseItemId])
+  @@index([venueId, categoryId])
 }
 
 /// Prezzo di una voce di menù: quasi sempre una sola riga ("" come nome,
@@ -650,8 +654,8 @@ model MenuItem {
 /// (es. "Piccola" €3.50 / "Grande" €5.00) — a mano o sincronizzate da una
 /// voce Loyverse con più varianti.
 model MenuItemVariant {
-  id     String @id @default(cuid())
-  name   String @default("")
+  id     String  @id @default(cuid())
+  name   String  @default("")
   // null = prezzo variabile (deciso manualmente in cassa, o a peso): la
   // voce resta comunque nel menù, mostrata senza importo.
   price  Float?
@@ -699,15 +703,15 @@ enum TaskRecurrence {
 }
 
 model Task {
-  id          String         @id @default(cuid())
-  title       String
-  description String?
-  type        TaskType       @default(GENERIC)
-  status      TaskStatus     @default(OPEN)
-  dueDate     DateTime
-  reminderDaysBefore Int     @default(7) // da quanti giorni prima segnalarla come imminente in home
-  recurrence  TaskRecurrence @default(NONE)
-  completedAt DateTime?
+  id                 String         @id @default(cuid())
+  title              String
+  description        String?
+  type               TaskType       @default(GENERIC)
+  status             TaskStatus     @default(OPEN)
+  dueDate            DateTime
+  reminderDaysBefore Int            @default(7) // da quanti giorni prima segnalarla come imminente in home
+  recurrence         TaskRecurrence @default(NONE)
+  completedAt        DateTime?
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -807,6 +811,7 @@ enum NotificationType {
   ORDER_SENT
   RESERVATION_PENDING
   RESERVATION_BLOCKED
+  RESERVATION_TIME_CONFIRMED
 }
 
 model Notification {
@@ -854,24 +859,33 @@ enum ReservationStatus {
 /// Richiesta di prenotazione da parte di un cliente (widget pubblico,
 /// nessun login). Isolata per venueId come tutte le altre entità.
 model Reservation {
-  id            String            @id @default(cuid())
-  firstName     String
-  lastName      String
-  email         String
-  phone         String
-  partySize     Int
-  reservedAt    DateTime // data/ora richiesta
-  isEvent       Boolean           @default(false)
-  eventNote     String? // es. "Compleanno"
-  allergiesNote String?
-  notes         String?
-  status        ReservationStatus @default(PENDING)
+  id                  String            @id @default(cuid())
+  firstName           String
+  lastName            String
+  email               String
+  phone               String
+  partySize           Int
+  reservedAt          DateTime // data/ora confermata (quella richiesta, salvo cambio orario concordato)
+  // Nuovo orario proposto dal locale (§10 di DEVELOPMENT.md), in attesa di
+  // conferma del cliente via email: se presente, "reservedAt" resta quello
+  // valido finché il cliente non confema il cambio dal link email.
+  proposedReservedAt  DateTime?
+  // Durata di occupazione del tavolo per questa prenotazione, in minuti:
+  // se null usa il default del locale (Venue.reservationSlotDurationMinutes).
+  // L'admin può alzarla/abbassarla per un singolo gruppo (es. un evento
+  // che si sa durerà più a lungo) senza toccare il default per tutti.
+  slotDurationMinutes Int?
+  isEvent             Boolean           @default(false)
+  eventNote           String? // es. "Compleanno"
+  allergiesNote       String?
+  notes               String?
+  status              ReservationStatus @default(PENDING)
   // Obbligatoria solo se status = REJECTED.
-  rejectionReason String?
+  rejectionReason     String?
   // Token opaco incluso nel link "Accetta/Rifiuta" mandato all'email del
   // locale: permette di gestire la richiesta senza login (§5.7). Non è
   // derivabile dall'id della prenotazione.
-  manageToken String @unique
+  manageToken         String            @unique
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

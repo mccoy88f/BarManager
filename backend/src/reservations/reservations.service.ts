@@ -4,10 +4,13 @@ import { Reservation, ReservationStatus, Table } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
+import { ProposeTimeChangeDto } from './dto/propose-time-change.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 interface ReservationVenueSettings {
   id: string;
@@ -20,10 +23,7 @@ interface ReservationVenueSettings {
   reservationHorizonDays: number;
   reservationOverbookingUnlimited: boolean;
   reservationOverbookingExtraSeats: number;
-  lunchStart: string;
-  lunchEnd: string;
-  dinnerStart: string;
-  dinnerEnd: string;
+  openingHours: unknown;
 }
 
 const VENUE_SELECT = {
@@ -37,16 +37,8 @@ const VENUE_SELECT = {
   reservationHorizonDays: true,
   reservationOverbookingUnlimited: true,
   reservationOverbookingExtraSeats: true,
-  lunchStart: true,
-  lunchEnd: true,
-  dinnerStart: true,
-  dinnerEnd: true,
+  openingHours: true,
 } as const;
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
 
 /**
  * Disponibilità/assegnazione tavoli (§5.7 di DEVELOPMENT.md).
@@ -71,7 +63,12 @@ export class ReservationsService {
     return venue;
   }
 
-  /** Valida che l'orario richiesto sia nell'orizzonte prenotabile e in una fascia pranzo/cena. */
+  /**
+   * Valida che l'orario richiesto sia nell'orizzonte prenotabile, ai 15
+   * minuti (non al singolo minuto: es. 20:00/20:15/20:30, non 20:07) e
+   * dentro una fascia di apertura del locale per quel giorno della
+   * settimana (§5.4/§5.7 di DEVELOPMENT.md).
+   */
   private validateRequestedTime(venue: ReservationVenueSettings, reservedAtIso: string): Date {
     const reservedAt = new Date(reservedAtIso);
     if (Number.isNaN(reservedAt.getTime())) {
@@ -87,29 +84,53 @@ export class ReservationsService {
         `Non è possibile prenotare oltre ${venue.reservationHorizonDays} giorni da oggi`,
       );
     }
-    const minutes = reservedAt.getHours() * 60 + reservedAt.getMinutes();
-    const inLunch = minutes >= toMinutes(venue.lunchStart) && minutes <= toMinutes(venue.lunchEnd);
-    const inDinner = minutes >= toMinutes(venue.dinnerStart) && minutes <= toMinutes(venue.dinnerEnd);
-    if (!inLunch && !inDinner) {
-      throw new BadRequestException('Orario fuori dalle fasce di apertura (pranzo/cena)');
+    if (reservedAt.getMinutes() % 15 !== 0) {
+      throw new BadRequestException(
+        "L'orario deve essere ai 15 minuti (es. 20:00, 20:15, 20:30, 20:45)",
+      );
+    }
+    const schedule = resolveOpeningHours(venue.openingHours);
+    const day = schedule.find((d) => d.dayOfWeek === reservedAt.getDay())!;
+    const minutesOfDay = reservedAt.getHours() * 60 + reservedAt.getMinutes();
+    if (findOpenSlot(day, minutesOfDay) === null) {
+      throw new BadRequestException(
+        day.closed
+          ? 'Il locale è chiuso in questo giorno della settimana'
+          : 'Orario fuori dagli orari di apertura per questo giorno',
+      );
     }
     return reservedAt;
   }
 
-  private windowsOverlap(otherStart: Date, slotMinutes: number, windowStart: Date, windowEnd: Date) {
-    const otherEnd = new Date(otherStart.getTime() + slotMinutes * 60000);
+  private windowsOverlap(otherStart: Date, otherDurationMinutes: number, windowStart: Date, windowEnd: Date) {
+    const otherEnd = new Date(otherStart.getTime() + otherDurationMinutes * 60000);
     return otherStart < windowEnd && otherEnd > windowStart;
   }
 
-  /** Prenotazioni attive (contano per capienza/tavoli occupati) sovrapposte alla finestra data. */
+  /** Durata effettiva di una prenotazione: quella scelta per lei, altrimenti il default del locale. */
+  private effectiveDuration(
+    reservation: { slotDurationMinutes: number | null },
+    defaultDurationMinutes: number,
+  ): number {
+    return reservation.slotDurationMinutes ?? defaultDurationMinutes;
+  }
+
+  /**
+   * Prenotazioni attive (contano per capienza/tavoli occupati) sovrapposte
+   * alla finestra data. Ogni candidata usa la PROPRIA durata (impostata
+   * per quella singola prenotazione dall'admin, altrimenti il default del
+   * locale) — non quella della finestra che si sta controllando: due
+   * prenotazioni con durate diverse possono sovrapporsi solo in parte.
+   */
   private async findOverlapping(
     venueId: string,
     reservedAt: Date,
-    slotMinutes: number,
+    targetDurationMinutes: number,
+    defaultDurationMinutes: number,
     excludeReservationId?: string,
   ): Promise<Reservation[]> {
     const windowStart = reservedAt;
-    const windowEnd = new Date(reservedAt.getTime() + slotMinutes * 60000);
+    const windowEnd = new Date(reservedAt.getTime() + targetDurationMinutes * 60000);
     const candidates = await this.prisma.reservation.findMany({
       where: {
         venueId,
@@ -117,7 +138,9 @@ export class ReservationsService {
         id: excludeReservationId ? { not: excludeReservationId } : undefined,
       },
     });
-    return candidates.filter((r) => this.windowsOverlap(r.reservedAt, slotMinutes, windowStart, windowEnd));
+    return candidates.filter((r) =>
+      this.windowsOverlap(r.reservedAt, this.effectiveDuration(r, defaultDurationMinutes), windowStart, windowEnd),
+    );
   }
 
   /** Posti totali (tavoli attivi) e posti già occupati da prenotazioni sovrapposte. */
@@ -130,10 +153,29 @@ export class ReservationsService {
       venueId,
       reservedAt,
       venue.reservationSlotDurationMinutes,
+      venue.reservationSlotDurationMinutes,
       excludeReservationId,
     );
     const occupiedSeats = overlapping.reduce((sum, r) => sum + r.partySize, 0);
     return { totalSeats, occupiedSeats, availableSeats: Math.max(0, totalSeats - occupiedSeats) };
+  }
+
+  /** Id dei tavoli attivi occupati (da altre prenotazioni) nella finestra data — per segnalarli come "occupato" in UI. */
+  private async getBusyTableIds(
+    venueId: string,
+    reservedAt: Date,
+    targetDurationMinutes: number,
+    defaultDurationMinutes: number,
+    excludeReservationId?: string,
+  ): Promise<Set<string>> {
+    const overlapping = await this.findOverlapping(
+      venueId,
+      reservedAt,
+      targetDurationMinutes,
+      defaultDurationMinutes,
+      excludeReservationId,
+    );
+    return new Set(overlapping.map((r) => r.tableId).filter((id): id is string => !!id));
   }
 
   /**
@@ -145,7 +187,8 @@ export class ReservationsService {
   private async findBestFitTable(
     venueId: string,
     reservedAt: Date,
-    slotMinutes: number,
+    targetDurationMinutes: number,
+    defaultDurationMinutes: number,
     partySize: number,
     excludeReservationId?: string,
   ): Promise<Table | null> {
@@ -153,8 +196,13 @@ export class ReservationsService {
       where: { venueId, active: true },
       orderBy: { seats: 'asc' },
     });
-    const overlapping = await this.findOverlapping(venueId, reservedAt, slotMinutes, excludeReservationId);
-    const busyTableIds = new Set(overlapping.map((r) => r.tableId).filter((id): id is string => !!id));
+    const busyTableIds = await this.getBusyTableIds(
+      venueId,
+      reservedAt,
+      targetDurationMinutes,
+      defaultDurationMinutes,
+      excludeReservationId,
+    );
     return tables.find((t) => t.seats >= partySize && !busyTableIds.has(t.id)) ?? null;
   }
 
@@ -184,7 +232,12 @@ export class ReservationsService {
 
     const tables = await this.prisma.table.findMany({ where: { venueId, active: true } });
     const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0);
-    const overlapping = await this.findOverlapping(venueId, reservedAt, venue.reservationSlotDurationMinutes);
+    const overlapping = await this.findOverlapping(
+      venueId,
+      reservedAt,
+      venue.reservationSlotDurationMinutes,
+      venue.reservationSlotDurationMinutes,
+    );
     const occupiedSeats = overlapping.reduce((sum, r) => sum + r.partySize, 0);
 
     // Tolleranza di overbooking configurabile in Impostazioni prenotazioni
@@ -211,6 +264,7 @@ export class ReservationsService {
     const bestFit = await this.findBestFitTable(
       venueId,
       reservedAt,
+      venue.reservationSlotDurationMinutes,
       venue.reservationSlotDurationMinutes,
       dto.partySize,
     );
@@ -304,10 +358,61 @@ export class ReservationsService {
           });
     const countByEmail = new Map(counts.map((c) => [c.email, c._count._all]));
 
-    return reservations.map((r) => ({
-      ...r,
-      isReturningCustomer: (countByEmail.get(r.email) ?? 1) > 1,
-    }));
+    // Tavoli occupati per ciascuna riga, alla SUA finestra oraria (non a
+    // quella delle altre): due chiamate qui invece che una per riga,
+    // l'overlap fra ciascuna coppia si calcola poi in memoria.
+    const venue = await this.getVenueSettings(venueId);
+    const activeWithTable = await this.prisma.reservation.findMany({
+      where: {
+        venueId,
+        status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
+        tableId: { not: null },
+      },
+    });
+
+    return reservations.map((r) => {
+      const windowStart = r.reservedAt;
+      const windowEnd = new Date(
+        windowStart.getTime() + this.effectiveDuration(r, venue.reservationSlotDurationMinutes) * 60000,
+      );
+      const busyTableIds = activeWithTable
+        .filter((other) => other.id !== r.id)
+        .filter((other) =>
+          this.windowsOverlap(
+            other.reservedAt,
+            this.effectiveDuration(other, venue.reservationSlotDurationMinutes),
+            windowStart,
+            windowEnd,
+          ),
+        )
+        .map((other) => other.tableId as string);
+      return {
+        ...r,
+        isReturningCustomer: (countByEmail.get(r.email) ?? 1) > 1,
+        busyTableIds,
+      };
+    });
+  }
+
+  /** Tavoli attivi con l'indicazione di quali sono occupati per un dato orario/durata — per il dialog di aggiunta manuale, prima ancora che la prenotazione esista. */
+  async getTableAvailability(venueId: string, reservedAtIso: string, durationMinutes?: number) {
+    const venue = await this.getVenueSettings(venueId);
+    const reservedAt = new Date(reservedAtIso);
+    if (Number.isNaN(reservedAt.getTime())) {
+      throw new BadRequestException('Data/ora non valida');
+    }
+    const targetDuration = durationMinutes ?? venue.reservationSlotDurationMinutes;
+    const tables = await this.prisma.table.findMany({
+      where: { venueId, active: true },
+      orderBy: { seats: 'asc' },
+    });
+    const busyTableIds = await this.getBusyTableIds(
+      venueId,
+      reservedAt,
+      targetDuration,
+      venue.reservationSlotDurationMinutes,
+    );
+    return tables.map((t) => ({ ...t, busy: busyTableIds.has(t.id) }));
   }
 
   /**
@@ -406,6 +511,7 @@ export class ReservationsService {
         notes: dto.notes,
         status: ReservationStatus.CONFIRMED,
         tableId: dto.tableId ?? null,
+        slotDurationMinutes: dto.slotDurationMinutes ?? null,
         manageToken: randomUUID(),
         respondedById: user.userId,
         respondedAt: new Date(),
@@ -460,11 +566,20 @@ export class ReservationsService {
     if (!reservation || reservation.manageToken !== token) {
       throw new NotFoundException('Prenotazione non trovata');
     }
+    const venue = await this.getVenueSettings(reservation.venueId);
     const tables = await this.prisma.table.findMany({
       where: { venueId: reservation.venueId, active: true },
       orderBy: { seats: 'asc' },
     });
-    return { reservation, tables };
+    const targetDuration = this.effectiveDuration(reservation, venue.reservationSlotDurationMinutes);
+    const busyTableIds = await this.getBusyTableIds(
+      reservation.venueId,
+      reservation.reservedAt,
+      targetDuration,
+      venue.reservationSlotDurationMinutes,
+      reservation.id,
+    );
+    return { reservation, tables: tables.map((t) => ({ ...t, busy: busyTableIds.has(t.id) })) };
   }
 
   /** Accetta/rifiuta senza login, dal link Accetta/Rifiuta nell'email al locale. */
@@ -588,5 +703,140 @@ export class ReservationsService {
       data: { tableId: tableId ?? null },
       include: { table: true },
     });
+  }
+
+  /**
+   * Il locale propone un nuovo orario per una prenotazione già presa in
+   * carico, all'atto dell'accettazione o in un momento successivo (§10 di
+   * DEVELOPMENT.md): non cambia subito "reservedAt", chiede prima
+   * conferma al cliente via email (link alla stessa pagina pubblica di
+   * gestione). Come per l'aggiunta manuale, non applica i vincoli di
+   * orario/fasce del widget pubblico: è un'azione dello staff.
+   */
+  async proposeTimeChange(
+    user: AuthenticatedUser,
+    venueId: string,
+    reservationId: string,
+    dto: ProposeTimeChangeDto,
+  ) {
+    const reservation = await this.requireReservation(venueId, reservationId);
+    if (
+      reservation.status === ReservationStatus.REJECTED ||
+      reservation.status === ReservationStatus.CANCELLED
+    ) {
+      throw new BadRequestException("Prenotazione chiusa: non è possibile modificare l'orario");
+    }
+    const proposedReservedAt = new Date(dto.reservedAt);
+    if (Number.isNaN(proposedReservedAt.getTime())) {
+      throw new BadRequestException('Data/ora non valida');
+    }
+
+    const venue = await this.getVenueSettings(venueId);
+    const updated = await this.prisma.reservation.update({
+      where: { id: reservationId },
+      data: { proposedReservedAt },
+      include: { table: true },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: user.userId,
+      entity: 'Reservation',
+      entityId: reservationId,
+      action: 'UPDATE',
+      before: reservation,
+      after: updated,
+    });
+
+    const confirmUrl = this.buildManageUrl(venue, reservationId, updated.manageToken);
+    await this.mail.sendTimeChangeRequest(updated, venue.name, confirmUrl, venue.email);
+    return updated;
+  }
+
+  /** Il cliente confema il nuovo orario proposto, dal link nell'email (nessun login). */
+  async confirmTimeChangeByToken(reservationId: string, token: string) {
+    const { reservation } = await this.getForManage(reservationId, token);
+    if (!reservation.proposedReservedAt) {
+      throw new BadRequestException('Nessun nuovo orario da confermare');
+    }
+
+    const updated = await this.prisma.reservation.update({
+      where: { id: reservationId },
+      data: { reservedAt: reservation.proposedReservedAt, proposedReservedAt: null },
+      include: { table: true },
+    });
+
+    const admins = await this.prisma.user.findMany({ where: { venueId: reservation.venueId, role: 'ADMIN' } });
+    await this.prisma.notification.createMany({
+      data: admins.map((a) => ({
+        userId: a.id,
+        type: 'RESERVATION_TIME_CONFIRMED',
+        message: `${reservation.firstName} ${reservation.lastName} ha confermato il nuovo orario: ${updated.reservedAt.toLocaleString('it-IT')}`,
+      })),
+    });
+
+    return updated;
+  }
+
+  /**
+   * Modifica generale (dati cliente, note, durata di occupazione): a
+   * differenza del cambio orario non richiede conferma del cliente — per
+   * correggere un dato inserito male o aggiornare una nota, non per
+   * rinegoziare l'appuntamento. Non applicabile a prenotazioni chiuse
+   * (rifiutate/annullate).
+   */
+  async updateReservation(
+    user: AuthenticatedUser,
+    venueId: string,
+    reservationId: string,
+    dto: UpdateReservationDto,
+  ) {
+    const before = await this.requireReservation(venueId, reservationId);
+    if (
+      before.status === ReservationStatus.REJECTED ||
+      before.status === ReservationStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Prenotazione chiusa: non è possibile modificarla');
+    }
+
+    const data: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      partySize?: number;
+      isEvent?: boolean;
+      eventNote?: string | null;
+      allergiesNote?: string | null;
+      notes?: string | null;
+      slotDurationMinutes?: number | null;
+    } = {};
+    if (dto.firstName !== undefined) data.firstName = dto.firstName;
+    if (dto.lastName !== undefined) data.lastName = dto.lastName;
+    if (dto.email !== undefined) data.email = dto.email.trim().toLowerCase();
+    if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.partySize !== undefined) data.partySize = dto.partySize;
+    if (dto.isEvent !== undefined) data.isEvent = dto.isEvent;
+    if (dto.eventNote !== undefined) data.eventNote = dto.eventNote;
+    if (dto.allergiesNote !== undefined) data.allergiesNote = dto.allergiesNote;
+    if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.slotDurationMinutes !== undefined) data.slotDurationMinutes = dto.slotDurationMinutes;
+
+    const after = await this.prisma.reservation.update({
+      where: { id: reservationId },
+      data,
+      include: { table: true },
+    });
+
+    await this.audit.log({
+      venueId,
+      userId: user.userId,
+      entity: 'Reservation',
+      entityId: reservationId,
+      action: 'UPDATE',
+      before,
+      after,
+    });
+    return after;
   }
 }

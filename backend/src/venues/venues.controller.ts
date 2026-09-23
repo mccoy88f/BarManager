@@ -25,7 +25,7 @@ import {
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
-import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
+import { UpdateOpeningHoursDto } from './dto/update-opening-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
@@ -58,17 +58,18 @@ export class VenuesController {
     return this.venuesService.update(id, dto);
   }
 
-  /** Il locale può vedere/modificare le proprie fasce orarie pranzo/cena. */
+  /** Il locale può vedere/modificare i propri orari di apertura. */
   @Get('me')
   @Roles(Role.ADMIN, Role.MANAGER)
   getOwn(@CurrentUser() user: AuthenticatedUser) {
     return this.venuesService.getOwn(requireVenueId(user));
   }
 
-  @Patch('me/hours')
+  /** Orari di apertura settimanali (giorni chiusi, fino a due fasce orarie al giorno). */
+  @Patch('me/opening-hours')
   @Roles(Role.ADMIN)
-  updateOwnHours(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateVenueHoursDto) {
-    return this.venuesService.updateHours(requireVenueId(user), dto);
+  updateOwnOpeningHours(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOpeningHoursDto) {
+    return this.venuesService.updateOpeningHours(requireVenueId(user), dto);
   }
 
   @Patch('me/clock-in-settings')

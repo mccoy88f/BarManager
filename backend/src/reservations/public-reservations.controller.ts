@@ -1,6 +1,7 @@
 import { Controller, Get, NotFoundException, Param, Patch, Post, Body, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ManageAcceptDto } from './dto/manage-accept.dto';
@@ -28,7 +29,7 @@ export class PublicReservationsController {
     return venueId;
   }
 
-  /** Nome locale, fasce orarie e impostazioni prenotazioni: usate dal widget per precompilare i vincoli. */
+  /** Nome locale, orari di apertura e impostazioni prenotazioni: usate dal widget per precompilare i vincoli. */
   @Get('info')
   async info(@Req() req: Request, @Query('venueSlug') venueSlug?: string) {
     const venueId = await this.resolveVenueId(req, venueSlug);
@@ -38,16 +39,13 @@ export class PublicReservationsController {
         name: true,
         reservationsEnabled: true,
         reservationHorizonDays: true,
-        lunchStart: true,
-        lunchEnd: true,
-        dinnerStart: true,
-        dinnerEnd: true,
+        openingHours: true,
       },
     });
     if (!venue || !venue.reservationsEnabled) {
       throw new NotFoundException('Prenotazioni non disponibili per questo locale');
     }
-    return venue;
+    return { ...venue, openingHours: resolveOpeningHours(venue.openingHours) };
   }
 
   @Get('availability')
@@ -88,5 +86,11 @@ export class PublicReservationsController {
   @Patch(':id/manage/reject')
   manageReject(@Param('id') id: string, @Body() dto: ManageRejectDto) {
     return this.reservationsService.rejectByToken(id, dto.token, dto.reason);
+  }
+
+  /** Il cliente confema il nuovo orario proposto dal locale (link nell'email, §10). */
+  @Patch(':id/manage/confirm-time')
+  confirmTimeChange(@Param('id') id: string, @Body('token') token: string) {
+    return this.reservationsService.confirmTimeChangeByToken(id, token);
   }
 }

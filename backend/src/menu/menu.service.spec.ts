@@ -300,6 +300,18 @@ describe('MenuService.getPublicMenu', () => {
   };
   let service: MenuService;
 
+  // Aperto tutto il giorno tutti i giorni, per non dipendere dall'ora/giorno
+  // in cui girano i test (i due test sotto non riguardano il calcolo della
+  // fascia pranzo/cena, solo la visibilità di categorie/voci).
+  const alwaysOpenSchedule = Array.from({ length: 7 }, (_, dayOfWeek) => ({
+    dayOfWeek,
+    closed: false,
+    slot1Start: '00:00',
+    slot1End: '23:59',
+    slot2Start: null,
+    slot2End: null,
+  }));
+
   const baseVenue = {
     id: 'venue-1',
     active: true,
@@ -309,10 +321,7 @@ describe('MenuService.getPublicMenu', () => {
     menuInstagramUrl: null,
     menuFacebookUrl: null,
     menuWebsiteUrl: null,
-    lunchStart: '00:00',
-    lunchEnd: '23:59',
-    dinnerStart: '00:00',
-    dinnerEnd: '23:59',
+    openingHours: alwaysOpenSchedule,
   };
 
   beforeEach(() => {

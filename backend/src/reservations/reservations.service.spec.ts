@@ -454,7 +454,7 @@ describe('ReservationsService', () => {
       const result = await service.getForManage('res-1', 'secret-token');
 
       expect(result.reservation).toEqual(pending);
-      expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true }]);
+      expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true, busy: false }]);
     });
 
     it('rifiuta con NotFoundException se il token non combacia', async () => {
@@ -711,6 +711,154 @@ describe('ReservationsService', () => {
           },
         }),
       );
+    });
+
+    it('segnala in busyTableIds il tavolo di un\'altra prenotazione sovrapposta', async () => {
+      const reservedAt = nextDinnerSlot();
+      const overlapping = {
+        id: 'r2',
+        email: 'altro@test.it',
+        reservedAt,
+        tableId: 't1',
+        slotDurationMinutes: null,
+        status: ReservationStatus.CONFIRMED,
+      };
+      const target = {
+        id: 'r1',
+        email: 'mario@test.it',
+        reservedAt,
+        tableId: null,
+        slotDurationMinutes: null,
+        status: ReservationStatus.PENDING,
+      };
+      // Il primo findMany è la lista filtrata, il secondo (activeWithTable)
+      // tutte le prenotazioni attive con un tavolo assegnato.
+      prisma.reservation.findMany
+        .mockResolvedValueOnce([target])
+        .mockResolvedValueOnce([overlapping]);
+
+      const result = await service.listReservations('venue-1');
+
+      expect(result.find((r) => r.id === 'r1')?.busyTableIds).toEqual(['t1']);
+    });
+  });
+
+  describe('durata personalizzata per singola prenotazione (bug: tavolo occupato risultava libero)', () => {
+    it('un tavolo con prenotazione più lunga del default resta occupato oltre la durata standard', async () => {
+      // Prenotazione delle 19:00 con durata personalizzata di 180 minuti
+      // (invece del default di 120): alle 20:30 il tavolo deve risultare
+      // ancora occupato, non libero.
+      const start = nextDinnerSlot();
+      start.setHours(19, 0, 0, 0);
+      const laterCheck = new Date(start);
+      laterCheck.setHours(20, 30, 0, 0);
+
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'existing',
+          reservedAt: start,
+          partySize: 4,
+          tableId: 't1',
+          slotDurationMinutes: 180,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      const result = await service.getAvailability('venue-1', laterCheck.toISOString());
+
+      expect(result.occupiedSeats).toBe(4);
+      expect(result.availableSeats).toBe(0);
+    });
+
+    it('getTableAvailability segnala occupato il tavolo di una prenotazione con durata estesa', async () => {
+      const start = nextDinnerSlot();
+      start.setHours(19, 0, 0, 0);
+      const laterCheck = new Date(start);
+      laterCheck.setHours(20, 30, 0, 0);
+
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'existing',
+          reservedAt: start,
+          tableId: 't1',
+          slotDurationMinutes: 180,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      const result = await service.getTableAvailability('venue-1', laterCheck.toISOString());
+
+      expect(result).toEqual([{ id: 't1', seats: 4, active: true, busy: true }]);
+    });
+
+    it('non risulta occupato dopo la fine della durata personalizzata', async () => {
+      const start = nextDinnerSlot();
+      start.setHours(19, 0, 0, 0);
+      const afterEnd = new Date(start);
+      afterEnd.setHours(22, 1, 0, 0); // 19:00 + 180min = 22:00, un minuto dopo è libero
+
+      prisma.table.findMany.mockResolvedValue([{ id: 't1', seats: 4, active: true }]);
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'existing',
+          reservedAt: start,
+          tableId: 't1',
+          slotDurationMinutes: 180,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      const result = await service.getTableAvailability('venue-1', afterEnd.toISOString());
+
+      expect(result).toEqual([{ id: 't1', seats: 4, active: true, busy: false }]);
+    });
+  });
+
+  describe('updateReservation (modifica generale)', () => {
+    const existing = {
+      id: 'res-1',
+      venueId: 'venue-1',
+      status: ReservationStatus.CONFIRMED,
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      email: 'mario@test.it',
+      partySize: 4,
+    };
+
+    it('aggiorna solo i campi passati e traccia in audit', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(existing);
+      prisma.reservation.update.mockResolvedValue({ ...existing, partySize: 6 });
+
+      await service.updateReservation(admin, 'venue-1', 'res-1', { partySize: 6, notes: 'Vicino alla finestra' });
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'res-1' },
+          data: { partySize: 6, notes: 'Vicino alla finestra' },
+        }),
+      );
+      expect(audit.log).toHaveBeenCalled();
+    });
+
+    it('permette di impostare una durata personalizzata per la singola prenotazione', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(existing);
+      prisma.reservation.update.mockResolvedValue({ ...existing, slotDurationMinutes: 180 });
+
+      await service.updateReservation(admin, 'venue-1', 'res-1', { slotDurationMinutes: 180 });
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { slotDurationMinutes: 180 } }),
+      );
+    });
+
+    it('rifiuta la modifica di una prenotazione rifiutata o annullata', async () => {
+      prisma.reservation.findUnique.mockResolvedValue({ ...existing, status: ReservationStatus.CANCELLED });
+      await expect(
+        service.updateReservation(admin, 'venue-1', 'res-1', { partySize: 2 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.reservation.update).not.toHaveBeenCalled();
     });
   });
 });

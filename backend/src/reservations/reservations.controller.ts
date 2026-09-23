@@ -14,6 +14,8 @@ import { RejectReservationDto } from './dto/reject-reservation.dto';
 import { AcceptReservationDto } from './dto/accept-reservation.dto';
 import { AssignTableDto } from './dto/assign-table.dto';
 import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
+import { ProposeTimeChangeDto } from './dto/propose-time-change.dto';
+import { UpdateReservationDto } from './dto/update-reservation.dto';
 
 /** Coda prenotazioni, lato admin/manager autorizzato (§5.7). */
 @Controller('reservations')
@@ -54,6 +56,20 @@ export class ReservationsController {
     return this.reservationsService.getCustomerHistory(requireVenueId(user), email);
   }
 
+  /** Tavoli attivi con indicazione di quali sono occupati per un orario/durata dati (dialog di aggiunta manuale). */
+  @Get('table-availability')
+  tableAvailability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('reservedAt') reservedAt: string,
+    @Query('durationMinutes') durationMinutes?: string,
+  ) {
+    return this.reservationsService.getTableAvailability(
+      requireVenueId(user),
+      reservedAt,
+      durationMinutes ? Number(durationMinutes) : undefined,
+    );
+  }
+
   /** Aggiunta manuale in backoffice (telefono, di persona, ...): nessun vincolo di disponibilità, tavolo opzionale. */
   @Post('manual')
   createManual(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateManualReservationDto) {
@@ -90,5 +106,25 @@ export class ReservationsController {
     @Body() dto: AssignTableDto,
   ) {
     return this.reservationsService.reassignTable(requireVenueId(user), id, dto.tableId);
+  }
+
+  /** Propone un nuovo orario al cliente (all'accettazione o dopo): non cambia subito la prenotazione, chiede conferma via email. */
+  @Patch(':id/time')
+  proposeTimeChange(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ProposeTimeChangeDto,
+  ) {
+    return this.reservationsService.proposeTimeChange(user, requireVenueId(user), id, dto);
+  }
+
+  /** Modifica generale (dati cliente, note, durata di occupazione): non richiede conferma del cliente. */
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateReservationDto,
+  ) {
+    return this.reservationsService.updateReservation(user, requireVenueId(user), id, dto);
   }
 }

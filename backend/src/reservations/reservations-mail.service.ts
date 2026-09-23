@@ -103,6 +103,38 @@ export class ReservationsMailService {
   }
 
   /**
+   * Il locale propone un nuovo orario per una prenotazione già presa in
+   * carico (in fase di accettazione o dopo, §10 di DEVELOPMENT.md): il
+   * cliente deve confermarlo dal link (stessa pagina pubblica di
+   * gestione, `confirmUrl`) prima che diventi effettivo — "reservedAt"
+   * non cambia da solo.
+   */
+  sendTimeChangeRequest(
+    reservation: Reservation & { proposedReservedAt: Date | null },
+    venueName: string,
+    confirmUrl: string,
+    venueEmail?: string | null,
+  ) {
+    const newWhen = reservation.proposedReservedAt ? this.when(reservation.proposedReservedAt) : '';
+    return this.send({
+      to: reservation.email,
+      subject: `${venueName} — nuovo orario da confermare`,
+      text: `Ciao ${reservation.firstName},\n\n${venueName} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.\n\n${venueName}`,
+      html: `
+        <div style="font-family:sans-serif;color:#222;">
+          <h2>Nuovo orario da confermare</h2>
+          <p>Ciao ${escapeHtml(reservation.firstName)},</p>
+          <p>${escapeHtml(venueName)} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
+          <div style="margin-top:16px;">
+            <a href="${confirmUrl}" style="display:inline-block;background:#2e7d32;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">Confermo il nuovo orario</a>
+          </div>
+          <p style="margin-top:16px;">Se non ti va bene, contattaci direttamente.</p>
+        </div>`,
+      from: this.fromAddress(venueName, venueEmail),
+    });
+  }
+
+  /**
    * Ogni nuova prenotazione avvisa l'email del locale (Impostazioni
    * locale): con i pulsanti Accetta/Rifiuta se serve conferma manuale
    * (`needsAction`), solo informativa se è già stata confermata in

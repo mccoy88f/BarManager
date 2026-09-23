@@ -2,9 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
-import { UpdateVenueHoursDto } from './dto/update-venue-hours.dto';
+import { UpdateOpeningHoursDto } from './dto/update-opening-hours.dto';
 import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
@@ -67,18 +68,15 @@ export class VenuesService {
     return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 
-  getOwn(venueId: string) {
-    return this.prisma.venue.findUnique({
+  async getOwn(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
       select: {
         id: true,
         name: true,
         email: true,
         slug: true,
-        lunchStart: true,
-        lunchEnd: true,
-        dinnerStart: true,
-        dinnerEnd: true,
+        openingHours: true,
         clockInQrEnabled: true,
         clockInGpsEnabled: true,
         clockInNfcEnabled: true,
@@ -102,10 +100,12 @@ export class VenuesService {
         reservationOverbookingExtraSeats: true,
       },
     });
+    if (!venue) return venue;
+    return { ...venue, openingHours: resolveOpeningHours(venue.openingHours) };
   }
 
-  updateHours(venueId: string, dto: UpdateVenueHoursDto) {
-    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  updateOpeningHours(venueId: string, dto: UpdateOpeningHoursDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: { openingHours: dto.days as object } });
   }
 
   updateClockInSettings(venueId: string, dto: UpdateClockInSettingsDto) {

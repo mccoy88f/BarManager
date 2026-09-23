@@ -44,15 +44,22 @@ interface LoyverseStatus {
   lastSyncSummary?: LoyverseSyncSummary | null;
 }
 
+interface OpeningHoursDay {
+  /** 0 = domenica .. 6 = sabato, come Date#getDay(). */
+  dayOfWeek: number;
+  closed: boolean;
+  slot1Start: string | null;
+  slot1End: string | null;
+  slot2Start: string | null;
+  slot2End: string | null;
+}
+
 interface VenueHours {
   id: string;
   name: string;
   email?: string;
   slug: string;
-  lunchStart: string;
-  lunchEnd: string;
-  dinnerStart: string;
-  dinnerEnd: string;
+  openingHours: OpeningHoursDay[];
   menuCoverUrl?: string;
   menuAddress?: string;
   menuPhone?: string;
@@ -60,6 +67,18 @@ interface VenueHours {
   menuFacebookUrl?: string;
   menuWebsiteUrl?: string;
 }
+
+/** Lunedì(1)...domenica(0), nell'ordine in cui mostrarli in UI: Date#getDay() usa invece 0=domenica. */
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABELS: Record<number, string> = {
+  0: 'Domenica',
+  1: 'Lunedì',
+  2: 'Martedì',
+  3: 'Mercoledì',
+  4: 'Giovedì',
+  5: 'Venerdì',
+  6: 'Sabato',
+};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -75,12 +94,7 @@ function extractErrorMessage(error: unknown): string {
 export function VenueSettings() {
   const queryClient = useQueryClient();
   const showToast = useToast();
-  const [hours, setHours] = useState({
-    lunchStart: '',
-    lunchEnd: '',
-    dinnerStart: '',
-    dinnerEnd: '',
-  });
+  const [openingHours, setOpeningHours] = useState<OpeningHoursDay[]>([]);
 
   const [menuSettings, setMenuSettings] = useState({
     name: '',
@@ -99,12 +113,7 @@ export function VenueSettings() {
 
   useEffect(() => {
     if (venueQuery.data) {
-      setHours({
-        lunchStart: venueQuery.data.lunchStart,
-        lunchEnd: venueQuery.data.lunchEnd,
-        dinnerStart: venueQuery.data.dinnerStart,
-        dinnerEnd: venueQuery.data.dinnerEnd,
-      });
+      setOpeningHours(venueQuery.data.openingHours);
       setMenuSettings({
         name: venueQuery.data.name ?? '',
         email: venueQuery.data.email ?? '',
@@ -117,11 +126,18 @@ export function VenueSettings() {
     }
   }, [venueQuery.data]);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => (await api.patch('/venues/me/hours', hours)).data,
-    onSuccess: () => showToast('Fasce orarie aggiornate'),
+  const saveOpeningHoursMutation = useMutation({
+    mutationFn: async () => (await api.patch('/venues/me/opening-hours', { days: openingHours })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['venue-me'] });
+      showToast('Orari di apertura aggiornati');
+    },
     onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
   });
+
+  const updateDay = (dayOfWeek: number, patch: Partial<OpeningHoursDay>) => {
+    setOpeningHours((days) => days.map((d) => (d.dayOfWeek === dayOfWeek ? { ...d, ...patch } : d)));
+  };
 
   const saveMenuSettingsMutation = useMutation({
     mutationFn: async () => (await api.patch('/venues/me/menu-settings', menuSettings)).data,
@@ -205,47 +221,113 @@ export function VenueSettings() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Fasce orarie del menù
+            Orari di apertura
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Determinano quali voci "Solo pranzo"/"Solo cena" sono mostrate come disponibili nel
-            menù pubblico in base all'ora corrente.
+            Giorni di apertura/chiusura e fino a due fasce orarie al giorno (es. pranzo e cena,
+            con una pausa fra le due). Determinano quali voci "Solo pranzo"/"Solo cena" sono
+            mostrate come disponibili nel menù pubblico, e gli orari prenotabili nel modulo
+            Prenotazioni.
           </Typography>
-          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, maxWidth: 400 }}>
-            <TextField
-              label="Inizio pranzo"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              value={hours.lunchStart}
-              onChange={(e) => setHours((h) => ({ ...h, lunchStart: e.target.value }))}
-            />
-            <TextField
-              label="Fine pranzo"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              value={hours.lunchEnd}
-              onChange={(e) => setHours((h) => ({ ...h, lunchEnd: e.target.value }))}
-            />
-            <TextField
-              label="Inizio cena"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              value={hours.dinnerStart}
-              onChange={(e) => setHours((h) => ({ ...h, dinnerStart: e.target.value }))}
-            />
-            <TextField
-              label="Fine cena"
-              type="time"
-              InputLabelProps={{ shrink: true }}
-              value={hours.dinnerEnd}
-              onChange={(e) => setHours((h) => ({ ...h, dinnerEnd: e.target.value }))}
-            />
+          <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
+            {DAY_ORDER.map((dayOfWeek) => {
+              const day = openingHours.find((d) => d.dayOfWeek === dayOfWeek);
+              if (!day) return null;
+              const hasSlot2 = day.slot2Start != null && day.slot2End != null;
+              return (
+                <Box
+                  key={dayOfWeek}
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    p: 1,
+                    borderRadius: 1,
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={600} sx={{ width: 100, flexShrink: 0 }}>
+                    {DAY_LABELS[dayOfWeek]}
+                  </Typography>
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={!day.closed}
+                        onChange={(e) => updateDay(dayOfWeek, { closed: !e.target.checked })}
+                      />
+                    }
+                    label={day.closed ? 'Chiuso' : 'Aperto'}
+                  />
+                  {!day.closed && (
+                    <>
+                      <TextField
+                        label="Dalle"
+                        type="time"
+                        size="small"
+                        inputProps={{ step: 900 }}
+                        InputLabelProps={{ shrink: true }}
+                        value={day.slot1Start ?? ''}
+                        onChange={(e) => updateDay(dayOfWeek, { slot1Start: e.target.value })}
+                      />
+                      <TextField
+                        label="Alle"
+                        type="time"
+                        size="small"
+                        inputProps={{ step: 900 }}
+                        InputLabelProps={{ shrink: true }}
+                        value={day.slot1End ?? ''}
+                        onChange={(e) => updateDay(dayOfWeek, { slot1End: e.target.value })}
+                      />
+                      {hasSlot2 ? (
+                        <>
+                          <TextField
+                            label="Dalle (2ª fascia)"
+                            type="time"
+                            size="small"
+                            inputProps={{ step: 900 }}
+                            InputLabelProps={{ shrink: true }}
+                            value={day.slot2Start ?? ''}
+                            onChange={(e) => updateDay(dayOfWeek, { slot2Start: e.target.value })}
+                          />
+                          <TextField
+                            label="Alle (2ª fascia)"
+                            type="time"
+                            size="small"
+                            inputProps={{ step: 900 }}
+                            InputLabelProps={{ shrink: true }}
+                            value={day.slot2End ?? ''}
+                            onChange={(e) => updateDay(dayOfWeek, { slot2End: e.target.value })}
+                          />
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => updateDay(dayOfWeek, { slot2Start: null, slot2End: null })}
+                          >
+                            Rimuovi 2ª fascia
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="small"
+                          onClick={() => updateDay(dayOfWeek, { slot2Start: '19:00', slot2End: '23:00' })}
+                        >
+                          + Aggiungi seconda fascia (es. cena, con una pausa)
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
           <Button
             variant="contained"
             sx={{ mt: 2 }}
-            disabled={saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
+            disabled={saveOpeningHoursMutation.isPending || openingHours.length === 0}
+            onClick={() => saveOpeningHoursMutation.mutate()}
           >
             Salva
           </Button>

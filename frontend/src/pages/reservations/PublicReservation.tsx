@@ -15,13 +15,40 @@ import {
 } from '@mui/material';
 import { api } from '../../api/client';
 
+interface OpeningHoursDay {
+  /** 0 = domenica .. 6 = sabato, come Date#getDay(). */
+  dayOfWeek: number;
+  closed: boolean;
+  slot1Start: string | null;
+  slot1End: string | null;
+  slot2Start: string | null;
+  slot2End: string | null;
+}
+
 interface ReservationInfo {
   name: string;
   reservationHorizonDays: number;
-  lunchStart: string;
-  lunchEnd: string;
-  dinnerStart: string;
-  dinnerEnd: string;
+  openingHours: OpeningHoursDay[];
+}
+
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABELS: Record<number, string> = {
+  0: 'Domenica',
+  1: 'Lunedì',
+  2: 'Martedì',
+  3: 'Mercoledì',
+  4: 'Giovedì',
+  5: 'Venerdì',
+  6: 'Sabato',
+};
+
+function daySummary(day: OpeningHoursDay): string {
+  if (day.closed) return 'Chiuso';
+  const slots = [
+    day.slot1Start && day.slot1End ? `${day.slot1Start}–${day.slot1End}` : null,
+    day.slot2Start && day.slot2End ? `${day.slot2Start}–${day.slot2End}` : null,
+  ].filter(Boolean);
+  return slots.length > 0 ? slots.join(', ') : 'Chiuso';
 }
 
 const initialForm = {
@@ -110,11 +137,15 @@ export function PublicReservation() {
     );
   }
 
-  const { name, reservationHorizonDays, lunchStart, lunchEnd, dinnerStart, dinnerEnd } = infoQuery.data;
+  const { name, reservationHorizonDays, openingHours } = infoQuery.data;
   const today = new Date().toISOString().slice(0, 10);
   const maxDate = new Date(Date.now() + reservationHorizonDays * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
+
+  const selectedDaySchedule = form.date
+    ? openingHours.find((d) => d.dayOfWeek === new Date(`${form.date}T00:00:00`).getDay())
+    : undefined;
 
   const canSubmit =
     form.firstName.trim() &&
@@ -146,9 +177,22 @@ export function PublicReservation() {
       <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
         Prenota un tavolo — {name}
       </Typography>
-      <Typography variant="body2" color="text.secondary" textAlign="center" gutterBottom>
-        Orari disponibili: pranzo {lunchStart}–{lunchEnd}, cena {dinnerStart}–{dinnerEnd}.
-      </Typography>
+      <Box sx={{ display: 'grid', gap: 0.25, mb: 1 }}>
+        {DAY_ORDER.map((dayOfWeek) => {
+          const day = openingHours.find((d) => d.dayOfWeek === dayOfWeek);
+          if (!day) return null;
+          return (
+            <Box key={dayOfWeek} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                {DAY_LABELS[dayOfWeek]}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {daySummary(day)}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
 
       <Card variant="outlined" sx={{ mt: 3 }}>
         <CardContent sx={{ display: 'grid', gap: 2 }}>
@@ -191,11 +235,19 @@ export function PublicReservation() {
               label="Orario"
               type="time"
               InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 900 }}
               fullWidth
               value={form.time}
               onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
             />
           </Stack>
+          {selectedDaySchedule && (
+            <Typography variant="caption" color={selectedDaySchedule.closed ? 'error' : 'text.secondary'}>
+              {selectedDaySchedule.closed
+                ? 'Il locale è chiuso in questo giorno.'
+                : `Orario disponibile: ${daySummary(selectedDaySchedule)} (ai 15 minuti)`}
+            </Typography>
+          )}
           <TextField
             label="Numero di persone"
             type="number"

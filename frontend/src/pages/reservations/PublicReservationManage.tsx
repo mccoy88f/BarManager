@@ -23,6 +23,7 @@ interface TableRow {
   id: string;
   label: string;
   seats: number;
+  busy: boolean;
 }
 
 interface ReservationDetail {
@@ -33,6 +34,7 @@ interface ReservationDetail {
   phone: string;
   partySize: number;
   reservedAt: string;
+  proposedReservedAt?: string | null;
   isEvent: boolean;
   eventNote?: string | null;
   allergiesNote?: string | null;
@@ -116,6 +118,14 @@ export function PublicReservationManage() {
     onSuccess: () => setResolvedStatus('REJECTED'),
   });
 
+  const confirmTimeMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.patch(`/public/reservations/${id}/manage/confirm-time`, { token })
+      ).data,
+    onSuccess: () => manageQuery.refetch(),
+  });
+
   if (!id || !token) {
     return (
       <Box sx={{ maxWidth: 480, mx: 'auto', mt: 6, px: 2 }}>
@@ -187,6 +197,29 @@ export function PublicReservationManage() {
             </Typography>
           )}
 
+          {reservation.proposedReservedAt && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 1 }}
+              action={
+                <Button
+                  size="small"
+                  color="inherit"
+                  disabled={confirmTimeMutation.isPending}
+                  onClick={() => confirmTimeMutation.mutate()}
+                >
+                  Confermo il nuovo orario
+                </Button>
+              }
+            >
+              Il locale propone di spostare la prenotazione a {formatWhen(reservation.proposedReservedAt)}.
+              {confirmTimeMutation.isSuccess && ' Confermato!'}
+            </Alert>
+          )}
+          {confirmTimeMutation.isError && (
+            <Alert severity="error">{extractErrorMessage(confirmTimeMutation.error)}</Alert>
+          )}
+
           {!isPending && (
             <Alert severity="info" sx={{ mt: 1 }}>
               {resolvedStatus
@@ -209,7 +242,7 @@ export function PublicReservationManage() {
                   <MenuItem value="">Nessuno</MenuItem>
                   {tables.map((t) => (
                     <MenuItem key={t.id} value={t.id}>
-                      {t.label} ({t.seats} posti)
+                      {t.label} ({t.seats} posti){t.busy && t.id !== tableId ? ' — occupato' : ''}
                     </MenuItem>
                   ))}
                 </TextField>

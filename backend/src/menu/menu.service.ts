@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException, Injectable } from '@nestjs/common';
 import { MenuAvailability } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
@@ -238,30 +239,19 @@ export class MenuService {
   // ---- Menù pubblico (nessun login) --------------------------------------
 
   /**
-   * Determina la fascia corrente (pranzo/cena/nessuna) in base all'orario
-   * configurato dal locale. Usa l'ora del server: la gestione del fuso
-   * orario per-locale è una rifinitura futura (v. roadmap).
+   * Determina la fascia corrente (pranzo/cena/nessuna) in base agli orari
+   * di apertura configurati dal locale per il giorno corrente (prima
+   * fascia = "pranzo", seconda fascia opzionale = "cena"). Usa l'ora del
+   * server: la gestione del fuso orario per-locale è una rifinitura
+   * futura (v. roadmap).
    */
-  private currentPeriod(venue: {
-    lunchStart: string;
-    lunchEnd: string;
-    dinnerStart: string;
-    dinnerEnd: string;
-  }): 'LUNCH' | 'DINNER' | 'NONE' {
+  private currentPeriod(openingHoursRaw: unknown): 'LUNCH' | 'DINNER' | 'NONE' {
+    const schedule = resolveOpeningHours(openingHoursRaw);
     const now = new Date();
+    const day = schedule.find((d) => d.dayOfWeek === now.getDay())!;
     const minutes = now.getHours() * 60 + now.getMinutes();
-    const toMinutes = (hhmm: string) => {
-      const [h, m] = hhmm.split(':').map(Number);
-      return h * 60 + m;
-    };
-
-    if (minutes >= toMinutes(venue.lunchStart) && minutes <= toMinutes(venue.lunchEnd)) {
-      return 'LUNCH';
-    }
-    if (minutes >= toMinutes(venue.dinnerStart) && minutes <= toMinutes(venue.dinnerEnd)) {
-      return 'DINNER';
-    }
-    return 'NONE';
+    const slot = findOpenSlot(day, minutes);
+    return slot === 1 ? 'LUNCH' : slot === 2 ? 'DINNER' : 'NONE';
   }
 
   async getPublicMenu(venueId: string) {
@@ -270,7 +260,7 @@ export class MenuService {
       throw new NotFoundException('Locale non trovato');
     }
 
-    const period = this.currentPeriod(venue);
+    const period = this.currentPeriod(venue.openingHours);
     const allowedAvailabilities: MenuAvailability[] =
       period === 'LUNCH'
         ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]

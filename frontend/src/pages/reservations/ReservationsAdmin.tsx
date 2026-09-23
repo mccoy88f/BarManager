@@ -52,6 +52,8 @@ interface ReservationRow {
   phone: string;
   partySize: number;
   reservedAt: string;
+  proposedReservedAt?: string | null;
+  slotDurationMinutes?: number | null;
   isEvent: boolean;
   eventNote?: string | null;
   allergiesNote?: string | null;
@@ -61,6 +63,11 @@ interface ReservationRow {
   table?: TableRow | null;
   rejectionReason?: string | null;
   isReturningCustomer?: boolean;
+  busyTableIds?: string[];
+}
+
+interface TableAvailabilityRow extends TableRow {
+  busy: boolean;
 }
 
 interface CustomerSuggestion {
@@ -96,6 +103,15 @@ function formatWhen(iso: string): string {
   return `${d.toLocaleDateString('it-IT')} alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+function splitDateTime(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
     ?.data;
@@ -118,7 +134,36 @@ const emptyManualForm = {
   allergiesNote: '',
   notes: '',
   tableId: '',
+  slotDurationMinutes: '',
 };
+
+interface EditForm {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  partySize: string;
+  isEvent: boolean;
+  eventNote: string;
+  allergiesNote: string;
+  notes: string;
+  slotDurationMinutes: string;
+}
+
+function toEditForm(r: ReservationRow): EditForm {
+  return {
+    firstName: r.firstName,
+    lastName: r.lastName,
+    email: r.email,
+    phone: r.phone,
+    partySize: String(r.partySize),
+    isEvent: r.isEvent,
+    eventNote: r.eventNote ?? '',
+    allergiesNote: r.allergiesNote ?? '',
+    notes: r.notes ?? '',
+    slotDurationMinutes: r.slotDurationMinutes != null ? String(r.slotDurationMinutes) : '',
+  };
+}
 
 /**
  * Coda prenotazioni (§5.7): tab per stato (più "Senza tavolo", che
@@ -141,6 +186,12 @@ export function ReservationsAdmin() {
   const [manualForm, setManualForm] = useState(emptyManualForm);
   const [manualCustomerCount, setManualCustomerCount] = useState<number | null>(null);
 
+  const [changingTime, setChangingTime] = useState<ReservationRow | null>(null);
+  const [timeForm, setTimeForm] = useState({ date: '', time: '' });
+
+  const [editing, setEditing] = useState<ReservationRow | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+
   const reservationsQuery = useQuery({
     queryKey: ['reservations-admin', statusFilter],
     queryFn: async () =>
@@ -159,6 +210,26 @@ export function ReservationsAdmin() {
     queryFn: async () => (await api.get<TableRow[]>('/reservations/tables')).data,
   });
   const activeTables = useMemo(() => tablesQuery.data?.filter((t) => t.active) ?? [], [tablesQuery.data]);
+
+  const manualReservedAtIso =
+    manualForm.date && manualForm.time
+      ? new Date(`${manualForm.date}T${manualForm.time}:00`).toISOString()
+      : null;
+  const manualAvailabilityQuery = useQuery({
+    queryKey: ['reservations-table-availability', manualReservedAtIso, manualForm.slotDurationMinutes],
+    queryFn: async () =>
+      (
+        await api.get<TableAvailabilityRow[]>('/reservations/table-availability', {
+          params: {
+            reservedAt: manualReservedAtIso,
+            durationMinutes: manualForm.slotDurationMinutes || undefined,
+          },
+        })
+      ).data,
+    enabled: addOpen && !!manualReservedAtIso,
+  });
+  const manualTableOptions: TableAvailabilityRow[] =
+    manualAvailabilityQuery.data ?? activeTables.map((t) => ({ ...t, busy: false }));
 
   const customerSearchQuery = useQuery({
     queryKey: ['reservations-customers-search', customerQuery],
@@ -239,6 +310,7 @@ export function ReservationsAdmin() {
           allergiesNote: manualForm.allergiesNote.trim() || undefined,
           notes: manualForm.notes.trim() || undefined,
           tableId: manualForm.tableId || null,
+          slotDurationMinutes: manualForm.slotDurationMinutes ? Number(manualForm.slotDurationMinutes) : undefined,
         })
       ).data;
     },
@@ -246,6 +318,27 @@ export function ReservationsAdmin() {
       invalidate();
       showToast('Prenotazione aggiunta');
       closeAddDialog();
+    },
+  });
+
+  const proposeTimeMutation = useMutation({
+    mutationFn: async ({ id, reservedAt }: { id: string; reservedAt: string }) =>
+      (await api.patch(`/reservations/${id}/time`, { reservedAt })).data,
+    onSuccess: () => {
+      invalidate();
+      setChangingTime(null);
+      showToast('Nuovo orario proposto: in attesa di conferma del cliente');
+    },
+  });
+
+  const updateReservationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      (await api.patch(`/reservations/${id}`, data)).data,
+    onSuccess: () => {
+      invalidate();
+      setEditing(null);
+      setEditForm(null);
+      showToast('Prenotazione aggiornata');
     },
   });
 
@@ -323,10 +416,19 @@ export function ReservationsAdmin() {
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
                     {formatWhen(r.reservedAt)} — {r.partySize} persone
+                    {r.slotDurationMinutes != null && ` — durata ${r.slotDurationMinutes} min`}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {r.email} — {r.phone}
                   </Typography>
+                  {r.proposedReservedAt && (
+                    <Chip
+                      size="small"
+                      color="warning"
+                      sx={{ mt: 0.5 }}
+                      label={`In attesa di conferma nuovo orario: ${formatWhen(r.proposedReservedAt)}`}
+                    />
+                  )}
                   {r.allergiesNote && (
                     <Typography variant="body2" color="warning.main">
                       Allergie/intolleranze: {r.allergiesNote}
@@ -361,9 +463,33 @@ export function ReservationsAdmin() {
                       {activeTables.map((t) => (
                         <MenuItem key={t.id} value={t.id}>
                           {t.label} ({t.seats} posti)
+                          {r.busyTableIds?.includes(t.id) && t.id !== r.tableId ? ' — occupato' : ''}
                         </MenuItem>
                       ))}
                     </TextField>
+                  )}
+
+                  {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setChangingTime(r);
+                          setTimeForm(splitDateTime(r.proposedReservedAt ?? r.reservedAt));
+                        }}
+                      >
+                        Cambia orario
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setEditing(r);
+                          setEditForm(toEditForm(r));
+                        }}
+                      >
+                        Modifica
+                      </Button>
+                    </Stack>
                   )}
 
                   {r.status === 'PENDING' && (
@@ -446,6 +572,187 @@ export function ReservationsAdmin() {
         onCancel={() => setCancelling(null)}
         onConfirm={() => cancelling && cancelMutation.mutate(cancelling.id)}
       />
+
+      {/* Cambio orario (§10): non applica subito la modifica, propone il
+          nuovo orario al cliente e attende la sua conferma via email. */}
+      <Dialog open={!!changingTime} onClose={() => setChangingTime(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Cambia orario</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+          <Typography variant="body2" color="text.secondary">
+            Il nuovo orario verrà proposto a {changingTime?.firstName} {changingTime?.lastName}, che dovrà
+            confermarlo via email prima che diventi effettivo.
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            <TextField
+              label="Data"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+              value={timeForm.date}
+              onChange={(e) => setTimeForm((f) => ({ ...f, date: e.target.value }))}
+            />
+            <TextField
+              label="Orario"
+              type="time"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 900 }}
+              fullWidth
+              value={timeForm.time}
+              onChange={(e) => setTimeForm((f) => ({ ...f, time: e.target.value }))}
+            />
+          </Stack>
+          {proposeTimeMutation.isError && (
+            <Alert severity="error">{extractErrorMessage(proposeTimeMutation.error)}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setChangingTime(null)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!timeForm.date || !timeForm.time || proposeTimeMutation.isPending}
+            onClick={() =>
+              changingTime &&
+              proposeTimeMutation.mutate({
+                id: changingTime.id,
+                reservedAt: new Date(`${timeForm.date}T${timeForm.time}:00`).toISOString(),
+              })
+            }
+          >
+            Proponi nuovo orario
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modifica generale (§10): dati cliente, note e durata di occupazione
+          — non richiede conferma del cliente (a differenza del cambio orario). */}
+      <Dialog
+        open={!!editing}
+        onClose={() => {
+          setEditing(null);
+          setEditForm(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Modifica prenotazione</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+          {editForm && (
+            <>
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Nome"
+                  fullWidth
+                  value={editForm.firstName}
+                  onChange={(e) => setEditForm((f) => f && { ...f, firstName: e.target.value })}
+                />
+                <TextField
+                  label="Cognome"
+                  fullWidth
+                  value={editForm.lastName}
+                  onChange={(e) => setEditForm((f) => f && { ...f, lastName: e.target.value })}
+                />
+              </Stack>
+              <TextField
+                label="Email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => f && { ...f, email: e.target.value })}
+              />
+              <TextField
+                label="Telefono"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => f && { ...f, phone: e.target.value })}
+              />
+              <TextField
+                label="Numero di persone"
+                type="number"
+                inputProps={{ min: 1 }}
+                value={editForm.partySize}
+                onChange={(e) => setEditForm((f) => f && { ...f, partySize: e.target.value })}
+              />
+              <TextField
+                label="Durata occupazione tavolo (minuti, opzionale)"
+                type="number"
+                inputProps={{ min: 15, step: 15 }}
+                helperText="Vuoto = usa il default del locale"
+                value={editForm.slotDurationMinutes}
+                onChange={(e) => setEditForm((f) => f && { ...f, slotDurationMinutes: e.target.value })}
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={editForm.isEvent}
+                    onChange={(e) => setEditForm((f) => f && { ...f, isEvent: e.target.checked })}
+                  />
+                }
+                label="È per un'occasione speciale (es. compleanno)"
+              />
+              {editForm.isEvent && (
+                <TextField
+                  label="Descrivi l'occasione"
+                  value={editForm.eventNote}
+                  onChange={(e) => setEditForm((f) => f && { ...f, eventNote: e.target.value })}
+                />
+              )}
+              <TextField
+                label="Intolleranze o allergie (opzionale)"
+                value={editForm.allergiesNote}
+                onChange={(e) => setEditForm((f) => f && { ...f, allergiesNote: e.target.value })}
+              />
+              <TextField
+                label="Altre note (opzionale)"
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => f && { ...f, notes: e.target.value })}
+              />
+            </>
+          )}
+          {updateReservationMutation.isError && (
+            <Alert severity="error">{extractErrorMessage(updateReservationMutation.error)}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setEditForm(null);
+            }}
+          >
+            Annulla
+          </Button>
+          <Button
+            variant="contained"
+            disabled={
+              !editForm ||
+              !editForm.firstName.trim() ||
+              !editForm.lastName.trim() ||
+              !editForm.email.trim() ||
+              !editForm.phone.trim() ||
+              Number(editForm.partySize) <= 0 ||
+              updateReservationMutation.isPending
+            }
+            onClick={() => {
+              if (!editing || !editForm) return;
+              updateReservationMutation.mutate({
+                id: editing.id,
+                data: {
+                  firstName: editForm.firstName.trim(),
+                  lastName: editForm.lastName.trim(),
+                  email: editForm.email.trim(),
+                  phone: editForm.phone.trim(),
+                  partySize: Number(editForm.partySize),
+                  isEvent: editForm.isEvent,
+                  eventNote: editForm.isEvent ? editForm.eventNote.trim() : '',
+                  allergiesNote: editForm.allergiesNote.trim(),
+                  notes: editForm.notes.trim(),
+                  slotDurationMinutes: editForm.slotDurationMinutes ? Number(editForm.slotDurationMinutes) : null,
+                },
+              });
+            }}
+          >
+            Salva
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Aggiunta manuale in backoffice (telefono/di persona, §10): nessun
           vincolo di disponibilità/overbooking, tavolo opzionale — se non
@@ -542,6 +849,14 @@ export function ReservationsAdmin() {
             onChange={(e) => setManualForm((f) => ({ ...f, partySize: e.target.value }))}
           />
           <TextField
+            label="Durata occupazione tavolo (minuti, opzionale)"
+            type="number"
+            inputProps={{ min: 15, step: 15 }}
+            helperText="Vuoto = usa il default del locale"
+            value={manualForm.slotDurationMinutes}
+            onChange={(e) => setManualForm((f) => ({ ...f, slotDurationMinutes: e.target.value }))}
+          />
+          <TextField
             select
             label="Tavolo (opzionale)"
             value={manualForm.tableId}
@@ -549,9 +864,9 @@ export function ReservationsAdmin() {
             onChange={(e) => setManualForm((f) => ({ ...f, tableId: e.target.value }))}
           >
             <MenuItem value="">Nessuno</MenuItem>
-            {activeTables.map((t) => (
+            {manualTableOptions.map((t) => (
               <MenuItem key={t.id} value={t.id}>
-                {t.label} ({t.seats} posti)
+                {t.label} ({t.seats} posti){t.busy ? ' — occupato' : ''}
               </MenuItem>
             ))}
           </TextField>
