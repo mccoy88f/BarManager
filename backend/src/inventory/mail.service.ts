@@ -12,8 +12,12 @@ export class MailService {
     secure: process.env.SMTP_SECURE
       ? process.env.SMTP_SECURE === 'true'
       : Number(process.env.SMTP_PORT) === 465,
+    // SMTP_PASS accettata come alias di SMTP_PASSWORD: un nome sbagliato qui
+    // non fa fallire l'invio con un errore poco chiaro ("Missing credentials
+    // for PLAIN"), fa solo mancare l'autenticazione in silenzio finché non
+    // si prova a inviare.
     auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS }
       : undefined,
   });
 
@@ -22,10 +26,11 @@ export class MailService {
     cc: string[];
     subject: string;
     text: string;
+    from?: string | null;
   }): Promise<{ sent: boolean; error?: string }> {
     try {
       await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || 'ordini@barmanager.local',
+        from: params.from || process.env.SMTP_FROM || 'ordini@barmanager.local',
         to: params.to,
         cc: params.cc.length ? params.cc : undefined,
         subject: params.subject,

@@ -32,6 +32,11 @@ model Venue {
   active    Boolean  @default(true) // sospensione locale (mancato pagamento, ecc.)
   createdAt DateTime @default(now())
 
+  // Email del locale: usata come mittente delle email di ordine ai
+  // fornitori (invece di dover impostare SMTP_FROM via variabile
+  // d'ambiente). Se assente si ricade su SMTP_FROM.
+  email String?
+
   // Fasce orarie del menù, personalizzabili per locale ("HH:mm")
   lunchStart  String @default("12:00")
   lunchEnd    String @default("15:00")

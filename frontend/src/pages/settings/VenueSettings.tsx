@@ -47,6 +47,7 @@ interface LoyverseStatus {
 interface VenueHours {
   id: string;
   name: string;
+  email?: string;
   slug: string;
   lunchStart: string;
   lunchEnd: string;
@@ -83,6 +84,7 @@ export function VenueSettings() {
 
   const [menuSettings, setMenuSettings] = useState({
     name: '',
+    email: '',
     menuAddress: '',
     menuPhone: '',
     menuInstagramUrl: '',
@@ -105,6 +107,7 @@ export function VenueSettings() {
       });
       setMenuSettings({
         name: venueQuery.data.name ?? '',
+        email: venueQuery.data.email ?? '',
         menuAddress: venueQuery.data.menuAddress ?? '',
         menuPhone: venueQuery.data.menuPhone ?? '',
         menuInstagramUrl: venueQuery.data.menuInstagramUrl ?? '',
@@ -290,6 +293,14 @@ export function VenueSettings() {
               label="Nome del locale"
               value={menuSettings.name}
               onChange={(e) => setMenuSettings((s) => ({ ...s, name: e.target.value }))}
+              sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Email del locale"
+              type="email"
+              helperText="Usata come mittente delle email di ordine ai fornitori."
+              value={menuSettings.email}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, email: e.target.value }))}
               sx={{ gridColumn: '1 / -1' }}
             />
             <TextField

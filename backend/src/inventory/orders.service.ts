@@ -12,7 +12,7 @@ const ORDER_INCLUDE = {
   lines: { include: { product: true } },
   supplier: true,
   createdBy: { select: { email: true } },
-  venue: { select: { name: true, menuAddress: true } },
+  venue: { select: { name: true, email: true, menuAddress: true } },
 } as const;
 
 type OrderWithDetails = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
@@ -192,6 +192,7 @@ export class OrdersService {
       cc,
       subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
       text: `${letterhead}\n\nBuongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
+      from: order.venue.email ? `${order.venue.name} <${order.venue.email}>` : undefined,
     });
 
     const updated = await this.prisma.order.update({

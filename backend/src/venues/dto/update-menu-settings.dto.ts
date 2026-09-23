@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
 
 /** Una stringa vuota significa "svuota il campo": diventa null (non deve fallire IsUrl). */
 const emptyToNull = ({ value }: { value: string }) => (value === '' ? null : value);
@@ -10,6 +10,12 @@ export class UpdateMenuSettingsDto {
   @IsString()
   @IsNotEmpty()
   name?: string;
+
+  /** Mittente delle email di ordine ai fornitori, invece di SMTP_FROM. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsEmail()
+  email?: string | null;
 
   @IsOptional()
   @Transform(emptyToNull)

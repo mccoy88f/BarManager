@@ -72,6 +72,7 @@ export class VenuesService {
       select: {
         id: true,
         name: true,
+        email: true,
         slug: true,
         lunchStart: true,
         lunchEnd: true,
