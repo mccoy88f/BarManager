@@ -24,6 +24,7 @@ import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { MenuPublicLink } from './pages/menu/MenuPublicLink';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
+import { TasksHistory } from './pages/tasks/TasksHistory';
 import { Venues } from './pages/super-admin/Venues';
 import { SettingsHome } from './pages/settings/SettingsHome';
 import { BoardPage } from './pages/board/BoardPage';
@@ -89,6 +90,7 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute moduleKey="tasks" />}>
             <Route path="/tasks" element={<TasksAdmin />} />
+            <Route path="/tasks/history" element={<TasksHistory />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>

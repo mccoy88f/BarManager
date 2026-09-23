@@ -170,6 +170,15 @@ export const navigation: NavItem[] = [
     icon: EventNoteIcon,
     description: 'Pagamenti, visite mediche, attestati',
     moduleKey: 'tasks',
+    children: [
+      {
+        key: 'tasks-history',
+        label: 'Storico attività',
+        path: '/tasks/history',
+        icon: EventNoteIcon,
+        description: 'Attività completate',
+      },
+    ],
   },
   {
     key: 'settings',

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -14,16 +15,16 @@ import {
   TextField,
   Typography,
   IconButton,
-  ToggleButton,
-  ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HistoryIcon from '@mui/icons-material/History';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface TaskRow {
   id: string;
@@ -67,18 +68,19 @@ const emptyForm = {
   relatedEmployeeId: '',
 };
 
-/** Attività e scadenze: pagamenti fornitori, visite mediche, attestati, ecc. */
+/** Attività e scadenze aperte: pagamenti fornitori, visite mediche, attestati, ecc. */
 export function TasksAdmin() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
-  const [view, setView] = useState<'OPEN' | 'DONE'>('OPEN');
 
   const tasksQuery = useQuery({
-    queryKey: ['tasks', view],
-    queryFn: async () => (await api.get<TaskRow[]>('/tasks', { params: { status: view } })).data,
+    queryKey: ['tasks', 'OPEN'],
+    queryFn: async () => (await api.get<TaskRow[]>('/tasks', { params: { status: 'OPEN' } })).data,
   });
 
   const employeesQuery = useQuery({
@@ -100,12 +102,16 @@ export function TasksAdmin() {
       setForm(emptyForm);
       setOpen(false);
       setEditing(null);
+      showToast(editing ? 'Attività aggiornata' : 'Attività creata');
     },
   });
 
   const completeMutation = useMutation({
     mutationFn: async (id: string) => (await api.post(`/tasks/${id}/complete`)).data,
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      showToast('Attività completata');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -113,6 +119,7 @@ export function TasksAdmin() {
     onSuccess: () => {
       invalidate();
       setTaskToDelete(null);
+      showToast('Attività eliminata');
     },
   });
 
@@ -140,12 +147,11 @@ export function TasksAdmin() {
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h6">{view === 'OPEN' ? 'Attività aperte' : 'Storico attività completate'}</Typography>
+        <Typography variant="h6">Attività aperte</Typography>
         <Stack direction="row" spacing={1}>
-          <ToggleButtonGroup size="small" exclusive value={view} onChange={(_e, v) => v && setView(v)}>
-            <ToggleButton value="OPEN">Aperte</ToggleButton>
-            <ToggleButton value="DONE">Storico</ToggleButton>
-          </ToggleButtonGroup>
+          <Button startIcon={<HistoryIcon />} onClick={() => navigate('/tasks/history')}>
+            Storico
+          </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
             Aggiungi
           </Button>
@@ -153,7 +159,7 @@ export function TasksAdmin() {
       </Box>
       <Stack spacing={1}>
         {tasksQuery.data?.map((task) => {
-          const overdue = view === 'OPEN' && new Date(task.dueDate) < now;
+          const overdue = new Date(task.dueDate) < now;
           return (
             <Card key={task.id} variant="outlined">
               <CardContent
@@ -173,34 +179,22 @@ export function TasksAdmin() {
                       color={overdue ? 'error' : 'default'}
                       label={`Scadenza: ${new Date(task.dueDate).toLocaleDateString('it-IT')}`}
                     />
-                    {task.completedAt && (
-                      <Chip
-                        size="small"
-                        color="success"
-                        variant="outlined"
-                        label={`Completata il: ${new Date(task.completedAt).toLocaleDateString('it-IT')}`}
-                      />
-                    )}
                     {task.recurrence !== 'NONE' && (
                       <Chip size="small" variant="outlined" label={recurrenceLabels[task.recurrence]} />
                     )}
                   </Stack>
                 </Box>
                 <Stack direction="row" spacing={0.5}>
-                  {view === 'OPEN' && (
-                    <>
-                      <IconButton
-                        color="success"
-                        title="Segna come completata"
-                        onClick={() => completeMutation.mutate(task.id)}
-                      >
-                        <CheckCircleIcon />
-                      </IconButton>
-                      <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
-                        <EditIcon />
-                      </IconButton>
-                    </>
-                  )}
+                  <IconButton
+                    color="success"
+                    title="Segna come completata"
+                    onClick={() => completeMutation.mutate(task.id)}
+                  >
+                    <CheckCircleIcon />
+                  </IconButton>
+                  <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
+                    <EditIcon />
+                  </IconButton>
                   <IconButton
                     color="default"
                     title="Elimina"
@@ -215,7 +209,7 @@ export function TasksAdmin() {
         })}
         {tasksQuery.data?.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            {view === 'OPEN' ? 'Nessuna attività aperta.' : 'Nessuna attività completata finora.'}
+            Nessuna attività aperta.
           </Typography>
         )}
       </Stack>
