@@ -37,23 +37,41 @@ export class ReservationsMailService {
     subject: string;
     text: string;
     html?: string;
-    from?: string | null;
+    venueName: string;
+    replyTo?: string | null;
   }): Promise<void> {
     try {
-      await this.transporter.sendMail({
-        from: params.from || process.env.SMTP_FROM || 'prenotazioni@barmanager.local',
+      const info = await this.transporter.sendMail({
+        from: this.technicalFrom(params.venueName),
         to: params.to,
+        replyTo: params.replyTo || undefined,
         subject: params.subject,
         text: params.text,
         html: params.html,
       });
+      // Un log anche sul successo: senza, un invio "accettato" dal server
+      // SMTP ma mai consegnato (es. filtrato come spam) è indistinguibile,
+      // guardando i soli log, da un invio mai nemmeno tentato.
+      this.logger.log(`Email "${params.subject}" inviata a ${params.to} (messageId: ${info.messageId})`);
     } catch (err) {
-      this.logger.error(`Invio email prenotazione fallito: ${(err as Error).message}`);
+      this.logger.error(`Invio email prenotazione a ${params.to} fallito: ${(err as Error).message}`);
     }
   }
 
-  private fromAddress(venueName: string, venueEmail?: string | null): string | undefined {
-    return venueEmail ? `${venueName} <${venueEmail}>` : undefined;
+  /**
+   * Mittente sempre fisso e autenticato (mai l'email del locale): molti
+   * provider SMTP (Aruba, Register.it, Gmail/Office365 come relay, ecc.)
+   * rifiutano — o peggio, scartano silenziosamente senza errore — un
+   * messaggio il cui header From non corrisponde all'account autenticato
+   * (`SMTP_USER`), il classico sintomo "nessuna email arriva e nessun
+   * errore in log". L'email del locale, se impostata, va invece in
+   * Reply-To: il cliente che risponde raggiunge comunque il locale, ma
+   * l'invio non rischia più di essere bloccato o droppato.
+   */
+  private technicalFrom(venueName: string): string {
+    const configured = process.env.SMTP_FROM || process.env.SMTP_USER || 'prenotazioni@barmanager.local';
+    const address = configured.match(/<(.+)>/)?.[1] ?? configured;
+    return `${venueName} <${address}>`;
   }
 
   private when(reservedAt: Date): string {
@@ -65,7 +83,8 @@ export class ReservationsMailService {
       to: reservation.email,
       subject: `${venueName} — richiesta di prenotazione ricevuta`,
       text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.\n\nGrazie,\n${venueName}`,
-      from: this.fromAddress(venueName, venueEmail),
+      venueName,
+      replyTo: venueEmail,
     });
   }
 
@@ -74,7 +93,8 @@ export class ReservationsMailService {
       to: reservation.email,
       subject: `${venueName} — prenotazione confermata`,
       text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.\n\nTi aspettiamo,\n${venueName}`,
-      from: this.fromAddress(venueName, venueEmail),
+      venueName,
+      replyTo: venueEmail,
     });
   }
 
@@ -88,7 +108,8 @@ export class ReservationsMailService {
       to: reservation.email,
       subject: `${venueName} — prenotazione non confermata`,
       text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}\n\n${venueName}`,
-      from: this.fromAddress(venueName, venueEmail),
+      venueName,
+      replyTo: venueEmail,
     });
   }
 
@@ -98,7 +119,8 @@ export class ReservationsMailService {
       to: reservation.email,
       subject: `${venueName} — prenotazione annullata`,
       text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.\n\n${venueName}`,
-      from: this.fromAddress(venueName, venueEmail),
+      venueName,
+      replyTo: venueEmail,
     });
   }
 
@@ -130,7 +152,8 @@ export class ReservationsMailService {
           </div>
           <p style="margin-top:16px;">Se non ti va bene, contattaci direttamente.</p>
         </div>`,
-      from: this.fromAddress(venueName, venueEmail),
+      venueName,
+      replyTo: venueEmail,
     });
   }
 
@@ -202,6 +225,8 @@ export class ReservationsMailService {
         : `Nuova prenotazione confermata — ${reservation.firstName} ${reservation.lastName}`,
       text,
       html,
+      venueName,
+      replyTo: reservation.email,
     });
   }
 }
