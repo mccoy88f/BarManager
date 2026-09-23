@@ -23,7 +23,6 @@ interface TableRow {
   id: string;
   label: string;
   seats: number;
-  busy: boolean;
 }
 
 interface ReservationDetail {
@@ -242,7 +241,7 @@ export function PublicReservationManage() {
                   <MenuItem value="">Nessuno</MenuItem>
                   {tables.map((t) => (
                     <MenuItem key={t.id} value={t.id}>
-                      {t.label} ({t.seats} posti){t.busy && t.id !== tableId ? ' — occupato' : ''}
+                      {t.label} ({t.seats} posti)
                     </MenuItem>
                   ))}
                 </TextField>

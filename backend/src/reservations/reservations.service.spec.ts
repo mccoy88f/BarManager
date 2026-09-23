@@ -393,6 +393,25 @@ describe('ReservationsService', () => {
         NotFoundException,
       );
     });
+
+    it('rifiuta di confermare su un tavolo già occupato da un\'altra prenotazione attiva nello stesso orario', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(pending);
+      prisma.table.findUnique.mockResolvedValue({ id: 'suggested-table', venueId: 'venue-1' });
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'other',
+          reservedAt: pending.reservedAt,
+          tableId: 'suggested-table',
+          slotDurationMinutes: null,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      await expect(
+        service.accept(admin, 'venue-1', 'res-1', 'suggested-table'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.reservation.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('cancel', () => {
@@ -434,6 +453,48 @@ describe('ReservationsService', () => {
     });
   });
 
+  describe('reassignTable', () => {
+    const confirmed = {
+      id: 'res-1',
+      venueId: 'venue-1',
+      status: ReservationStatus.CONFIRMED,
+      tableId: null,
+      slotDurationMinutes: null,
+      reservedAt: nextDinnerSlot(),
+    };
+
+    it('assegna il tavolo se è libero', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(confirmed);
+      prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
+      prisma.reservation.update.mockResolvedValue({ ...confirmed, tableId: 'table-1' });
+
+      await service.reassignTable('venue-1', 'res-1', 'table-1');
+
+      expect(prisma.reservation.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { tableId: 'table-1' } }),
+      );
+    });
+
+    it('rifiuta di assegnare un tavolo già occupato da un\'altra prenotazione attiva nello stesso orario', async () => {
+      prisma.reservation.findUnique.mockResolvedValue(confirmed);
+      prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'other',
+          reservedAt: confirmed.reservedAt,
+          tableId: 'table-1',
+          slotDurationMinutes: null,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      await expect(service.reassignTable('venue-1', 'res-1', 'table-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.reservation.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('gestione via token (link nell\'email al locale)', () => {
     const pending = {
       id: 'res-1',
@@ -454,7 +515,7 @@ describe('ReservationsService', () => {
       const result = await service.getForManage('res-1', 'secret-token');
 
       expect(result.reservation).toEqual(pending);
-      expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true, busy: false }]);
+      expect(result.tables).toEqual([{ id: 't1', seats: 4, active: true }]);
     });
 
     it('rifiuta con NotFoundException se il token non combacia', async () => {
@@ -634,6 +695,24 @@ describe('ReservationsService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.reservation.create).not.toHaveBeenCalled();
     });
+
+    it('rifiuta se il tavolo indicato è già occupato da un\'altra prenotazione attiva nello stesso orario', async () => {
+      prisma.table.findUnique.mockResolvedValue({ id: 'table-1', venueId: 'venue-1' });
+      prisma.reservation.findMany.mockResolvedValue([
+        {
+          id: 'other',
+          reservedAt: new Date(manualDto.reservedAt),
+          tableId: 'table-1',
+          slotDurationMinutes: null,
+          status: ReservationStatus.CONFIRMED,
+        },
+      ]);
+
+      await expect(
+        service.createManualReservation(admin, 'venue-1', { ...manualDto, tableId: 'table-1' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.reservation.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('clienti (ricerca e storico)', () => {
@@ -771,7 +850,7 @@ describe('ReservationsService', () => {
       expect(result.availableSeats).toBe(0);
     });
 
-    it('getTableAvailability segnala occupato il tavolo di una prenotazione con durata estesa', async () => {
+    it('getTableAvailability non restituisce il tavolo di una prenotazione con durata estesa ancora in corso', async () => {
       const start = nextDinnerSlot();
       start.setHours(19, 0, 0, 0);
       const laterCheck = new Date(start);
@@ -790,10 +869,10 @@ describe('ReservationsService', () => {
 
       const result = await service.getTableAvailability('venue-1', laterCheck.toISOString());
 
-      expect(result).toEqual([{ id: 't1', seats: 4, active: true, busy: true }]);
+      expect(result).toEqual([]);
     });
 
-    it('non risulta occupato dopo la fine della durata personalizzata', async () => {
+    it('torna a comparire dopo la fine della durata personalizzata', async () => {
       const start = nextDinnerSlot();
       start.setHours(19, 0, 0, 0);
       const afterEnd = new Date(start);
@@ -812,7 +891,7 @@ describe('ReservationsService', () => {
 
       const result = await service.getTableAvailability('venue-1', afterEnd.toISOString());
 
-      expect(result).toEqual([{ id: 't1', seats: 4, active: true, busy: false }]);
+      expect(result).toEqual([{ id: 't1', seats: 4, active: true }]);
     });
   });
 

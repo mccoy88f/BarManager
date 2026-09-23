@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -64,10 +64,6 @@ interface ReservationRow {
   rejectionReason?: string | null;
   isReturningCustomer?: boolean;
   busyTableIds?: string[];
-}
-
-interface TableAvailabilityRow extends TableRow {
-  busy: boolean;
 }
 
 interface CustomerSuggestion {
@@ -219,7 +215,7 @@ export function ReservationsAdmin() {
     queryKey: ['reservations-table-availability', manualReservedAtIso, manualForm.slotDurationMinutes],
     queryFn: async () =>
       (
-        await api.get<TableAvailabilityRow[]>('/reservations/table-availability', {
+        await api.get<TableRow[]>('/reservations/table-availability', {
           params: {
             reservedAt: manualReservedAtIso,
             durationMinutes: manualForm.slotDurationMinutes || undefined,
@@ -228,8 +224,15 @@ export function ReservationsAdmin() {
       ).data,
     enabled: addOpen && !!manualReservedAtIso,
   });
-  const manualTableOptions: TableAvailabilityRow[] =
-    manualAvailabilityQuery.data ?? activeTables.map((t) => ({ ...t, busy: false }));
+  /** Senza data/ora scelte non c'è ancora nulla da escludere: si parte dall'elenco completo dei tavoli attivi. */
+  const manualTableOptions: TableRow[] = manualAvailabilityQuery.data ?? activeTables;
+  // Se il tavolo scelto risulta diventato occupato (cambio data/ora/durata), deseleziona:
+  // non deve restare un tavolo scelto che non è più nell'elenco disponibile.
+  useEffect(() => {
+    if (manualForm.tableId && !manualTableOptions.some((t) => t.id === manualForm.tableId)) {
+      setManualForm((f) => ({ ...f, tableId: '' }));
+    }
+  }, [manualTableOptions, manualForm.tableId]);
 
   const customerSearchQuery = useQuery({
     queryKey: ['reservations-customers-search', customerQuery],
@@ -262,7 +265,10 @@ export function ReservationsAdmin() {
       invalidate();
       showToast('Prenotazione confermata');
     },
-    onError: () => showToast('Errore durante la conferma'),
+    onError: (error) => {
+      invalidate();
+      showToast(extractErrorMessage(error));
+    },
   });
 
   const rejectMutation = useMutation({
@@ -291,6 +297,10 @@ export function ReservationsAdmin() {
     onSuccess: () => {
       invalidate();
       showToast('Tavolo aggiornato');
+    },
+    onError: (error) => {
+      invalidate();
+      showToast(extractErrorMessage(error));
     },
   });
 
@@ -460,12 +470,13 @@ export function ReservationsAdmin() {
                       }
                     >
                       <MenuItem value="">Nessuno</MenuItem>
-                      {activeTables.map((t) => (
-                        <MenuItem key={t.id} value={t.id}>
-                          {t.label} ({t.seats} posti)
-                          {r.busyTableIds?.includes(t.id) && t.id !== r.tableId ? ' — occupato' : ''}
-                        </MenuItem>
-                      ))}
+                      {activeTables
+                        .filter((t) => t.id === r.tableId || !r.busyTableIds?.includes(t.id))
+                        .map((t) => (
+                          <MenuItem key={t.id} value={t.id}>
+                            {t.label} ({t.seats} posti)
+                          </MenuItem>
+                        ))}
                     </TextField>
                   )}
 
@@ -866,7 +877,7 @@ export function ReservationsAdmin() {
             <MenuItem value="">Nessuno</MenuItem>
             {manualTableOptions.map((t) => (
               <MenuItem key={t.id} value={t.id}>
-                {t.label} ({t.seats} posti){t.busy ? ' — occupato' : ''}
+                {t.label} ({t.seats} posti)
               </MenuItem>
             ))}
           </TextField>

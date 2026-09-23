@@ -179,6 +179,35 @@ export class ReservationsService {
   }
 
   /**
+   * Blocco vero (non solo segnalazione): impedisce di assegnare a una
+   * prenotazione un tavolo già occupato da un'altra prenotazione attiva
+   * nella stessa finestra oraria. Usato ovunque un admin scelga un tavolo
+   * per una prenotazione (accetta, riassegna, aggiunta manuale) — a
+   * differenza del blocco per capienza totale del widget pubblico, questo
+   * si applica sempre, anche in backoffice: due prenotazioni non possono
+   * mai condividere lo stesso tavolo nello stesso momento.
+   */
+  private async ensureTableAvailable(
+    venueId: string,
+    tableId: string,
+    reservedAt: Date,
+    durationMinutes: number,
+    defaultDurationMinutes: number,
+    excludeReservationId?: string,
+  ) {
+    const busyTableIds = await this.getBusyTableIds(
+      venueId,
+      reservedAt,
+      durationMinutes,
+      defaultDurationMinutes,
+      excludeReservationId,
+    );
+    if (busyTableIds.has(tableId)) {
+      throw new ConflictException('Tavolo già occupato in questo orario da un\'altra prenotazione');
+    }
+  }
+
+  /**
    * Tavolo libero più piccolo che contiene partySize persone (best-fit):
    * massimizza l'occupazione non "sprecando" un tavolo grande su un
    * gruppo piccolo. Se nessun tavolo singolo basta, v1 non combina tavoli
@@ -394,7 +423,7 @@ export class ReservationsService {
     });
   }
 
-  /** Tavoli attivi con l'indicazione di quali sono occupati per un dato orario/durata — per il dialog di aggiunta manuale, prima ancora che la prenotazione esista. */
+  /** Tavoli attivi liberi per un dato orario/durata (quelli occupati da un'altra prenotazione attiva non compaiono) — per il dialog di aggiunta manuale, prima ancora che la prenotazione esista. */
   async getTableAvailability(venueId: string, reservedAtIso: string, durationMinutes?: number) {
     const venue = await this.getVenueSettings(venueId);
     const reservedAt = new Date(reservedAtIso);
@@ -412,7 +441,7 @@ export class ReservationsService {
       targetDuration,
       venue.reservationSlotDurationMinutes,
     );
-    return tables.map((t) => ({ ...t, busy: busyTableIds.has(t.id) }));
+    return tables.filter((t) => !busyTableIds.has(t.id));
   }
 
   /**
@@ -482,11 +511,14 @@ export class ReservationsService {
 
   /**
    * Prenotazione aggiunta a mano dallo staff (telefono, di persona, ecc.):
-   * a differenza di createPublicReservation, non applica MAI il calcolo di
-   * disponibilità né il blocco overbooking — lo staff può sempre
-   * registrarla, con o senza tavolo assegnato (se senza, resta nella coda
-   * "senza tavolo" finché non viene assegnato). Considerata già accettata
-   * dallo staff: nasce direttamente CONFIRMED, non PENDING.
+   * a differenza di createPublicReservation, non applica il calcolo di
+   * disponibilità/capienza totale né il blocco overbooking — lo staff può
+   * sempre registrarla, con o senza tavolo assegnato (se senza, resta
+   * nella coda "senza tavolo" finché non viene assegnato). Il tavolo
+   * scelto, se indicato, deve però essere libero in quella finestra
+   * oraria: due prenotazioni non possono mai condividere lo stesso
+   * tavolo, nemmeno dal backoffice. Considerata già accettata dallo
+   * staff: nasce direttamente CONFIRMED, non PENDING.
    */
   async createManualReservation(user: AuthenticatedUser, venueId: string, dto: CreateManualReservationDto) {
     const venue = await this.getVenueSettings(venueId);
@@ -494,7 +526,16 @@ export class ReservationsService {
     if (Number.isNaN(reservedAt.getTime())) {
       throw new BadRequestException('Data/ora non valida');
     }
-    if (dto.tableId) await this.requireOwnTable(venueId, dto.tableId);
+    if (dto.tableId) {
+      await this.requireOwnTable(venueId, dto.tableId);
+      await this.ensureTableAvailable(
+        venueId,
+        dto.tableId,
+        reservedAt,
+        this.effectiveDuration({ slotDurationMinutes: dto.slotDurationMinutes ?? null }, venue.reservationSlotDurationMinutes),
+        venue.reservationSlotDurationMinutes,
+      );
+    }
 
     const reservation = await this.prisma.reservation.create({
       data: {
@@ -557,7 +598,7 @@ export class ReservationsService {
     return this.applyReject(before, dto.reason, user.userId);
   }
 
-  /** Prenotazione + tavoli attivi del locale, per la pagina pubblica di gestione (link nell'email al locale). */
+  /** Prenotazione + tavoli attivi liberi del locale (quelli occupati da un'altra prenotazione attiva non compaiono), per la pagina pubblica di gestione (link nell'email al locale). */
   async getForManage(reservationId: string, token: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: reservationId },
@@ -579,7 +620,7 @@ export class ReservationsService {
       venue.reservationSlotDurationMinutes,
       reservation.id,
     );
-    return { reservation, tables: tables.map((t) => ({ ...t, busy: busyTableIds.has(t.id) })) };
+    return { reservation, tables: tables.filter((t) => !busyTableIds.has(t.id)) };
   }
 
   /** Accetta/rifiuta senza login, dal link Accetta/Rifiuta nell'email al locale. */
@@ -603,9 +644,19 @@ export class ReservationsService {
       throw new BadRequestException('Prenotazione già gestita');
     }
     const finalTableId = tableId !== undefined ? tableId : before.tableId;
-    if (finalTableId) await this.requireOwnTable(before.venueId, finalTableId);
-
     const venue = await this.getVenueSettings(before.venueId);
+    if (finalTableId) {
+      await this.requireOwnTable(before.venueId, finalTableId);
+      await this.ensureTableAvailable(
+        before.venueId,
+        finalTableId,
+        before.reservedAt,
+        this.effectiveDuration(before, venue.reservationSlotDurationMinutes),
+        venue.reservationSlotDurationMinutes,
+        before.id,
+      );
+    }
+
     const after = await this.prisma.reservation.update({
       where: { id: before.id },
       data: {
@@ -688,7 +739,11 @@ export class ReservationsService {
     return after;
   }
 
-  /** Riassegnazione manuale del tavolo, in qualunque momento (anche su una prenotazione già confermata). */
+  /**
+   * Riassegnazione manuale del tavolo, in qualunque momento (anche su una
+   * prenotazione già confermata) — rifiuta un tavolo già occupato da
+   * un'altra prenotazione attiva nella stessa finestra oraria.
+   */
   async reassignTable(venueId: string, reservationId: string, tableId?: string | null) {
     const reservation = await this.requireReservation(venueId, reservationId);
     if (
@@ -697,7 +752,18 @@ export class ReservationsService {
     ) {
       throw new BadRequestException('Prenotazione chiusa: non è possibile modificare il tavolo');
     }
-    if (tableId) await this.requireOwnTable(venueId, tableId);
+    if (tableId) {
+      await this.requireOwnTable(venueId, tableId);
+      const venue = await this.getVenueSettings(venueId);
+      await this.ensureTableAvailable(
+        venueId,
+        tableId,
+        reservation.reservedAt,
+        this.effectiveDuration(reservation, venue.reservationSlotDurationMinutes),
+        venue.reservationSlotDurationMinutes,
+        reservationId,
+      );
+    }
     return this.prisma.reservation.update({
       where: { id: reservationId },
       data: { tableId: tableId ?? null },
