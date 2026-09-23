@@ -3,10 +3,8 @@ import { HaccpService } from './haccp.service';
 import { HaccpController } from './haccp.controller';
 import { CleaningService } from './cleaning.service';
 import { CleaningController } from './cleaning.controller';
-import { PrintingModule } from '../printing/printing.module';
 
 @Module({
-  imports: [PrintingModule],
   controllers: [HaccpController, CleaningController],
   providers: [HaccpService, CleaningService],
 })

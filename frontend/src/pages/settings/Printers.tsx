@@ -30,7 +30,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
+import { shareReceiptPdf } from '../../printing/printJob';
 
 type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
 
@@ -50,10 +50,6 @@ const usageLabels: Record<PrinterUsage, string> = {
 };
 
 const emptyForm = { name: '', host: '', port: '9100', usages: ['GENERIC'] as PrinterUsage[] };
-
-const testFailureLabels: Record<string, string> = {
-  NOT_FOUND: 'Stampante non trovata.',
-};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -124,16 +120,13 @@ export function Printers() {
 
   const testMutation = useMutation({
     mutationFn: async (printer: PrinterRow) => {
-      const job = (await api.post<PrintJobResponse>(`/printers/${printer.id}/test`)).data;
-      return { printer, outcome: await deliverPrintJob(job) };
+      const response = await api.post(`/printers/${printer.id}/test`, undefined, {
+        responseType: 'blob',
+      });
+      await shareReceiptPdf(response.data, `Test di stampa - ${printer.name}`);
+      return printer;
     },
-    onSuccess: ({ printer, outcome }) =>
-      showToast({
-        message: outcome.printed
-          ? `Dialogo di stampa aperto per "${printer.name}".`
-          : `"${printer.name}": ${testFailureLabels[outcome.reason ?? ''] ?? 'Test di stampa non riuscito.'}`,
-        severity: outcome.printed ? 'success' : 'error',
-      }),
+    onSuccess: (printer) => showToast(`Test di stampa condiviso per "${printer.name}".`),
     onError: (_err, printer) =>
       showToast({ message: `"${printer.name}": test di stampa non riuscito.`, severity: 'error' }),
   });

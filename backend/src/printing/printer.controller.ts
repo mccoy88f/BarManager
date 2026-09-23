@@ -7,8 +7,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -22,6 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePrinterDto } from './dto/create-printer.dto';
 import { UpdatePrinterDto } from './dto/update-printer.dto';
 import { PrintingService } from './printing.service';
+import { PdfService } from '../reports/pdf.service';
 
 /** CRUD stampanti di rete configurate dall'amministratore. */
 @Controller('printers')
@@ -31,6 +34,7 @@ export class PrinterController {
   constructor(
     private prisma: PrismaService,
     private printing: PrintingService,
+    private pdf: PdfService,
   ) {}
 
   @Get()
@@ -63,14 +67,24 @@ export class PrinterController {
   }
 
   /**
-   * Prepara una ricevuta di prova: il contenuto va poi stampato dal
-   * browser con la stampa standard (window.print), non da qui.
+   * Genera il PDF a scontrino di prova: va poi condiviso con l'app di
+   * stampa dal browser (RawBT o altra), non stampato da qui.
    */
   @Post(':id/test')
-  async test(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  async test(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
     const venueId = requireVenueId(user);
     await this.assertOwnership(venueId, id);
-    return this.printing.buildTestJob(venueId, id);
+    const job = await this.printing.buildTestJob(id);
+    const buffer = await this.pdf.buildReceiptDocument([job]);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="test-stampa.pdf"',
+    });
+    res.send(buffer);
   }
 
   private async assertOwnership(venueId: string, printerId: string) {

@@ -23,7 +23,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
+import { shareReceiptPdf } from '../../printing/printJob';
 import type { Fridge } from './Fridges';
 
 function todayIso() {
@@ -91,24 +91,21 @@ export function TemperatureEntry() {
 
   const printMutation = useMutation({
     mutationFn: async () => {
-      const job = (
-        await api.post<PrintJobResponse>('/haccp/report/print-job', { reportDate: today })
-      ).data;
-      const outcome = await deliverPrintJob(job);
+      const response = await api.post(
+        '/haccp/report/print-job',
+        { reportDate: today, signedByName: signedByName.trim() },
+        { responseType: 'blob' },
+      );
+      await shareReceiptPdf(response.data, `Report HACCP ${today}`);
       await api.post('/haccp/report/print', {
         reportDate: today,
         signedByName: signedByName.trim(),
-        printedOnPos: outcome.printed,
+        printedOnPos: true,
       });
-      return outcome;
     },
-    onSuccess: (outcome) => {
+    onSuccess: () => {
       setPrintError(null);
-      showToast(
-        outcome.printed
-          ? 'Report registrato: dialogo di stampa aperto.'
-          : 'Report registrato e firmato (nessuna stampante configurata per HACCP: Impostazioni > Stampanti).',
-      );
+      showToast('Report registrato e condiviso per la stampa.');
       setPrintOpen(false);
       setSignedByName('');
     },

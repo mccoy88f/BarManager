@@ -1,12 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, PrinterUsage, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateOrderDto, OrderLineInput } from './dto/create-order.dto';
 import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
 import { MailService } from './mail.service';
-import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
 
 const ORDER_INCLUDE = {
@@ -23,7 +22,6 @@ export class OrdersService {
     private prisma: PrismaService,
     private audit: AuditService,
     private mail: MailService,
-    private printing: PrintingService,
     private pdf: PdfService,
   ) {}
 
@@ -161,8 +159,8 @@ export class OrdersService {
   /**
    * Conferma e invia l'ordine: email al fornitore (in CC i responsabili di
    * reparto/categoria configurati). La stampa della checklist POS non è
-   * più fatta da qui: il frontend, dopo l'invio, prepara e stampa dal
-   * browser con la stampa standard (v. buildPrintJob e
+   * più fatta da qui: il frontend, dopo l'invio, scarica lo stesso PDF di
+   * exportPdf e lo condivide con l'app di stampa (v.
    * frontend/src/printing/printJob.ts).
    */
   async sendOrder(user: AuthenticatedUser, orderId: string) {
@@ -272,17 +270,7 @@ export class OrdersService {
     return { title: `Ordine ${order.supplier.name}`, lines: [...header, ...productLines], footer };
   }
 
-  /**
-   * Prepara la checklist ordine per la stampa (all'invio o su richiesta
-   * dallo storico, in qualsiasi momento dopo l'invio): il browser la
-   * stampa poi con la stampa standard (window.print).
-   */
-  async buildPrintJob(venueId: string, orderId: string) {
-    const order = await this.getOrder(venueId, orderId);
-    return this.printing.buildReportJob(venueId, PrinterUsage.ORDERS, this.buildPrintPayload(order));
-  }
-
-  /** PDF di un singolo ordine, largo come uno scontrino (stesso contenuto della ristampa POS). */
+  /** PDF di un singolo ordine, largo come uno scontrino: stesso PDF sia per l'esportazione che per la ristampa. */
   async exportPdf(venueId: string, orderId: string): Promise<Buffer> {
     const order = await this.getOrder(venueId, orderId);
     return this.pdf.buildReceiptDocument([this.buildPrintPayload(order)]);

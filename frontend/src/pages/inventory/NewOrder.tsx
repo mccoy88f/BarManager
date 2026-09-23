@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { deliverPrintJob, type PrintJobResponse, type PrintOutcome } from '../../printing/printJob';
+import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
 
 interface Supplier {
@@ -196,19 +196,14 @@ export function NewOrder() {
     order?.lines.reduce((sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty, 0) ?? 0;
 
   const sendMutation = useMutation({
-    mutationFn: async (): Promise<PrintOutcome> => {
+    mutationFn: async () => {
       await api.post(`/inventory/orders/${createdOrderId}/send`);
-      const job = (await api.post<PrintJobResponse>(`/inventory/orders/${createdOrderId}/print`))
-        .data;
-      return deliverPrintJob(job);
+      const response = await api.get(`/inventory/orders/${createdOrderId}/export/pdf`, {
+        responseType: 'blob',
+      });
+      await shareReceiptPdf(response.data, `Ordine ${createdOrderId}`);
     },
-    onSuccess: (outcome) =>
-      showToast({
-        message: outcome.printed
-          ? 'Ordine inviato: dialogo di stampa aperto.'
-          : 'Ordine inviato (nessuna stampante configurata per gli ordini: Impostazioni > Stampanti).',
-        severity: outcome.printed ? 'success' : 'warning',
-      }),
+    onSuccess: () => showToast('Ordine inviato: ricevuta condivisa per la stampa.'),
   });
 
   const sendBatchMutation = useMutation({

@@ -19,7 +19,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
+import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
 
 interface OrderLineRow {
@@ -52,10 +52,6 @@ const statusColor: Record<OrderRow['status'], 'default' | 'warning' | 'success'>
   CLOSED: 'default',
 };
 
-const printFailureLabels: Record<string, string> = {
-  NO_PRINTER_CONFIGURED: 'Nessuna stampante configurata per gli ordini (Impostazioni > Stampanti).',
-};
-
 function orderTotal(order: OrderRow): number {
   return order.lines.reduce((sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty, 0);
 }
@@ -73,16 +69,12 @@ export function OrderDetail() {
 
   const printMutation = useMutation({
     mutationFn: async () => {
-      const job = (await api.post<PrintJobResponse>(`/inventory/orders/${id}/print`)).data;
-      return deliverPrintJob(job);
+      const response = await api.get(`/inventory/orders/${id}/export/pdf`, {
+        responseType: 'blob',
+      });
+      await shareReceiptPdf(response.data, `Ordine ${id}`);
     },
-    onSuccess: (result) =>
-      showToast({
-        message: result.printed
-          ? 'Dialogo di stampa aperto.'
-          : (result.reason && printFailureLabels[result.reason]) || 'Ristampa non riuscita.',
-        severity: result.printed ? 'success' : 'warning',
-      }),
+    onSuccess: () => showToast('Ricevuta condivisa per la stampa.'),
     onError: () => showToast({ message: 'Ristampa non riuscita.', severity: 'error' }),
   });
 
@@ -137,7 +129,7 @@ export function OrderDetail() {
           disabled={printMutation.isPending}
           onClick={() => printMutation.mutate()}
         >
-          Ristampa su stampante POS
+          Condividi per la stampa
         </Button>
       </Stack>
 

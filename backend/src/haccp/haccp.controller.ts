@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
-import { PrinterUsage, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -15,7 +15,6 @@ import { HaccpService } from './haccp.service';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
 import { UpdateFridgeDto } from './dto/update-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
-import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
 
 @Controller('haccp')
@@ -24,7 +23,6 @@ import { PdfService } from '../reports/pdf.service';
 export class HaccpController {
   constructor(
     private haccpService: HaccpService,
-    private printing: PrintingService,
     private pdf: PdfService,
   ) {}
 
@@ -70,14 +68,15 @@ export class HaccpController {
   }
 
   /**
-   * Prepara il contenuto ESC/POS del report giornaliero: va poi inviato
-   * alla stampante dal browser con la stampa standard (window.print),
-   * non da qui — v. frontend/src/printing/printJob.ts.
+   * Genera il PDF a scontrino del report giornaliero: va poi condiviso
+   * con l'app di stampa dal browser (RawBT o altra) — v.
+   * frontend/src/printing/printJob.ts.
    */
   @Post('report/print-job')
   @Roles(Role.ADMIN, Role.MANAGER)
   async printJob(
     @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
     @Body() body: { reportDate: string; signedByName: string },
   ) {
     const venueId = requireVenueId(user);
@@ -88,11 +87,18 @@ export class HaccpController {
         `${r.fridge.label.padEnd(20)} ${r.value}°C ${r.outOfRange ? '[FUORI SOGLIA]' : ''} - ${r.recordedAt.toLocaleTimeString('it-IT')}`,
     );
 
-    return this.printing.buildReportJob(venueId, PrinterUsage.HACCP, {
-      title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
-      lines,
-      footer: [`Firmato da: ${body.signedByName}`, '', '_________________________'],
+    const buffer = await this.pdf.buildReceiptDocument([
+      {
+        title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
+        lines,
+        footer: [`Firmato da: ${body.signedByName}`, '', '_________________________'],
+      },
+    ]);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="report-haccp.pdf"',
     });
+    res.send(buffer);
   }
 
   /**

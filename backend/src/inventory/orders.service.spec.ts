@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { MailService } from './mail.service';
-import { PrintingService } from '../printing/printing.service';
 import { PdfService } from '../reports/pdf.service';
 
 const adminUser: AuthenticatedUser = {
@@ -34,7 +33,6 @@ describe('OrdersService.createOrder', () => {
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       {} as unknown as MailService,
-      {} as unknown as PrintingService,
       {} as unknown as PdfService,
     );
   });
@@ -111,7 +109,6 @@ describe('OrdersService.createOrdersByCategory', () => {
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       {} as unknown as MailService,
-      {} as unknown as PrintingService,
       {} as unknown as PdfService,
     );
   });
@@ -185,7 +182,6 @@ describe('OrdersService.sendOrders', () => {
       prisma as unknown as PrismaService,
       { log: jest.fn() } as unknown as AuditService,
       mail as unknown as MailService,
-      {} as unknown as PrintingService,
       {} as unknown as PdfService,
     );
   });
@@ -232,7 +228,6 @@ describe('OrdersService.updateLineQty', () => {
       prisma as unknown as PrismaService,
       {} as unknown as AuditService,
       {} as unknown as MailService,
-      {} as unknown as PrintingService,
       {} as unknown as PdfService,
     );
   });
@@ -266,9 +261,8 @@ describe('OrdersService.updateLineQty', () => {
   });
 });
 
-describe('OrdersService.buildPrintJob / exportPdf', () => {
+describe('OrdersService.exportPdf', () => {
   let prisma: { order: { findUnique: jest.Mock } };
-  let printing: { buildReportJob: jest.Mock };
   let pdf: { buildReceiptDocument: jest.Mock };
   let service: OrdersService;
 
@@ -287,7 +281,6 @@ describe('OrdersService.buildPrintJob / exportPdf', () => {
 
   beforeEach(() => {
     prisma = { order: { findUnique: jest.fn().mockResolvedValue(order) } };
-    printing = { buildReportJob: jest.fn().mockResolvedValue({ ready: true }) };
     pdf = {
       buildReceiptDocument: jest.fn(
         async (sections: { title: string; lines: string[]; footer?: string[] }[]) => {
@@ -302,25 +295,8 @@ describe('OrdersService.buildPrintJob / exportPdf', () => {
       prisma as unknown as PrismaService,
       {} as unknown as AuditService,
       {} as unknown as MailService,
-      printing as unknown as PrintingService,
       pdf as unknown as PdfService,
     );
-  });
-
-  it('prepara la checklist con le sole righe ordinate (quantità > 0)', async () => {
-    await service.buildPrintJob('venue-1', 'order-1');
-
-    expect(printing.buildReportJob).toHaveBeenCalledWith('venue-1', 'ORDERS', {
-      title: 'Ordine Fornitore SRL',
-      lines: [
-        `Data: ${order.createdAt.toLocaleDateString('it-IT')}`,
-        `Inviato: ${order.sentAt.toLocaleDateString('it-IT')}`,
-        'Autore: admin@venue1.test',
-        '',
-        `${'Birra'.padEnd(24)} x 3 cassa  €10.00 = €30.00`,
-      ],
-      footer: ['Checklist per controllo scarico merce ->', '', 'TOTALE: €30.00'],
-    });
   });
 
   it('genera il PDF a scontrino con fornitore, data, autore e importi', async () => {
