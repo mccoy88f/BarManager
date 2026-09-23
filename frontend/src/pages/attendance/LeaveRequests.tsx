@@ -24,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface LeaveRequestRow {
   id: string;
@@ -74,6 +75,7 @@ export function LeaveRequests() {
 
 function SelfServiceLeaveRequests() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const isManager = useAuthStore((s) => s.user?.isManager) ?? false;
   const [open, setOpen] = useState(false);
   const [type, setType] = useState('VACATION');
@@ -91,6 +93,7 @@ function SelfServiceLeaveRequests() {
       (await api.post('/leave-requests', { type, startDate, endDate, note })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leave-requests-mine'] });
+      showToast('Richiesta inviata');
       setNote('');
       setStartDate('');
       setEndDate('');
@@ -200,6 +203,7 @@ function SelfServiceLeaveRequests() {
  */
 function ApprovedRequestsManager() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [toDelete, setToDelete] = useState<LeaveRequestRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -214,6 +218,7 @@ function ApprovedRequestsManager() {
       queryClient.invalidateQueries({ queryKey: ['leave-requests-approved'] });
       setToDelete(null);
       setDeleteError(null);
+      showToast('Richiesta eliminata');
     },
     onError: (err) => setDeleteError(extractErrorMessage(err)),
   });
@@ -280,6 +285,7 @@ function ApprovedRequestsManager() {
 
 function AdminLeaveRequests() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [employeeId, setEmployeeId] = useState('');
   const [type, setType] = useState('VACATION');
@@ -307,6 +313,7 @@ function AdminLeaveRequests() {
       (await api.post('/leave-requests', { employeeId, type, startDate, endDate, note })).data,
     onSuccess: () => {
       invalidate();
+      showToast('Richiesta creata');
       setEmployeeId('');
       setStartDate('');
       setEndDate('');
@@ -320,7 +327,10 @@ function AdminLeaveRequests() {
   const reviewMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: 'APPROVED' | 'REJECTED' }) =>
       (await api.patch(`/leave-requests/${id}/review`, { status })).data,
-    onSuccess: invalidate,
+    onSuccess: (_data, { status }) => {
+      invalidate();
+      showToast(status === 'APPROVED' ? 'Richiesta approvata' : 'Richiesta rifiutata');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -329,6 +339,7 @@ function AdminLeaveRequests() {
       invalidate();
       setToDelete(null);
       setDeleteError(null);
+      showToast('Richiesta eliminata');
     },
     onError: (err) => setDeleteError(extractErrorMessage(err)),
   });

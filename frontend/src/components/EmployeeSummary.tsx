@@ -27,6 +27,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { useToast } from './ToastProvider';
 import { QrScanDialog } from './QrScanDialog';
 
 interface AttendanceStatus {
@@ -92,14 +93,13 @@ function extractErrorMessage(error: unknown): string {
 export function EmployeeSummary() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [methodError, setMethodError] = useState<string | null>(null);
+  const showToast = useToast();
   const [gpsBusy, setGpsBusy] = useState(false);
   const [nfcScanning, setNfcScanning] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
   const [selfReportOpen, setSelfReportOpen] = useState(false);
   const [selfReportTimestamp, setSelfReportTimestamp] = useState('');
   const [selfReportError, setSelfReportError] = useState<string | null>(null);
-  const [selfReportSuccess, setSelfReportSuccess] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['attendance-status'],
@@ -121,16 +121,14 @@ export function EmployeeSummary() {
       payload: { gpsLat?: number; gpsLng?: number; nfcValue?: string; qrToken?: string } = {},
     ) => (await api.post('/attendance/clock', payload)).data,
     onSuccess: () => {
-      setMethodError(null);
       queryClient.invalidateQueries({ queryKey: ['attendance-status'] });
     },
-    onError: (err) => setMethodError(extractErrorMessage(err)),
+    onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
   });
 
   const clockWithGps = () => {
-    setMethodError(null);
     if (!navigator.geolocation) {
-      setMethodError('Il browser non supporta la geolocalizzazione.');
+      showToast({ message: 'Il browser non supporta la geolocalizzazione.', severity: 'error' });
       return;
     }
     setGpsBusy(true);
@@ -144,18 +142,23 @@ export function EmployeeSummary() {
       },
       () => {
         setGpsBusy(false);
-        setMethodError('Posizione non disponibile: controlla i permessi del browser.');
+        showToast({
+          message: 'Posizione non disponibile: controlla i permessi del browser.',
+          severity: 'error',
+        });
       },
       { enableHighAccuracy: true, timeout: 10000 },
     );
   };
 
   const clockWithNfc = async () => {
-    setMethodError(null);
     const NDEFReaderCtor = (window as unknown as { NDEFReader?: new () => NdefReaderLike })
       .NDEFReader;
     if (!NDEFReaderCtor) {
-      setMethodError('Questo dispositivo/browser non supporta la lettura NFC (serve Chrome su Android).');
+      showToast({
+        message: 'Questo dispositivo/browser non supporta la lettura NFC (serve Chrome su Android).',
+        severity: 'error',
+      });
       return;
     }
     try {
@@ -167,7 +170,7 @@ export function EmployeeSummary() {
         const record =
           event.message.records.find((r) => r.recordType === 'text') ?? event.message.records[0];
         if (!record) {
-          setMethodError('Tag NFC letto ma senza testo riconoscibile.');
+          showToast({ message: 'Tag NFC letto ma senza testo riconoscibile.', severity: 'error' });
           return;
         }
         const text = new TextDecoder(record.encoding || 'utf-8').decode(record.data);
@@ -175,17 +178,19 @@ export function EmployeeSummary() {
       };
       reader.onreadingerror = () => {
         setNfcScanning(false);
-        setMethodError('Errore nella lettura del tag NFC, riprova.');
+        showToast({ message: 'Errore nella lettura del tag NFC, riprova.', severity: 'error' });
       };
     } catch {
       setNfcScanning(false);
-      setMethodError('Impossibile avviare la lettura NFC (permesso negato o non disponibile).');
+      showToast({
+        message: 'Impossibile avviare la lettura NFC (permesso negato o non disponibile).',
+        severity: 'error',
+      });
     }
   };
 
   const handleQrScan = (qrToken: string) => {
     setQrScanOpen(false);
-    setMethodError(null);
     clockMutation.mutate({ qrToken });
   };
 
@@ -199,7 +204,7 @@ export function EmployeeSummary() {
     onSuccess: () => {
       setSelfReportOpen(false);
       setSelfReportError(null);
-      setSelfReportSuccess(true);
+      showToast('Segnalazione inviata: in attesa di conferma dell\'amministratore.');
     },
     onError: (err) => setSelfReportError(extractErrorMessage(err)),
   });
@@ -207,7 +212,6 @@ export function EmployeeSummary() {
   const openSelfReport = () => {
     setSelfReportTimestamp(nowAsDatetimeLocal());
     setSelfReportError(null);
-    setSelfReportSuccess(false);
     setSelfReportOpen(true);
   };
 
@@ -248,16 +252,6 @@ export function EmployeeSummary() {
                 </Typography>
               )}
 
-              {methodError && (
-                <Alert severity="error" sx={{ mb: 1 }} onClose={() => setMethodError(null)}>
-                  {methodError}
-                </Alert>
-              )}
-              {selfReportSuccess && (
-                <Alert severity="success" sx={{ mb: 1 }} onClose={() => setSelfReportSuccess(false)}>
-                  Segnalazione inviata: in attesa di conferma dell'amministratore.
-                </Alert>
-              )}
 
               <Stack spacing={1}>
                 {settings?.clockInGpsEnabled && (

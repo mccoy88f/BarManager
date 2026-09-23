@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface QrTokenRow {
   id: string;
@@ -89,6 +90,7 @@ function QrTokenCard({
  */
 export function QrTokens() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<QrTokenRow | null>(null);
   const [label, setLabel] = useState('');
@@ -108,6 +110,7 @@ export function QrTokens() {
         : (await api.post('/attendance/qr-tokens', { label })).data,
     onSuccess: () => {
       invalidate();
+      showToast(editing ? 'Codice QR aggiornato' : 'Codice QR creato');
       setLabel('');
       setOpen(false);
       setEditing(null);
@@ -119,6 +122,7 @@ export function QrTokens() {
     onSuccess: () => {
       invalidate();
       setTokenToDelete(null);
+      showToast('Codice QR eliminato');
     },
   });
 

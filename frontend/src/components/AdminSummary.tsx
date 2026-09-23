@@ -17,6 +17,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { useToast } from './ToastProvider';
 
 interface AdminSummaryData {
   pendingLeaveRequests: {
@@ -45,6 +46,7 @@ const leaveTypeLabels: Record<string, string> = {
 export function AdminSummary() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const showToast = useToast();
 
   const summaryQuery = useQuery({
     queryKey: ['admin-summary'],
@@ -56,12 +58,18 @@ export function AdminSummary() {
   const reviewMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: 'APPROVED' | 'REJECTED' }) =>
       (await api.patch(`/leave-requests/${id}/review`, { status })).data,
-    onSuccess: invalidate,
+    onSuccess: (_data, { status }) => {
+      invalidate();
+      showToast(status === 'APPROVED' ? 'Richiesta approvata' : 'Richiesta rifiutata');
+    },
   });
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => (await api.post(`/tasks/${id}/complete`)).data,
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      showToast('Attività completata');
+    },
   });
 
   const dismissNotificationMutation = useMutation({

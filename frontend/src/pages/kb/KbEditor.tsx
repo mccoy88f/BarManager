@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { useToast } from '../../components/ToastProvider';
 
 interface KbArticle {
   id: string;
@@ -27,6 +28,7 @@ export function KbEditor() {
   const isEditing = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const showToast = useToast();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -61,6 +63,7 @@ export function KbEditor() {
     onSuccess: (article: { id: string }) => {
       invalidate();
       setError(null);
+      showToast(isEditing ? 'Articolo aggiornato' : 'Articolo creato');
       navigate(`/kb/${article.id}`);
     },
     onError: (err) => setError(extractErrorMessage(err)),

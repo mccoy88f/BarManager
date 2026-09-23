@@ -25,6 +25,7 @@ import ArticleIcon from '@mui/icons-material/Article';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface LoyverseSyncSummary {
   categories: number;
@@ -72,14 +73,13 @@ function extractErrorMessage(error: unknown): string {
  * mostrate come disponibili nel menù pubblico in base all'ora corrente. */
 export function VenueSettings() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [hours, setHours] = useState({
     lunchStart: '',
     lunchEnd: '',
     dinnerStart: '',
     dinnerEnd: '',
   });
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const [menuSettings, setMenuSettings] = useState({
     name: '',
@@ -89,8 +89,6 @@ export function VenueSettings() {
     menuFacebookUrl: '',
     menuWebsiteUrl: '',
   });
-  const [menuError, setMenuError] = useState<string | null>(null);
-  const [menuSuccess, setMenuSuccess] = useState(false);
 
   const venueQuery = useQuery({
     queryKey: ['venue-me'],
@@ -118,27 +116,17 @@ export function VenueSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async () => (await api.patch('/venues/me/hours', hours)).data,
-    onSuccess: () => {
-      setError(null);
-      setSuccess(true);
-    },
-    onError: (err) => {
-      setSuccess(false);
-      setError(extractErrorMessage(err));
-    },
+    onSuccess: () => showToast('Fasce orarie aggiornate'),
+    onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
   });
 
   const saveMenuSettingsMutation = useMutation({
     mutationFn: async () => (await api.patch('/venues/me/menu-settings', menuSettings)).data,
     onSuccess: () => {
       menuQueryInvalidate();
-      setMenuError(null);
-      setMenuSuccess(true);
+      showToast('Aspetto del menù aggiornato');
     },
-    onError: (err) => {
-      setMenuSuccess(false);
-      setMenuError(extractErrorMessage(err));
-    },
+    onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
   });
 
   const menuQueryInvalidate = () => queryClient.invalidateQueries({ queryKey: ['venue-me'] });
@@ -149,7 +137,10 @@ export function VenueSettings() {
       form.append('photo', file);
       return (await api.post('/venues/me/menu-cover', form)).data;
     },
-    onSuccess: menuQueryInvalidate,
+    onSuccess: () => {
+      menuQueryInvalidate();
+      showToast('Copertina aggiornata');
+    },
   });
 
   const [loyverseToken, setLoyverseToken] = useState('');
@@ -175,7 +166,7 @@ export function VenueSettings() {
       setPendingToggle(null);
     },
     onError: (err) => {
-      setLoyverseError(extractErrorMessage(err));
+      showToast({ message: extractErrorMessage(err), severity: 'error' });
       setPendingToggle(null);
     },
   });
@@ -186,6 +177,7 @@ export function VenueSettings() {
       loyverseInvalidate();
       setLoyverseToken('');
       setLoyverseError(null);
+      showToast('Token salvato');
     },
     onError: (err) => setLoyverseError(extractErrorMessage(err)),
   });
@@ -197,9 +189,10 @@ export function VenueSettings() {
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       queryClient.invalidateQueries({ queryKey: ['menu-items'] });
       loyverseInvalidate();
+      showToast('Sincronizzazione Loyverse completata');
     },
     onError: (err) => {
-      setLoyverseError(extractErrorMessage(err));
+      showToast({ message: extractErrorMessage(err), severity: 'error' });
       loyverseInvalidate();
     },
   });
@@ -245,16 +238,6 @@ export function VenueSettings() {
               onChange={(e) => setHours((h) => ({ ...h, dinnerEnd: e.target.value }))}
             />
           </Box>
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
-          {success && (
-            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setSuccess(false)}>
-              Fasce orarie aggiornate.
-            </Alert>
-          )}
           <Button
             variant="contained"
             sx={{ mt: 2 }}
@@ -343,16 +326,6 @@ export function VenueSettings() {
               sx={{ gridColumn: '1 / -1' }}
             />
           </Box>
-          {menuError && (
-            <Alert severity="error" sx={{ mt: 2 }} onClose={() => setMenuError(null)}>
-              {menuError}
-            </Alert>
-          )}
-          {menuSuccess && (
-            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setMenuSuccess(false)}>
-              Aspetto del menù aggiornato.
-            </Alert>
-          )}
           <Button
             variant="contained"
             sx={{ mt: 2 }}

@@ -9,6 +9,7 @@ import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PdfViewerDialog } from '../../components/PdfViewerDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface KbArticle {
   id: string;
@@ -22,6 +23,7 @@ export function KbArticleView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const isAdmin = useAuthStore((s) => s.user?.role) === 'ADMIN';
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
@@ -35,6 +37,7 @@ export function KbArticleView() {
     mutationFn: async () => (await api.delete(`/kb/articles/${id}`)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
+      showToast('Articolo eliminato');
       navigate('/kb');
     },
   });

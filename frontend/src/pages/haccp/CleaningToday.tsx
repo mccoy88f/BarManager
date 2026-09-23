@@ -2,6 +2,7 @@ import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/ma
 import CheckIcon from '@mui/icons-material/Check';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useToast } from '../../components/ToastProvider';
 
 type FrequencyUnit = 'DAY' | 'WEEK' | 'MONTH';
 
@@ -27,6 +28,7 @@ const unitLabels: Record<FrequencyUnit, string> = {
  */
 export function CleaningToday() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
 
   const dueQuery = useQuery({
     queryKey: ['cleaning-due'],
@@ -36,7 +38,10 @@ export function CleaningToday() {
   const completeMutation = useMutation({
     mutationFn: async (taskId: string) =>
       (await api.post(`/haccp/cleaning-tasks/${taskId}/complete`)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cleaning-due'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cleaning-due'] });
+      showToast('Pulizia registrata');
+    },
   });
 
   const toDo = dueQuery.data?.filter((t) => t.remaining > 0) ?? [];

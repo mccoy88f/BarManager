@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 
@@ -50,6 +51,7 @@ function extractErrorMessage(error: unknown): string {
 export function BoardPage() {
   const isAdmin = useAuthStore((s) => s.user?.role) === 'ADMIN';
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [pinned, setPinned] = useState(false);
@@ -89,6 +91,7 @@ export function BoardPage() {
     },
     onSuccess: () => {
       invalidate();
+      showToast('Messaggio pubblicato');
       setText('');
       setPinned(false);
       setPhoto(null);
@@ -101,7 +104,10 @@ export function BoardPage() {
   const togglePinMutation = useMutation({
     mutationFn: async ({ id, pinned: next }: { id: string; pinned: boolean }) =>
       (await api.patch(`/board/messages/${id}/pin`, { pinned: next })).data,
-    onSuccess: invalidate,
+    onSuccess: (_data, { pinned: next }) => {
+      invalidate();
+      showToast(next ? 'Messaggio fissato in alto' : 'Messaggio sbloccato');
+    },
   });
 
   const editMutation = useMutation({
@@ -121,6 +127,7 @@ export function BoardPage() {
     },
     onSuccess: () => {
       invalidate();
+      showToast('Messaggio aggiornato');
       setEditing(null);
       setEditNewPhoto(null);
       setEditRemovePhoto(false);
@@ -132,6 +139,7 @@ export function BoardPage() {
     onSuccess: () => {
       invalidate();
       setToDelete(null);
+      showToast('Messaggio eliminato');
     },
   });
 

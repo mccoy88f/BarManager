@@ -18,6 +18,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 export interface Fridge {
   id: string;
@@ -41,6 +42,7 @@ function extractErrorMessage(error: unknown): string {
 /** Censimento frigoriferi/congelatori: etichetta, posizione e soglie di temperatura. */
 export function Fridges() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Fridge | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -66,6 +68,7 @@ export function Fridges() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fridges'] });
+      showToast(editing ? 'Frigorifero aggiornato' : 'Frigorifero creato');
       setForm(emptyForm);
       setError(null);
       setOpen(false);
@@ -79,6 +82,7 @@ export function Fridges() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fridges'] });
       setFridgeToDelete(null);
+      showToast('Frigorifero eliminato');
     },
   });
 

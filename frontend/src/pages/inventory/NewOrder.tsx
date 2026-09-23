@@ -22,6 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { deliverPrintJob, type PrintJobResponse, type PrintOutcome } from '../../printing/printJob';
+import { useToast } from '../../components/ToastProvider';
 
 interface Supplier {
   id: string;
@@ -71,6 +72,7 @@ interface SendBatchResult {
  */
 export function NewOrder() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<'supplier' | 'category'>('supplier');
   const [supplierId, setSupplierId] = useState(searchParams.get('supplierId') ?? '');
@@ -200,6 +202,13 @@ export function NewOrder() {
         .data;
       return deliverPrintJob(job);
     },
+    onSuccess: (outcome) =>
+      showToast({
+        message: outcome.printed
+          ? 'Ordine inviato: dialogo di stampa aperto.'
+          : 'Ordine inviato (nessuna stampante configurata per gli ordini: Impostazioni > Stampanti).',
+        severity: outcome.printed ? 'success' : 'warning',
+      }),
   });
 
   const sendBatchMutation = useMutation({
@@ -410,13 +419,6 @@ export function NewOrder() {
                   >
                     Invia ordine (email + stampa)
                   </Button>
-                  {sendMutation.isSuccess && (
-                    <Alert severity={sendMutation.data.printed ? 'success' : 'warning'} sx={{ mt: 2 }}>
-                      {sendMutation.data.printed
-                        ? 'Ordine inviato: dialogo di stampa aperto.'
-                        : 'Ordine inviato (nessuna stampante configurata per gli ordini: Impostazioni > Stampanti).'}
-                    </Alert>
-                  )}
                 </Box>
               )
             ) : !createdOrderIds ? (

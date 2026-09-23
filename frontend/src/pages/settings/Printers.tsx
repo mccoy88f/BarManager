@@ -29,6 +29,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
 
 type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
@@ -66,17 +67,12 @@ function extractErrorMessage(error: unknown): string {
 /** Stampanti di rete (POS Epson ESC/POS) usate per report HACCP e checklist ordini. */
 export function Printers() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PrinterRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PrinterRow | null>(null);
-  const [testResult, setTestResult] = useState<{
-    printerId: string;
-    printerName: string;
-    printed: boolean;
-    reason?: string;
-  } | null>(null);
 
   const printersQuery = useQuery({
     queryKey: ['printers'],
@@ -99,6 +95,7 @@ export function Printers() {
     },
     onSuccess: () => {
       invalidate();
+      showToast(editing ? 'Stampante aggiornata' : 'Stampante creata');
       setForm(emptyForm);
       setError(null);
       setOpen(false);
@@ -110,7 +107,10 @@ export function Printers() {
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
       (await api.patch(`/printers/${id}`, { active })).data,
-    onSuccess: invalidate,
+    onSuccess: (_data, { active }) => {
+      invalidate();
+      showToast(active ? 'Stampante attivata' : 'Stampante disattivata');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -118,6 +118,7 @@ export function Printers() {
     onSuccess: () => {
       invalidate();
       setToDelete(null);
+      showToast('Stampante eliminata');
     },
   });
 
@@ -127,14 +128,14 @@ export function Printers() {
       return { printer, outcome: await deliverPrintJob(job) };
     },
     onSuccess: ({ printer, outcome }) =>
-      setTestResult({
-        printerId: printer.id,
-        printerName: printer.name,
-        printed: outcome.printed,
-        reason: outcome.reason,
+      showToast({
+        message: outcome.printed
+          ? `Dialogo di stampa aperto per "${printer.name}".`
+          : `"${printer.name}": ${testFailureLabels[outcome.reason ?? ''] ?? 'Test di stampa non riuscito.'}`,
+        severity: outcome.printed ? 'success' : 'error',
       }),
     onError: (_err, printer) =>
-      setTestResult({ printerId: printer.id, printerName: printer.name, printed: false }),
+      showToast({ message: `"${printer.name}": test di stampa non riuscito.`, severity: 'error' }),
   });
 
   const openCreate = () => {
@@ -179,20 +180,6 @@ export function Printers() {
           per collegare la stampante ESC/POS di rete al dialogo di stampa.
         </Typography>
 
-        {testResult && (
-          <Alert
-            severity={testResult.printed ? 'success' : 'error'}
-            sx={{ mt: 1 }}
-            onClose={() => setTestResult(null)}
-          >
-            {testResult.printed
-              ? `Dialogo di stampa aperto per "${testResult.printerName}".`
-              : `"${testResult.printerName}": ${
-                  testFailureLabels[testResult.reason ?? ''] ?? 'Test di stampa non riuscito.'
-                }`}
-          </Alert>
-        )}
-
         <Stack spacing={1} sx={{ mt: 2 }}>
           {printersQuery.data?.map((printer) => (
             <Box
@@ -221,10 +208,7 @@ export function Printers() {
                 <IconButton
                   title="Test di stampa"
                   disabled={testMutation.isPending}
-                  onClick={() => {
-                    setTestResult(null);
-                    testMutation.mutate(printer);
-                  }}
+                  onClick={() => testMutation.mutate(printer)}
                 >
                   <PrintIcon fontSize="small" />
                 </IconButton>

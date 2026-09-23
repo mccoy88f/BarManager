@@ -1,7 +1,5 @@
-import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert,
   Box,
   Button,
   Card,
@@ -22,6 +20,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
+import { useToast } from '../../components/ToastProvider';
 
 interface OrderLineRow {
   id: string;
@@ -65,7 +64,7 @@ function orderTotal(order: OrderRow): number {
 export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [printResult, setPrintResult] = useState<{ printed: boolean; reason?: string } | null>(null);
+  const showToast = useToast();
 
   const orderQuery = useQuery({
     queryKey: ['order', id],
@@ -77,8 +76,14 @@ export function OrderDetail() {
       const job = (await api.post<PrintJobResponse>(`/inventory/orders/${id}/print`)).data;
       return deliverPrintJob(job);
     },
-    onSuccess: setPrintResult,
-    onError: () => setPrintResult({ printed: false }),
+    onSuccess: (result) =>
+      showToast({
+        message: result.printed
+          ? 'Dialogo di stampa aperto.'
+          : (result.reason && printFailureLabels[result.reason]) || 'Ristampa non riuscita.',
+        severity: result.printed ? 'success' : 'warning',
+      }),
+    onError: () => showToast({ message: 'Ristampa non riuscita.', severity: 'error' }),
   });
 
   const downloadPdf = async () => {
@@ -135,14 +140,6 @@ export function OrderDetail() {
           Ristampa su stampante POS
         </Button>
       </Stack>
-
-      {printResult && (
-        <Alert severity={printResult.printed ? 'success' : 'warning'} onClose={() => setPrintResult(null)}>
-          {printResult.printed
-            ? 'Dialogo di stampa aperto.'
-            : (printResult.reason && printFailureLabels[printResult.reason]) || 'Ristampa non riuscita.'}
-        </Alert>
-      )}
 
       <Card variant="outlined">
         <CardContent>

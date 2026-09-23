@@ -55,6 +55,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
 
 interface MenuCategory {
@@ -236,6 +237,7 @@ function SortableCategorySection({
 export function MenuAdmin() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -279,6 +281,7 @@ export function MenuAdmin() {
         : (await api.post('/menu/categories', { name: newCategoryName })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      showToast(editingCategory ? 'Categoria aggiornata' : 'Categoria creata');
       setNewCategoryName('');
       setCategoryDialogOpen(false);
       setEditingCategory(null);
@@ -291,6 +294,7 @@ export function MenuAdmin() {
       queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       setCategoryToDelete(null);
       setCategoryDeleteError(null);
+      showToast('Categoria eliminata');
     },
     onError: (err) => setCategoryDeleteError(extractErrorMessage(err)),
   });
@@ -338,6 +342,7 @@ export function MenuAdmin() {
     },
     onSuccess: () => {
       invalidate();
+      showToast(editingItem ? 'Voce di menù aggiornata' : 'Voce di menù creata');
       setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY' });
       setVariantForms([emptyVariant]);
       setItemDialogOpen(false);
@@ -350,6 +355,7 @@ export function MenuAdmin() {
     onSuccess: () => {
       invalidate();
       setItemToDelete(null);
+      showToast('Voce di menù eliminata');
     },
   });
 

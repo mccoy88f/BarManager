@@ -25,6 +25,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 import { MODULE_LABELS, ModuleKey } from '../../config/modules';
 
 const ALL_MODULE_KEYS = Object.keys(MODULE_LABELS) as ModuleKey[];
@@ -113,6 +114,7 @@ function extractErrorMessage(error: unknown): string {
 /** Anagrafica dipendenti: crea gli account (email+password) con cui accedono. */
 export function Employees() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyCreateForm);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export function Employees() {
       ).data,
     onSuccess: () => {
       invalidate();
+      showToast('Dipendente creato');
       setForm(emptyCreateForm);
       setCreateError(null);
     },
@@ -165,6 +168,7 @@ export function Employees() {
     },
     onSuccess: () => {
       invalidate();
+      showToast('Dipendente aggiornato');
       setEditing(null);
       setEditError(null);
     },
@@ -174,7 +178,10 @@ export function Employees() {
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
       (await api.patch(`/employees/${id}/active`, { active })).data,
-    onSuccess: invalidate,
+    onSuccess: (_data, { active }) => {
+      invalidate();
+      showToast(active ? 'Dipendente riattivato' : 'Dipendente disattivato');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -183,6 +190,7 @@ export function Employees() {
       invalidate();
       setToDelete(null);
       setDeleteError(null);
+      showToast('Dipendente eliminato');
     },
     onError: (err) => setDeleteError(extractErrorMessage(err)),
   });

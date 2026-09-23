@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import QRCode from 'qrcode';
+import { useToast } from '../../components/ToastProvider';
 
 /** Link e QR code del menù pubblico, in una pagina propria richiamata da MenuAdmin. */
 export function MenuPublicLink() {
   const navigate = useNavigate();
+  const showToast = useToast();
   const publicMenuUrl = `${window.location.origin}/menu`;
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
 
@@ -51,7 +53,9 @@ export function MenuPublicLink() {
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => navigator.clipboard?.writeText(publicMenuUrl)}
+                  onClick={() =>
+                    navigator.clipboard?.writeText(publicMenuUrl).then(() => showToast('Link copiato'))
+                  }
                 >
                   Copia link
                 </Button>

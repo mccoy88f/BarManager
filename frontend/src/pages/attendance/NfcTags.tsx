@@ -20,6 +20,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface NfcTagRow {
   id: string;
@@ -44,6 +45,7 @@ function extractErrorMessage(error: unknown): string {
  */
 export function NfcTags() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<NfcTagRow | null>(null);
   const [newTagLabel, setNewTagLabel] = useState('');
@@ -65,6 +67,7 @@ export function NfcTags() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nfc-tags'] });
+      showToast(editing ? 'Tag NFC aggiornato' : 'Tag NFC creato');
       setNewTagLabel('');
       setNewTagValue('');
       setTagError(null);
@@ -79,6 +82,7 @@ export function NfcTags() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nfc-tags'] });
       setTagToDelete(null);
+      showToast('Tag NFC eliminato');
     },
   });
 

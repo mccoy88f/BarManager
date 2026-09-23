@@ -25,6 +25,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface Venue {
   id: string;
@@ -47,6 +48,7 @@ function extractErrorMessage(error: unknown): string {
 /** Pannello Super Admin: elenco locali, creazione nuovo locale + primo admin. */
 export function Venues() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
@@ -68,6 +70,7 @@ export function Venues() {
       (await api.post('/venues', { name, slug, adminEmail, adminPassword })).data,
     onSuccess: () => {
       invalidate();
+      showToast('Locale creato');
       setName('');
       setSlug('');
       setAdminEmail('');
@@ -78,9 +81,10 @@ export function Venues() {
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
       (await api.patch(`/venues/${id}/active`, { active })).data,
-    onSuccess: () => {
+    onSuccess: (_data, { active }) => {
       invalidate();
       setVenueToSuspend(null);
+      showToast(active ? 'Locale riattivato' : 'Locale sospeso');
     },
   });
 
@@ -89,6 +93,7 @@ export function Venues() {
       (await api.patch(`/venues/${editing!.id}`, editForm)).data,
     onSuccess: () => {
       invalidate();
+      showToast('Locale aggiornato');
       setEditing(null);
       setEditError(null);
     },

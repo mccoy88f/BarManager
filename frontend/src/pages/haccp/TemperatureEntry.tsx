@@ -22,6 +22,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { useToast } from '../../components/ToastProvider';
 import { deliverPrintJob, type PrintJobResponse } from '../../printing/printJob';
 import type { Fridge } from './Fridges';
 
@@ -46,12 +47,12 @@ function extractErrorMessage(error: unknown): string {
  */
 export function TemperatureEntry() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [values, setValues] = useState<Record<string, string>>({});
   const [corrective, setCorrective] = useState<Record<string, string>>({});
   const [printOpen, setPrintOpen] = useState(false);
   const [signedByName, setSignedByName] = useState('');
   const [printError, setPrintError] = useState<string | null>(null);
-  const [printSuccess, setPrintSuccess] = useState<string | null>(null);
 
   const today = todayIso();
 
@@ -84,6 +85,7 @@ export function TemperatureEntry() {
       setValues((v) => ({ ...v, [fridgeId]: '' }));
       setCorrective((c) => ({ ...c, [fridgeId]: '' }));
       queryClient.invalidateQueries({ queryKey: ['readings'] });
+      showToast('Temperatura registrata');
     },
   });
 
@@ -102,7 +104,7 @@ export function TemperatureEntry() {
     },
     onSuccess: (outcome) => {
       setPrintError(null);
-      setPrintSuccess(
+      showToast(
         outcome.printed
           ? 'Report registrato: dialogo di stampa aperto.'
           : 'Report registrato e firmato (nessuna stampante configurata per HACCP: Impostazioni > Stampanti).',
@@ -135,12 +137,6 @@ export function TemperatureEntry() {
             Firma e stampa report
           </Button>
         </Box>
-
-        {printSuccess && (
-          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrintSuccess(null)}>
-            {printSuccess}
-          </Alert>
-        )}
 
         <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
           <Table size="small">

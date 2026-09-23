@@ -23,6 +23,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface CategoryRow {
   id: string;
@@ -74,6 +75,7 @@ const emptyProductForm = {
 /** Anagrafica categorie e prodotti: base del calcolo automatico degli ordini. */
 export function Catalog() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -113,6 +115,7 @@ export function Catalog() {
         : (await api.post('/inventory/categories', { name: newCategoryName.trim() })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-categories'] });
+      showToast(editingCategory ? 'Categoria aggiornata' : 'Categoria creata');
       setNewCategoryName('');
       setCategoryError(null);
       setCategoryDialogOpen(false);
@@ -126,6 +129,7 @@ export function Catalog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-categories'] });
       setCategoryToDelete(null);
+      showToast('Categoria eliminata');
     },
   });
 
@@ -148,6 +152,7 @@ export function Catalog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
+      showToast(editingProduct ? 'Prodotto aggiornato' : 'Prodotto creato');
       setProductForm(emptyProductForm);
       setProductError(null);
       setProductDialogOpen(false);
@@ -159,9 +164,10 @@ export function Catalog() {
   const deleteProductMutation = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
       (await api.patch(`/inventory/products/${id}`, { active })).data,
-    onSuccess: () => {
+    onSuccess: (_data, { active }) => {
       queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
       setProductToDelete(null);
+      showToast(active ? 'Prodotto riattivato' : 'Prodotto disattivato');
     },
   });
 

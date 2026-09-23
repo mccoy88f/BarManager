@@ -24,6 +24,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface AttendanceRecordRow {
   id: string;
@@ -79,6 +80,7 @@ function extractErrorMessage(error: unknown): string {
 /** Storico timbrature con filtri, correzione ed esportazione XLS/PDF. */
 export function AttendanceRecords() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [employeeId, setEmployeeId] = useState('');
   const [from, setFrom] = useState(firstDayOfMonth());
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
@@ -119,9 +121,10 @@ export function AttendanceRecords() {
   const reviewMutation = useMutation({
     mutationFn: async ({ id, approve }: { id: string; approve: boolean }) =>
       (await api.patch(`/attendance/${id}/review`, { approve })).data,
-    onSuccess: () => {
+    onSuccess: (_data, { approve }) => {
       queryClient.invalidateQueries({ queryKey: ['attendance-pending'] });
       queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      showToast(approve ? 'Timbratura confermata' : 'Timbratura rifiutata');
     },
   });
 
@@ -135,6 +138,7 @@ export function AttendanceRecords() {
       ).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      showToast('Timbratura corretta');
       setEditing(null);
       setCorrectError(null);
     },
@@ -160,6 +164,7 @@ export function AttendanceRecords() {
       ).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
+      showToast('Timbratura aggiunta');
       setAdding(false);
       setAddForm({ employeeId: '', type: 'CLOCK_IN', timestamp: '', note: '' });
       setAddError(null);
@@ -172,6 +177,7 @@ export function AttendanceRecords() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance-records'] });
       setToDelete(null);
+      showToast('Timbratura eliminata');
     },
   });
 

@@ -22,6 +22,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 type FrequencyUnit = 'DAY' | 'WEEK' | 'MONTH';
 
@@ -65,6 +66,7 @@ const emptyForm = {
 /** Anagrafica voci di pulizia ricorrenti (admin): descrizione, luogo e frequenza. */
 export function CleaningTasksAdmin() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CleaningTaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -95,6 +97,7 @@ export function CleaningTasksAdmin() {
     },
     onSuccess: () => {
       invalidate();
+      showToast(editing ? 'Attività di pulizia aggiornata' : 'Attività di pulizia creata');
       setForm(emptyForm);
       setError(null);
       setOpen(false);
@@ -108,6 +111,7 @@ export function CleaningTasksAdmin() {
     onSuccess: () => {
       invalidate();
       setTaskToDelete(null);
+      showToast('Attività di pulizia eliminata');
     },
   });
 

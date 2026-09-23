@@ -21,6 +21,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface SupplierRow {
   id: string;
@@ -55,6 +56,7 @@ function extractErrorMessage(error: unknown): string {
 
 export function Suppliers() {
   const queryClient = useQueryClient();
+  const showToast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<SupplierRow | null>(null);
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
@@ -81,6 +83,7 @@ export function Suppliers() {
     },
     onSuccess: () => {
       invalidate();
+      showToast(editing ? 'Fornitore aggiornato' : 'Fornitore creato');
       setForm({ name: '', email: '', phone: '' });
       setError(null);
       setOpen(false);
@@ -94,6 +97,7 @@ export function Suppliers() {
     onSuccess: () => {
       invalidate();
       setSupplierToDelete(null);
+      showToast('Fornitore eliminato');
     },
   });
 
