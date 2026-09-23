@@ -232,7 +232,7 @@ export function TemperatureEntry() {
 
       <Dialog open={printOpen} onClose={() => setPrintOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Firma e stampa report di oggi</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
             label="Nome di chi firma"
             value={signedByName}

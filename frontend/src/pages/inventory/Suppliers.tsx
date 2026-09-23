@@ -185,7 +185,7 @@ export function Suppliers() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica fornitore' : 'Nuovo fornitore'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
             label="Nome"
             value={form.name}

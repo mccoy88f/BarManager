@@ -306,7 +306,7 @@ export function Catalog() {
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
             label="Nome categoria"
             value={newCategoryName}
@@ -341,7 +341,7 @@ export function Catalog() {
 
       <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingProduct ? 'Modifica prodotto' : 'Nuovo prodotto'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 4 }}>
           <TextField
             label="Nome prodotto"
             value={productForm.name}

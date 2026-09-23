@@ -191,7 +191,7 @@ export function CleaningTasksAdmin() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica voce di pulizia' : 'Nuova voce di pulizia'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 4 }}>
           <TextField
             label="Descrizione (es. Sgrassare friggitrice)"
             value={form.description}

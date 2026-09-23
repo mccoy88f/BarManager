@@ -376,7 +376,7 @@ export function EmployeeSummary() {
 
       <Dialog open={selfReportOpen} onClose={() => setSelfReportOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Ho dimenticato di timbrare</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Typography variant="body2" color="text.secondary">
             Indica quando hai fatto {isClockedIn ? 'fine' : 'inizio'} turno: la timbratura resterà
             in attesa finché l'amministratore non la conferma.

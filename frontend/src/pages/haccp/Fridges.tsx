@@ -141,7 +141,7 @@ export function Fridges() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica frigorifero/congelatore' : 'Nuovo frigorifero/congelatore'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
             label="Nome (es. Frigo bancone, Congelatore cucina)"
             value={form.label}

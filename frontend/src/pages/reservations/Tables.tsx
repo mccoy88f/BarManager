@@ -157,7 +157,7 @@ export function Tables() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica tavolo' : 'Nuovo tavolo'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
             label="Numero o nome"
             placeholder='es. "12" o "Terrazza 2"'

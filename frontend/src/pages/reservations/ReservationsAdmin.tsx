@@ -546,7 +546,7 @@ export function ReservationsAdmin() {
 
       <Dialog open={!!rejecting} onClose={() => setRejecting(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Rifiuta prenotazione</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Typography variant="body2" color="text.secondary">
             Il motivo verrà comunicato via email a {rejecting?.firstName} {rejecting?.lastName}.
           </Typography>
@@ -590,7 +590,7 @@ export function ReservationsAdmin() {
           nuovo orario al cliente e attende la sua conferma via email. */}
       <Dialog open={!!changingTime} onClose={() => setChangingTime(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Cambia orario</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Typography variant="body2" color="text.secondary">
             Il nuovo orario verrà proposto a {changingTime?.firstName} {changingTime?.lastName}, che dovrà
             confermarlo via email prima che diventi effettivo.
@@ -645,7 +645,7 @@ export function ReservationsAdmin() {
         fullWidth
       >
         <DialogTitle>Modifica prenotazione</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           {editForm && (
             <>
               <Stack direction="row" spacing={2}>
@@ -769,7 +769,7 @@ export function ReservationsAdmin() {
           scelto, la prenotazione finisce nella coda "Senza tavolo". */}
       <Dialog open={addOpen} onClose={closeAddDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Aggiungi prenotazione</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Autocomplete
             freeSolo
             options={customerSearchQuery.data ?? []}
