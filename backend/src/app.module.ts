@@ -25,6 +25,7 @@ import { KbModule } from './kb/kb.module';
 import { LoyverseModule } from './loyverse/loyverse.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { CustomersModule } from './customers/customers.module';
+import { CommunicationsModule } from './communications/communications.module';
 import { MeModule } from './me/me.module';
 
 @Module({
@@ -53,6 +54,7 @@ import { MeModule } from './me/me.module';
     LoyverseModule,
     ReservationsModule,
     CustomersModule,
+    CommunicationsModule,
     MeModule,
   ],
   providers: [

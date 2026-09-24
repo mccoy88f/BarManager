@@ -220,6 +220,22 @@ export const navigation: NavItem[] = [
     icon: PeopleIcon,
     description: 'Anagrafica clienti da prenotazioni e aggiunti a mano',
     moduleKey: 'customers',
+    children: [
+      {
+        key: 'customers-marketing',
+        label: 'Marketing',
+        path: '/customers/marketing',
+        icon: CampaignIcon,
+        description: 'Invia comunicazioni ed email promozionali ai clienti',
+      },
+      {
+        key: 'customers-communications-history',
+        label: 'Storico comunicazioni',
+        path: '/customers/communications',
+        icon: CampaignIcon,
+        description: 'Verifica le comunicazioni inviate e il loro stato',
+      },
+    ],
   },
   {
     key: 'settings',

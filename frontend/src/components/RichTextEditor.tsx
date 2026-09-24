@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Box, CircularProgress, IconButton, Stack, Tooltip } from '@mui/material';
 import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FormatItalicIcon from '@mui/icons-material/FormatItalic';
@@ -21,6 +21,11 @@ interface RichTextEditorProps {
   onChange: (html: string) => void;
 }
 
+/** Metodi richiamabili da un genitore tramite ref, es. per inserire un placeholder alla posizione del cursore (v. pagina Marketing). */
+export interface RichTextEditorHandle {
+  insertText: (text: string) => void;
+}
+
 const ATTACHMENT_ACCEPT =
   '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
@@ -30,7 +35,10 @@ const ATTACHMENT_ACCEPT =
  * immagini/video/allegati (es. PDF) caricati sul server e incorporati nel
  * testo — visualizzabili/scaricabili anche nella pagina di lettura.
  */
-export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
+export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
+  { value, onChange },
+  ref,
+) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +54,12 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     content: value,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
+
+  useImperativeHandle(ref, () => ({
+    insertText: (text: string) => {
+      editor?.chain().focus().insertContent(text).run();
+    },
+  }));
 
   // Il div dell'editor non è "controllato" da React: il contenuto si
   // imposta a mano solo quando `value` cambia dall'esterno (es. caricamento
@@ -240,4 +254,4 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       </Box>
     </Box>
   );
-}
+});

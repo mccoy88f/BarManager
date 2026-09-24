@@ -158,6 +158,7 @@ model Venue {
   tables            Table[]
   reservations      Reservation[]
   customers         Customer[]
+  communications    Communication[]
 }
 
 model User {
@@ -185,6 +186,7 @@ model User {
   ordersCreated         Order[]
   cleaningLogs          CleaningLog[]
   reservationsHandled   Reservation[]        @relation("ReservationRespondedBy")
+  communicationsCreated Communication[]
 }
 
 // ---------------------------------------------------------------------------
@@ -998,9 +1000,82 @@ model Customer {
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
+  communicationRecipients CommunicationRecipient[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([venueId, email])
   @@index([venueId])
+}
+
+// ---------------------------------------------------------------------------
+// Marketing/Comunicazioni clienti (§1-septdecies di DEVELOPMENT.md)
+// ---------------------------------------------------------------------------
+
+enum CommunicationType {
+  // Avviso non promozionale (es. chiusura, cambio orari): può essere
+  // inviato a qualunque cliente, indipendentemente dal consenso marketing.
+  COMMUNICATION
+  // Promozionale: i destinatari selezionabili sono filtrati a monte solo a
+  // chi ha marketingConsent = true (v. CommunicationsService.listTargetableCustomers).
+  MARKETING
+}
+
+enum CommunicationStatus {
+  QUEUED // creata, invio ai destinatari non ancora iniziato/in corso
+  DONE // tutti i destinatari sono in uno stato finale (SENT o FAILED)
+}
+
+enum CommunicationRecipientStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+/// Un invio massivo lanciato dall'admin dalla pagina Marketing: un record per
+/// invio, con un CommunicationRecipient per ciascun cliente destinatario.
+/// Isolata per venueId.
+model Communication {
+  id      String             @id @default(cuid())
+  type    CommunicationType
+  subject String
+  // HTML compilato dall'editor ricco (stesso editor di KBpedia), con i
+  // placeholder ({nome}, {cognome}, {email}) ancora letterali: sostituiti
+  // per ciascun destinatario solo al momento dell'invio del suo singolo
+  // job, non qui.
+  bodyHtml String
+  status   CommunicationStatus @default(QUEUED)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  recipients CommunicationRecipient[]
+
+  createdAt DateTime @default(now())
+
+  @@index([venueId, createdAt])
+}
+
+/// Un singolo destinatario di una Communication: lo stato per-cliente,
+/// non solo l'esito aggregato dell'invio, per poter capire se una singola
+/// email in particolare non è arrivata (v. nota GDPR/§1-septdecies).
+model CommunicationRecipient {
+  id     String                        @id @default(cuid())
+  status CommunicationRecipientStatus @default(QUEUED)
+  error  String?
+  sentAt DateTime?
+
+  communicationId String
+  communication   Communication @relation(fields: [communicationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([communicationId, status])
 }

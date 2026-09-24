@@ -38,6 +38,8 @@ import { PublicReservation } from './pages/reservations/PublicReservation';
 import { PublicReservationManage } from './pages/reservations/PublicReservationManage';
 import { PublicReservationSelfManage } from './pages/reservations/PublicReservationSelfManage';
 import { CustomersAdmin } from './pages/customers/CustomersAdmin';
+import { Marketing } from './pages/customers/Marketing';
+import { CommunicationsHistory } from './pages/customers/CommunicationsHistory';
 import { PublicPrivacyManage } from './pages/customers/PublicPrivacyManage';
 import { MyAccount } from './pages/account/MyAccount';
 
@@ -113,6 +115,8 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute moduleKey="customers" />}>
             <Route path="/customers" element={<CustomersAdmin />} />
+            <Route path="/customers/marketing" element={<Marketing />} />
+            <Route path="/customers/communications" element={<CommunicationsHistory />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
