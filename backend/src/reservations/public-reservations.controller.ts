@@ -6,6 +6,8 @@ import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ManageAcceptDto } from './dto/manage-accept.dto';
 import { ManageRejectDto } from './dto/manage-reject.dto';
+import { SelfUpdateReservationDto } from './dto/self-update-reservation.dto';
+import { SelfCancelReservationDto } from './dto/self-cancel-reservation.dto';
 
 /**
  * Widget pubblico di prenotazione, nessun login: risolto dal sotto-dominio
@@ -92,5 +94,27 @@ export class PublicReservationsController {
   @Patch(':id/manage/confirm-time')
   confirmTimeChange(@Param('id') id: string, @Body('token') token: string) {
     return this.reservationsService.confirmTimeChangeByToken(id, token);
+  }
+
+  /**
+   * Pagina pubblica di auto-gestione del cliente (link nell'email di
+   * richiesta ricevuta/confermata, §10): diversa da `:id/manage`, che è
+   * per lo staff e mostra Accetta/Rifiuta — qui il cliente può solo
+   * modificare o annullare la propria richiesta, entro la finestra
+   * temporale calcolata da ReservationsService (`canEdit` nella risposta).
+   */
+  @Get(':id/self')
+  selfManage(@Param('id') id: string, @Query('token') token: string) {
+    return this.reservationsService.getForSelfManage(id, token);
+  }
+
+  @Patch(':id/self')
+  selfUpdate(@Param('id') id: string, @Body() dto: SelfUpdateReservationDto) {
+    return this.reservationsService.updateBySelfToken(id, dto.token, dto);
+  }
+
+  @Patch(':id/self/cancel')
+  selfCancel(@Param('id') id: string, @Body() dto: SelfCancelReservationDto) {
+    return this.reservationsService.cancelBySelfToken(id, dto.token);
   }
 }

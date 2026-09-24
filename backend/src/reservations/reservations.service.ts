@@ -12,12 +12,14 @@ import { CreateManualReservationDto } from './dto/create-manual-reservation.dto'
 import { RejectReservationDto } from './dto/reject-reservation.dto';
 import { ProposeTimeChangeDto } from './dto/propose-time-change.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { SelfUpdateReservationDto } from './dto/self-update-reservation.dto';
 
 interface ReservationVenueSettings {
   id: string;
   name: string;
   slug: string;
   email: string | null;
+  menuPhone: string | null;
   reservationsEnabled: boolean;
   reservationAutoConfirmMaxSeats: number;
   reservationSlotDurationMinutes: number;
@@ -32,6 +34,7 @@ const VENUE_SELECT = {
   name: true,
   slug: true,
   email: true,
+  menuPhone: true,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: true,
   reservationSlotDurationMinutes: true,
@@ -40,6 +43,9 @@ const VENUE_SELECT = {
   reservationOverbookingExtraSeats: true,
   openingHours: true,
 } as const;
+
+/** Finestra di auto-gestione (§10 di DEVELOPMENT.md): il cliente può modificare/annullare da sé la propria richiesta entro questi minuti dalla creazione, dopo deve contattare il locale direttamente. */
+const SELF_EDIT_WINDOW_MINUTES = 15;
 
 /** Include standard per portare i tavoli assegnati (relazione molti-a-molti) dentro ogni prenotazione. */
 const TABLES_INCLUDE = { tables: { include: { table: true } } } as const;
@@ -264,18 +270,47 @@ export class ReservationsService {
   }
 
   /**
-   * URL della pagina pubblica di gestione (accetta/rifiuta senza login,
-   * §5.7), mandata all'email del locale. Usa il sotto-dominio del locale
-   * quando ROOT_DOMAIN è configurato (produzione), altrimenti PUBLIC_APP_URL
-   * come base per lo sviluppo locale.
+   * Base + path di una pagina pubblica del locale (nessun login). Usa il
+   * sotto-dominio del locale quando ROOT_DOMAIN è configurato (produzione),
+   * altrimenti PUBLIC_APP_URL come base per lo sviluppo locale.
    */
-  private buildManageUrl(venue: ReservationVenueSettings, reservationId: string, token: string): string {
-    const path = `/prenota/gestisci/${reservationId}?token=${token}`;
+  private buildPublicUrl(venue: ReservationVenueSettings, path: string): string {
     const rootDomain = process.env.ROOT_DOMAIN;
     const base = rootDomain
       ? `https://${venue.slug}.${rootDomain}`
       : process.env.PUBLIC_APP_URL || 'http://localhost:5173';
     return `${base}${path}`;
+  }
+
+  /** URL della pagina di gestione dello staff (accetta/rifiuta senza login, §5.7), mandata all'email del locale. */
+  private buildManageUrl(venue: ReservationVenueSettings, reservationId: string, token: string): string {
+    return this.buildPublicUrl(venue, `/prenota/gestisci/${reservationId}?token=${token}`);
+  }
+
+  /** URL della pagina di auto-gestione del cliente (modifica/annulla senza login, entro SELF_EDIT_WINDOW_MINUTES), mandata all'email del cliente. */
+  private buildSelfManageUrl(venue: ReservationVenueSettings, reservationId: string, token: string): string {
+    return this.buildPublicUrl(venue, `/prenota/modifica/${reservationId}?token=${token}`);
+  }
+
+  /** Termine ultimo per l'auto-gestione: SELF_EDIT_WINDOW_MINUTES dalla creazione della richiesta (non dall'orario prenotato). */
+  private selfEditDeadline(reservation: { createdAt: Date }): Date {
+    return new Date(reservation.createdAt.getTime() + SELF_EDIT_WINDOW_MINUTES * 60000);
+  }
+
+  private canSelfEdit(reservation: { createdAt: Date; status: ReservationStatus }): boolean {
+    if (reservation.status === ReservationStatus.REJECTED || reservation.status === ReservationStatus.CANCELLED) {
+      return false;
+    }
+    return new Date() < this.selfEditDeadline(reservation);
+  }
+
+  /** Trova la prenotazione dal suo manageToken, senza vincolo di venueId (pagine pubbliche senza login). */
+  private async requireByToken(reservationId: string, token: string): Promise<Reservation> {
+    const reservation = await this.prisma.reservation.findUnique({ where: { id: reservationId } });
+    if (!reservation || reservation.manageToken !== token) {
+      throw new NotFoundException('Prenotazione non trovata');
+    }
+    return reservation;
   }
 
   // ---- Prenotazione pubblica ----------------------------------------------
@@ -359,10 +394,11 @@ export class ReservationsService {
       marketingConsent: reservation.marketingConsent,
     });
 
+    const selfManageUrl = this.buildSelfManageUrl(venue, reservation.id, reservation.manageToken);
     if (status === ReservationStatus.CONFIRMED) {
-      await this.mail.sendConfirmed(reservation, venue.name, venue.email);
+      await this.mail.sendConfirmed(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone);
     } else {
-      await this.mail.sendReceived(reservation, venue.name, venue.email);
+      await this.mail.sendReceived(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone);
       const admins = await this.prisma.user.findMany({ where: { venueId, role: 'ADMIN' } });
       await this.prisma.notification.createMany({
         data: admins.map((a) => ({
@@ -621,7 +657,13 @@ export class ReservationsService {
       phone: reservation.phone,
       marketingConsent: reservation.marketingConsent,
     });
-    await this.mail.sendConfirmed(reservation, venue.name, venue.email);
+    await this.mail.sendConfirmed(
+      reservation,
+      venue.name,
+      venue.email,
+      this.buildSelfManageUrl(venue, reservation.id, reservation.manageToken),
+      venue.menuPhone,
+    );
     return reservation;
   }
 
@@ -744,7 +786,13 @@ export class ReservationsService {
         after,
       });
     }
-    await this.mail.sendConfirmed(after, venue.name, venue.email);
+    await this.mail.sendConfirmed(
+      after,
+      venue.name,
+      venue.email,
+      this.buildSelfManageUrl(venue, after.id, after.manageToken),
+      venue.menuPhone,
+    );
     return after;
   }
 
@@ -985,6 +1033,125 @@ export class ReservationsService {
       before,
       after,
     });
+    return after;
+  }
+
+  // ---- Auto-gestione del cliente (senza login, entro SELF_EDIT_WINDOW_MINUTES) --------
+
+  /**
+   * Dati per la pagina pubblica di auto-gestione del cliente (§10 di
+   * DEVELOPMENT.md, diversa da getForManage: quella è per lo staff, con
+   * Accetta/Rifiuta — questa non espone mai quelle azioni). `canEdit` è
+   * già calcolato qui (finestra + stato), così il frontend non deve
+   * rifare il calcolo: mostra il form se true, altrimenti l'invito a
+   * chiamare `venuePhone`.
+   */
+  async getForSelfManage(reservationId: string, token: string) {
+    const reservation = await this.requireByToken(reservationId, token);
+    const venue = await this.getVenueSettings(reservation.venueId);
+    return {
+      reservation,
+      venueName: venue.name,
+      venuePhone: venue.menuPhone,
+      editableUntil: this.selfEditDeadline(reservation),
+      canEdit: this.canSelfEdit(reservation),
+    };
+  }
+
+  /**
+   * Modifica da parte del cliente (dati di contatto, numero di persone,
+   * occasione speciale, note — non l'orario, che resta un'azione del
+   * locale via proponi/conferma, né i tavoli, di competenza dello staff).
+   * Torna sempre PENDING, qualunque fosse lo stato prima (anche se già
+   * CONFIRMED): su richiesta esplicita dell'utente, ogni modifica del
+   * cliente va rivista e riconfermata dal locale, riusando lo stesso
+   * meccanismo di conferma di una richiesta nuova (email al locale con
+   * Accetta/Rifiuta, Notification in-app, §5.7).
+   */
+  async updateBySelfToken(reservationId: string, token: string, dto: SelfUpdateReservationDto) {
+    const before = await this.requireByToken(reservationId, token);
+    if (!this.canSelfEdit(before)) {
+      throw new BadRequestException(
+        'Il tempo per modificare questa prenotazione online è scaduto: chiamaci direttamente per qualsiasi modifica.',
+      );
+    }
+
+    const data: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      partySize?: number;
+      isEvent?: boolean;
+      eventNote?: string | null;
+      allergiesNote?: string | null;
+      notes?: string | null;
+    } = {};
+    if (dto.firstName !== undefined) data.firstName = dto.firstName;
+    if (dto.lastName !== undefined) data.lastName = dto.lastName;
+    if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.partySize !== undefined) data.partySize = dto.partySize;
+    if (dto.isEvent !== undefined) data.isEvent = dto.isEvent;
+    if (dto.eventNote !== undefined) data.eventNote = dto.eventNote;
+    if (dto.allergiesNote !== undefined) data.allergiesNote = dto.allergiesNote;
+    if (dto.notes !== undefined) data.notes = dto.notes;
+
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { ...data, status: ReservationStatus.PENDING, respondedById: null, respondedAt: null },
+        include: TABLES_INCLUDE,
+      }),
+    );
+
+    const venue = await this.getVenueSettings(after.venueId);
+    await this.mail.sendSelfEditPending(after, venue.name, venue.email);
+
+    const admins = await this.prisma.user.findMany({ where: { venueId: after.venueId, role: 'ADMIN' } });
+    await this.prisma.notification.createMany({
+      data: admins.map((a) => ({
+        userId: a.id,
+        type: 'RESERVATION_PENDING',
+        message: `Prenotazione modificata dal cliente, da confermare: ${after.firstName} ${after.lastName}, ${after.partySize} persone`,
+      })),
+    });
+
+    if (venue.email) {
+      const manageUrl = this.buildManageUrl(venue, after.id, after.manageToken);
+      await this.mail.sendModifiedNotificationToVenue(after, venue.name, venue.email, manageUrl);
+    }
+
+    return after;
+  }
+
+  /**
+   * Annullamento da parte del cliente, stessa finestra della modifica: a
+   * differenza della modifica, non richiede conferma del locale (annullare
+   * non ha bisogno di revisione) — solo un avviso in-app agli admin, sullo
+   * stesso principio di confirmTimeChangeByToken.
+   */
+  async cancelBySelfToken(reservationId: string, token: string) {
+    const before = await this.requireByToken(reservationId, token);
+    if (!this.canSelfEdit(before)) {
+      throw new BadRequestException('Il tempo per annullare questa prenotazione online è scaduto: chiamaci direttamente.');
+    }
+
+    const after = flattenTables(
+      await this.prisma.reservation.update({
+        where: { id: reservationId },
+        data: { status: ReservationStatus.CANCELLED },
+        include: TABLES_INCLUDE,
+      }),
+    );
+
+    const admins = await this.prisma.user.findMany({ where: { venueId: after.venueId, role: 'ADMIN' } });
+    await this.prisma.notification.createMany({
+      data: admins.map((a) => ({
+        userId: a.id,
+        type: 'RESERVATION_CANCELLED_BY_CUSTOMER',
+        message: `${after.firstName} ${after.lastName} ha annullato la propria prenotazione del ${after.reservedAt.toLocaleString('it-IT')}`,
+      })),
+    });
+
     return after;
   }
 }

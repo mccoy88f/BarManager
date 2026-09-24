@@ -19,6 +19,7 @@ const baseVenue = {
   name: 'Bar Test',
   slug: 'bar-test',
   email: null as string | null,
+  menuPhone: null as string | null,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: 6,
   reservationSlotDurationMinutes: 120,
@@ -70,6 +71,8 @@ describe('ReservationsService', () => {
     sendRejected: jest.Mock;
     sendCancelled: jest.Mock;
     sendVenueNotification: jest.Mock;
+    sendSelfEditPending: jest.Mock;
+    sendModifiedNotificationToVenue: jest.Mock;
   };
   let customers: { recordReservation: jest.Mock };
   let service: ReservationsService;
@@ -95,6 +98,8 @@ describe('ReservationsService', () => {
       sendRejected: jest.fn(),
       sendCancelled: jest.fn(),
       sendVenueNotification: jest.fn(),
+      sendSelfEditPending: jest.fn(),
+      sendModifiedNotificationToVenue: jest.fn(),
     };
     customers = { recordReservation: jest.fn() };
     service = new ReservationsService(
@@ -1141,6 +1146,164 @@ describe('ReservationsService', () => {
         service.updateReservation(admin, 'venue-1', 'res-1', { partySize: 2 }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.reservation.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('auto-gestione del cliente (self-service, §10)', () => {
+    function withCreatedAt(minutesAgo: number, overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'res-1',
+        venueId: 'venue-1',
+        manageToken: 'secret-token',
+        status: ReservationStatus.CONFIRMED,
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333',
+        partySize: 4,
+        reservedAt: nextDinnerSlot(),
+        createdAt: new Date(Date.now() - minutesAgo * 60000),
+        tables: [],
+        ...overrides,
+      };
+    }
+
+    describe('getForSelfManage', () => {
+      it('canEdit true entro la finestra dei 15 minuti, con il telefono del locale', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(5));
+        prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, menuPhone: '0123456789' });
+
+        const result = await service.getForSelfManage('res-1', 'secret-token');
+
+        expect(result.canEdit).toBe(true);
+        expect(result.venuePhone).toBe('0123456789');
+      });
+
+      it('canEdit false oltre la finestra dei 15 minuti', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(20));
+
+        const result = await service.getForSelfManage('res-1', 'secret-token');
+
+        expect(result.canEdit).toBe(false);
+      });
+
+      it('canEdit false su una prenotazione già rifiutata, anche entro la finestra', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(
+          withCreatedAt(1, { status: ReservationStatus.REJECTED }),
+        );
+
+        const result = await service.getForSelfManage('res-1', 'secret-token');
+
+        expect(result.canEdit).toBe(false);
+      });
+
+      it('rifiuta con NotFoundException se il token non combacia', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(1));
+        await expect(service.getForSelfManage('res-1', 'wrong-token')).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
+    });
+
+    describe('updateBySelfToken', () => {
+      it('applica le modifiche e torna sempre PENDING, anche se era già CONFIRMED', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(5));
+        prisma.reservation.update.mockResolvedValue(
+          withCreatedAt(5, { partySize: 6, status: ReservationStatus.PENDING }),
+        );
+        prisma.user.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+
+        await service.updateBySelfToken('res-1', 'secret-token', { token: 'secret-token', partySize: 6 });
+
+        expect(prisma.reservation.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'res-1' },
+            data: expect.objectContaining({
+              partySize: 6,
+              status: ReservationStatus.PENDING,
+              respondedById: null,
+              respondedAt: null,
+            }),
+          }),
+        );
+        expect(mail.sendSelfEditPending).toHaveBeenCalled();
+        expect(mail.sendModifiedNotificationToVenue).not.toHaveBeenCalled(); // baseVenue.email è null
+        expect(prisma.notification.createMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: [expect.objectContaining({ userId: 'admin-1', type: 'RESERVATION_PENDING' })],
+          }),
+        );
+      });
+
+      it('avvisa anche il locale via email se ha un indirizzo configurato', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(5));
+        prisma.reservation.update.mockResolvedValue(withCreatedAt(5, { status: ReservationStatus.PENDING }));
+        prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, email: 'info@bartest.it' });
+
+        await service.updateBySelfToken('res-1', 'secret-token', {
+          token: 'secret-token',
+          notes: 'Vicino alla finestra',
+        });
+
+        expect(mail.sendModifiedNotificationToVenue).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'res-1' }),
+          'Bar Test',
+          'info@bartest.it',
+          expect.stringContaining('/prenota/gestisci/res-1?token='),
+        );
+      });
+
+      it('rifiuta la modifica oltre la finestra dei 15 minuti', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(20));
+        await expect(
+          service.updateBySelfToken('res-1', 'secret-token', { token: 'secret-token', partySize: 2 }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.reservation.update).not.toHaveBeenCalled();
+      });
+
+      it('rifiuta con NotFoundException se il token non combacia', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(5));
+        await expect(
+          service.updateBySelfToken('res-1', 'wrong-token', { token: 'wrong-token' }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('cancelBySelfToken', () => {
+      it('annulla entro la finestra e avvisa gli admin in-app', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(5));
+        prisma.reservation.update.mockResolvedValue(withCreatedAt(5, { status: ReservationStatus.CANCELLED }));
+        prisma.user.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+
+        const result = await service.cancelBySelfToken('res-1', 'secret-token');
+
+        expect(prisma.reservation.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: { status: ReservationStatus.CANCELLED } }),
+        );
+        expect(prisma.notification.createMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: [expect.objectContaining({ userId: 'admin-1', type: 'RESERVATION_CANCELLED_BY_CUSTOMER' })],
+          }),
+        );
+        expect(result.status).toBe(ReservationStatus.CANCELLED);
+      });
+
+      it('rifiuta di annullare oltre la finestra dei 15 minuti', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(withCreatedAt(16));
+        await expect(service.cancelBySelfToken('res-1', 'secret-token')).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        expect(prisma.reservation.update).not.toHaveBeenCalled();
+      });
+
+      it('rifiuta di annullare una prenotazione già annullata', async () => {
+        prisma.reservation.findUnique.mockResolvedValue(
+          withCreatedAt(1, { status: ReservationStatus.CANCELLED }),
+        );
+        await expect(service.cancelBySelfToken('res-1', 'secret-token')).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+      });
     });
   });
 });
