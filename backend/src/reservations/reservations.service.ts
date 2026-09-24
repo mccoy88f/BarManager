@@ -445,21 +445,32 @@ export class ReservationsService {
   // ---- Amministrazione -----------------------------------------------------
 
   /**
-   * `withoutTable`: ignora `status` e restituisce, indipendentemente dallo
-   * stato, tutte le prenotazioni attive (PENDING/CONFIRMED) senza nemmeno
-   * un tavolo assegnato — la "coda prenotazioni" da assegnare, che raccoglie
-   * sia le richieste online rimaste manuali sia quelle aggiunte a mano in
-   * backoffice senza scegliere un tavolo.
+   * `status` può essere un singolo stato o un elenco (usato in UI per
+   * mostrare rifiutate e annullate nella stessa scheda, senza divisioni,
+   * §10 di DEVELOPMENT.md). `withoutTable`: ignora `status` e restituisce,
+   * indipendentemente dallo stato, tutte le prenotazioni attive (PENDING/
+   * CONFIRMED) senza nemmeno un tavolo assegnato — la "coda prenotazioni"
+   * da assegnare, che raccoglie sia le richieste online rimaste manuali
+   * sia quelle aggiunte a mano in backoffice senza scegliere un tavolo.
    *
    * Ogni riga porta anche `isReturningCustomer`: true se la stessa email
    * ha più di una prenotazione presso questo locale, per mostrare in UI il
    * pulsante "storico cliente".
    */
-  async listReservations(venueId: string, status?: ReservationStatus, withoutTable?: boolean) {
+  async listReservations(
+    venueId: string,
+    status?: ReservationStatus | ReservationStatus[],
+    withoutTable?: boolean,
+  ) {
+    const statusFilter = withoutTable
+      ? { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] }
+      : Array.isArray(status)
+        ? { in: status }
+        : status;
     const reservations = await this.prisma.reservation.findMany({
       where: {
         venueId,
-        status: withoutTable ? { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] } : status,
+        status: statusFilter,
         tables: withoutTable ? { none: {} } : undefined,
       },
       include: TABLES_INCLUDE,

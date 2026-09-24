@@ -34,8 +34,8 @@ import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
-/** "Senza tavolo" non è uno stato reale: è un filtro lato server che ignora lo stato (§10). */
-type QueueFilter = ReservationStatus | 'WITHOUT_TABLE';
+/** "Chiuse" unisce Rifiutate e Annullate nella stessa scheda, senza divisioni (§10). */
+type QueueFilter = 'PENDING' | 'CONFIRMED' | 'CLOSED';
 
 interface TableRow {
   id: string;
@@ -88,8 +88,9 @@ const statusLabels: Record<ReservationStatus, string> = {
 };
 
 const tabLabels: Record<QueueFilter, string> = {
-  ...statusLabels,
-  WITHOUT_TABLE: 'Senza tavolo',
+  PENDING: 'Da confermare',
+  CONFIRMED: 'Confermate',
+  CLOSED: 'Rifiutate e annullate',
 };
 
 const statusColors: Record<ReservationStatus, 'warning' | 'success' | 'error' | 'default'> = {
@@ -167,11 +168,12 @@ function toEditForm(r: ReservationRow): EditForm {
 }
 
 /**
- * Coda prenotazioni (§5.7): tab per stato (più "Senza tavolo", che
- * raggruppa le richieste ancora senza un tavolo assegnato qualunque sia il
- * loro stato), accetta/rifiuta con motivo, riassegnazione tavolo in
- * qualunque momento, aggiunta manuale in backoffice (telefono/di persona,
- * §10) con ricerca di clienti già prenotati e storico cliente.
+ * Coda prenotazioni (§5.7): tre schede — Da confermare, Confermate (con le
+ * prenotazioni ancora senza tavolo raggruppate in cima, da assegnare),
+ * Rifiutate e annullate (unite nella stessa scheda, senza divisioni, §10)
+ * — accetta/rifiuta con motivo, riassegnazione tavolo in qualunque
+ * momento, aggiunta manuale in backoffice (telefono/di persona, §10) con
+ * ricerca di clienti già prenotati e storico cliente.
  */
 export function ReservationsAdmin() {
   const queryClient = useQueryClient();
@@ -198,13 +200,24 @@ export function ReservationsAdmin() {
     queryFn: async () =>
       (
         await api.get<ReservationRow[]>('/reservations', {
-          params:
-            statusFilter === 'WITHOUT_TABLE'
-              ? { withoutTable: 'true' }
-              : { status: statusFilter },
+          params: { status: statusFilter === 'CLOSED' ? 'REJECTED,CANCELLED' : statusFilter },
         })
       ).data,
   });
+
+  /**
+   * Nella scheda Confermate, le prenotazioni ancora senza tavolo vanno
+   * mostrate raggruppate in cima ("da assegnare"), non in una scheda a
+   * parte come prima (§10): partizione fatta qui, il resto della coda
+   * segue invariato sotto.
+   */
+  const confirmedGroups = useMemo(() => {
+    if (statusFilter !== 'CONFIRMED' || !reservationsQuery.data) return null;
+    return {
+      withoutTable: reservationsQuery.data.filter((r) => r.tableIds.length === 0),
+      withTable: reservationsQuery.data.filter((r) => r.tableIds.length > 0),
+    };
+  }, [statusFilter, reservationsQuery.data]);
 
   const tablesQuery = useQuery({
     queryKey: ['reservations-tables'],
@@ -385,6 +398,135 @@ export function ReservationsAdmin() {
     manualForm.time &&
     Number(manualForm.partySize) > 0;
 
+  const renderReservationCard = (r: ReservationRow) => (
+    <Card key={r.id} variant="outlined">
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="subtitle1" fontWeight={600}>
+                {r.firstName} {r.lastName}
+              </Typography>
+              <Chip size="small" color={statusColors[r.status]} label={statusLabels[r.status]} />
+              {r.isEvent && (
+                <Chip size="small" icon={<CakeIcon fontSize="small" />} label={r.eventNote || 'Evento'} />
+              )}
+              {r.isReturningCustomer && (
+                <IconButton
+                  size="small"
+                  title="Cliente già prenotato: vedi storico"
+                  onClick={() => setHistoryEmail(r.email)}
+                >
+                  <HistoryIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              {formatWhen(r.reservedAt)} — {r.partySize} persone
+              {r.slotDurationMinutes != null && ` — durata ${r.slotDurationMinutes} min`}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {r.email} — {r.phone}
+            </Typography>
+            {r.proposedReservedAt && (
+              <Chip
+                size="small"
+                color="warning"
+                sx={{ mt: 0.5 }}
+                label={`In attesa di conferma nuovo orario: ${formatWhen(r.proposedReservedAt)}`}
+              />
+            )}
+            {r.allergiesNote && (
+              <Typography variant="body2" color="warning.main">
+                Allergie/intolleranze: {r.allergiesNote}
+              </Typography>
+            )}
+            {r.notes && (
+              <Typography variant="body2" color="text.secondary">
+                Note: {r.notes}
+              </Typography>
+            )}
+            {r.status === 'REJECTED' && r.rejectionReason && (
+              <Typography variant="body2" color="error">
+                Motivo rifiuto: {r.rejectionReason}
+              </Typography>
+            )}
+          </Box>
+
+          <Stack spacing={1} alignItems="flex-end">
+            {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+              <Autocomplete
+                multiple
+                size="small"
+                disableCloseOnSelect
+                sx={{ minWidth: 220 }}
+                options={activeTables.filter((t) => r.tableIds.includes(t.id) || !r.busyTableIds?.includes(t.id))}
+                value={activeTables.filter((t) => r.tableIds.includes(t.id))}
+                getOptionLabel={tableLabel}
+                isOptionEqualToValue={(a, b) => a.id === b.id}
+                onChange={(_e, value) =>
+                  reassignMutation.mutate({ id: r.id, tableIds: value.map((t) => t.id) })
+                }
+                renderInput={(params) => (
+                  <TextField {...params} label="Tavoli" placeholder="Cerca un tavolo..." />
+                )}
+              />
+            )}
+
+            {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setChangingTime(r);
+                    setTimeForm(splitDateTime(r.proposedReservedAt ?? r.reservedAt));
+                  }}
+                >
+                  Cambia orario
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setEditing(r);
+                    setEditForm(toEditForm(r));
+                  }}
+                >
+                  Modifica
+                </Button>
+              </Stack>
+            )}
+
+            {r.status === 'PENDING' && (
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="success"
+                  onClick={() => acceptMutation.mutate({ id: r.id, tableIds: r.tableIds })}
+                >
+                  Accetta
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setRejecting(r)}
+                >
+                  Rifiuta
+                </Button>
+              </Stack>
+            )}
+            {r.status === 'CONFIRMED' && (
+              <Button size="small" color="error" onClick={() => setCancelling(r)}>
+                Annulla prenotazione
+              </Button>
+            )}
+          </Stack>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -407,139 +549,24 @@ export function ReservationsAdmin() {
       </Tabs>
 
       <Stack spacing={2}>
-        {reservationsQuery.data?.map((r) => (
-          <Card key={r.id} variant="outlined">
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
-                <Box>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      {r.firstName} {r.lastName}
-                    </Typography>
-                    <Chip size="small" color={statusColors[r.status]} label={statusLabels[r.status]} />
-                    {r.isEvent && (
-                      <Chip size="small" icon={<CakeIcon fontSize="small" />} label={r.eventNote || 'Evento'} />
-                    )}
-                    {r.isReturningCustomer && (
-                      <IconButton
-                        size="small"
-                        title="Cliente già prenotato: vedi storico"
-                        onClick={() => setHistoryEmail(r.email)}
-                      >
-                        <HistoryIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    {formatWhen(r.reservedAt)} — {r.partySize} persone
-                    {r.slotDurationMinutes != null && ` — durata ${r.slotDurationMinutes} min`}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {r.email} — {r.phone}
-                  </Typography>
-                  {r.proposedReservedAt && (
-                    <Chip
-                      size="small"
-                      color="warning"
-                      sx={{ mt: 0.5 }}
-                      label={`In attesa di conferma nuovo orario: ${formatWhen(r.proposedReservedAt)}`}
-                    />
-                  )}
-                  {r.allergiesNote && (
-                    <Typography variant="body2" color="warning.main">
-                      Allergie/intolleranze: {r.allergiesNote}
-                    </Typography>
-                  )}
-                  {r.notes && (
-                    <Typography variant="body2" color="text.secondary">
-                      Note: {r.notes}
-                    </Typography>
-                  )}
-                  {r.status === 'REJECTED' && r.rejectionReason && (
-                    <Typography variant="body2" color="error">
-                      Motivo rifiuto: {r.rejectionReason}
-                    </Typography>
-                  )}
-                </Box>
-
-                <Stack spacing={1} alignItems="flex-end">
-                  {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                    <Autocomplete
-                      multiple
-                      size="small"
-                      disableCloseOnSelect
-                      sx={{ minWidth: 220 }}
-                      options={activeTables.filter((t) => r.tableIds.includes(t.id) || !r.busyTableIds?.includes(t.id))}
-                      value={activeTables.filter((t) => r.tableIds.includes(t.id))}
-                      getOptionLabel={tableLabel}
-                      isOptionEqualToValue={(a, b) => a.id === b.id}
-                      onChange={(_e, value) =>
-                        reassignMutation.mutate({ id: r.id, tableIds: value.map((t) => t.id) })
-                      }
-                      renderInput={(params) => (
-                        <TextField {...params} label="Tavoli" placeholder="Cerca un tavolo..." />
-                      )}
-                    />
-                  )}
-
-                  {(r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setChangingTime(r);
-                          setTimeForm(splitDateTime(r.proposedReservedAt ?? r.reservedAt));
-                        }}
-                      >
-                        Cambia orario
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setEditing(r);
-                          setEditForm(toEditForm(r));
-                        }}
-                      >
-                        Modifica
-                      </Button>
-                    </Stack>
-                  )}
-
-                  {r.status === 'PENDING' && (
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="success"
-                        onClick={() => acceptMutation.mutate({ id: r.id, tableIds: r.tableIds })}
-                      >
-                        Accetta
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={() => setRejecting(r)}
-                      >
-                        Rifiuta
-                      </Button>
-                    </Stack>
-                  )}
-                  {r.status === 'CONFIRMED' && (
-                    <Button size="small" color="error" onClick={() => setCancelling(r)}>
-                      Annulla prenotazione
-                    </Button>
-                  )}
-                </Stack>
-              </Box>
-            </CardContent>
-          </Card>
-        ))}
+        {confirmedGroups ? (
+          <>
+            {confirmedGroups.withoutTable.length > 0 && (
+              <>
+                <Typography variant="subtitle2" color="warning.main">
+                  Da assegnare a un tavolo ({confirmedGroups.withoutTable.length})
+                </Typography>
+                {confirmedGroups.withoutTable.map(renderReservationCard)}
+              </>
+            )}
+            {confirmedGroups.withTable.map(renderReservationCard)}
+          </>
+        ) : (
+          reservationsQuery.data?.map(renderReservationCard)
+        )}
         {reservationsQuery.data?.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            {statusFilter === 'WITHOUT_TABLE'
-              ? 'Nessuna prenotazione senza tavolo.'
-              : 'Nessuna prenotazione in questo stato.'}
+            Nessuna prenotazione in questo stato.
           </Typography>
         )}
       </Stack>
@@ -766,7 +793,8 @@ export function ReservationsAdmin() {
 
       {/* Aggiunta manuale in backoffice (telefono/di persona, §10): nessun
           vincolo di disponibilità/overbooking, tavolo opzionale — se non
-          scelto, la prenotazione finisce nella coda "Senza tavolo". */}
+          scelto, la prenotazione compare comunque tra le Confermate,
+          raggruppata in cima come "da assegnare a un tavolo". */}
       <Dialog open={addOpen} onClose={closeAddDialog} maxWidth="sm" fullWidth>
         <DialogTitle>Aggiungi prenotazione</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
@@ -877,7 +905,7 @@ export function ReservationsAdmin() {
                 {...params}
                 label="Tavoli (opzionale)"
                 placeholder="Cerca un tavolo..."
-                helperText="Se non scelto, resta nella coda «Senza tavolo»; più tavoli insieme per un gruppo grande"
+                helperText="Se non scelto, compare tra le Confermate come «da assegnare a un tavolo»; più tavoli insieme per un gruppo grande"
               />
             )}
           />

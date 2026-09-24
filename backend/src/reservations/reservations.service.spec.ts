@@ -980,6 +980,21 @@ describe('ReservationsService', () => {
       );
     });
 
+    it('un elenco di stati unisce rifiutate e annullate nella stessa scheda', async () => {
+      prisma.reservation.findMany.mockResolvedValue([]);
+      await service.listReservations('venue-1', [ReservationStatus.REJECTED, ReservationStatus.CANCELLED]);
+
+      expect(prisma.reservation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            venueId: 'venue-1',
+            status: { in: [ReservationStatus.REJECTED, ReservationStatus.CANCELLED] },
+            tables: undefined,
+          },
+        }),
+      );
+    });
+
     it('segnala in busyTableIds il tavolo di un\'altra prenotazione sovrapposta', async () => {
       const reservedAt = nextDinnerSlot();
       const overlapping = {

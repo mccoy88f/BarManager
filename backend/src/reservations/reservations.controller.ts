@@ -25,17 +25,22 @@ export class ReservationsController {
   constructor(private reservationsService: ReservationsService) {}
 
   /**
-   * `withoutTable=true` ignora `status` e restituisce la coda delle
-   * prenotazioni attive senza tavolo assegnato, qualunque sia il loro
-   * stato (PENDING dal widget pubblico o CONFIRMED aggiunte a mano).
+   * `status` accetta anche un elenco separato da virgole (es.
+   * `REJECTED,CANCELLED`) per unire più stati nella stessa scheda in UI
+   * (§10 di DEVELOPMENT.md — rifiutate e annullate mostrate insieme,
+   * senza distinzione). `withoutTable=true` ignora `status` e restituisce
+   * la coda delle prenotazioni attive senza tavolo assegnato, qualunque
+   * sia il loro stato (PENDING dal widget pubblico o CONFIRMED aggiunte a
+   * mano).
    */
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('status') status?: ReservationStatus,
+    @Query('status') status?: string,
     @Query('withoutTable') withoutTable?: string,
   ) {
-    return this.reservationsService.listReservations(requireVenueId(user), status, withoutTable === 'true');
+    const statusFilter = status ? (status.split(',') as ReservationStatus[]) : undefined;
+    return this.reservationsService.listReservations(requireVenueId(user), statusFilter, withoutTable === 'true');
   }
 
   /** Posti disponibili per un orario/party size dato, per il conteggio sempre visibile in coda. */
