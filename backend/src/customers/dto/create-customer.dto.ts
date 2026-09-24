@@ -1,5 +1,12 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
+/**
+ * `marketingConsent` non è un campo di questo DTO: il consenso marketing è
+ * dato/ritirato solo dal cliente stesso (alla prenotazione, o dalla pagina
+ * pubblica "gestisci i tuoi dati personali"), mai dallo staff da qui — v.
+ * CustomersService.create, che lo forza sempre a `false` per un cliente
+ * inserito a mano.
+ */
 export class CreateCustomerDto {
   @IsString()
   @MinLength(1)
@@ -19,8 +26,4 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString()
   notes?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  marketingConsent?: boolean;
 }

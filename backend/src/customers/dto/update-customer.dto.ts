@@ -1,5 +1,6 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
+/** `marketingConsent` non è qui per lo stesso motivo di CreateCustomerDto: non modificabile dallo staff. */
 export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
@@ -22,8 +23,4 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
   notes?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  marketingConsent?: boolean;
 }

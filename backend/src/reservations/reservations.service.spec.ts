@@ -173,7 +173,29 @@ describe('ReservationsService', () => {
       phone: '3331234567',
       partySize: 4,
       reservedAt: '',
+      privacyPolicyConsent: true,
     };
+
+    it('rifiuta se il consenso al trattamento dei dati personali non è true', async () => {
+      const reservedAt = nextDinnerSlot();
+      await expect(
+        service.createPublicReservation('venue-1', {
+          ...dto,
+          reservedAt: reservedAt.toISOString(),
+          privacyPolicyConsent: false,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.reservation.create).not.toHaveBeenCalled();
+    });
+
+    it('rifiuta se il consenso al trattamento dei dati personali è assente', async () => {
+      const reservedAt = nextDinnerSlot();
+      const { privacyPolicyConsent, ...rest } = dto;
+      await expect(
+        service.createPublicReservation('venue-1', { ...rest, reservedAt: reservedAt.toISOString() }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.reservation.create).not.toHaveBeenCalled();
+    });
 
     it('conferma subito se un tavolo adatto è libero e i posti sono sotto la soglia', async () => {
       const reservedAt = nextDinnerSlot();
@@ -720,6 +742,7 @@ describe('ReservationsService', () => {
       phone: '3331234567',
       partySize: 4,
       reservedAt: '',
+      privacyPolicyConsent: true,
     };
 
     it('accetta di superare la capienza entro la soglia di posti extra', async () => {

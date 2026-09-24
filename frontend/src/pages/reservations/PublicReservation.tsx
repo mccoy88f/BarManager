@@ -64,7 +64,8 @@ const initialForm = {
   eventNote: '',
   allergiesNote: '',
   notes: '',
-  marketingConsent: false,
+  marketingConsent: true,
+  privacyPolicyConsent: true,
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -80,7 +81,11 @@ function extractErrorMessage(error: unknown): string {
  * Widget pubblico di prenotazione (§5.7), nessun login: raggiunto dal link
  * o dal QR code condiviso dal locale. In sviluppo locale (senza
  * sotto-domini) si può forzare il locale con "?venueSlug=demo" nell'URL,
- * come per il menù pubblico.
+ * come per il menù pubblico. Due caselle di consenso, entrambe preattivate
+ * di default: il marketing è facoltativo (disattivabile liberamente), il
+ * trattamento dei dati personali è invece obbligatorio — se disattivato il
+ * pulsante "Prenota" si disabilita e appare un avviso, e il backend rifiuta
+ * comunque la richiesta se qualcuno la manda senza (§10 di DEVELOPMENT.md).
  */
 export function PublicReservation() {
   const params = new URLSearchParams(window.location.search);
@@ -116,6 +121,7 @@ export function PublicReservation() {
             allergiesNote: form.allergiesNote.trim() || undefined,
             notes: form.notes.trim() || undefined,
             marketingConsent: form.marketingConsent,
+            privacyPolicyConsent: form.privacyPolicyConsent,
           },
           { params: venueSlug ? { venueSlug } : undefined },
         )
@@ -158,7 +164,8 @@ export function PublicReservation() {
     form.date &&
     form.time &&
     Number(form.partySize) > 0 &&
-    (!form.isEvent || form.eventNote.trim());
+    (!form.isEvent || form.eventNote.trim()) &&
+    form.privacyPolicyConsent;
 
   if (result) {
     return (
@@ -298,6 +305,21 @@ export function PublicReservation() {
             }
             label="Accetto di ricevere comunicazioni promozionali via email/SMS/WhatsApp (facoltativo)"
           />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.privacyPolicyConsent}
+                onChange={(e) => setForm((f) => ({ ...f, privacyPolicyConsent: e.target.checked }))}
+              />
+            }
+            label="Autorizzo il trattamento dei dati personali secondo la normativa vigente (obbligatorio)"
+          />
+          {!form.privacyPolicyConsent && (
+            <Alert severity="warning">
+              Devi autorizzare il trattamento dei dati personali per poter prenotare.
+            </Alert>
+          )}
 
           {submitMutation.isError && (
             <Alert severity="error">{extractErrorMessage(submitMutation.error)}</Alert>

@@ -82,15 +82,18 @@ describe('CustomersService', () => {
       });
     });
 
-    it('aggiorna il flag marketingConsent quando passato', async () => {
+    it('ignora marketingConsent anche se passato: modificabile solo dal cliente stesso', async () => {
       prisma.customer.findUnique.mockResolvedValue({ id: 'c1', venueId: 'venue-1' });
-      prisma.customer.update.mockResolvedValue({ id: 'c1', marketingConsent: true });
+      prisma.customer.update.mockResolvedValue({ id: 'c1', notes: 'VIP' });
 
-      await service.update('venue-1', 'c1', { marketingConsent: true });
+      // Cast necessario: UpdateCustomerDto non ha più questo campo apposta
+      // (v. nota sul DTO), ma verifichiamo che anche forzandolo a runtime
+      // il service lo ignori comunque.
+      await service.update('venue-1', 'c1', { notes: 'VIP', marketingConsent: true } as unknown as { notes: string });
 
       expect(prisma.customer.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: { marketingConsent: true },
+        data: { notes: 'VIP' },
       });
     });
   });
@@ -253,6 +256,20 @@ describe('CustomersService', () => {
     it('optOutMarketingByToken rifiuta con NotFoundException se il token non esiste', async () => {
       prisma.customer.findUnique.mockResolvedValue(null);
       await expect(service.optOutMarketingByToken('bad-token')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('optInMarketingByToken attiva il consenso marketing', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1' });
+      await service.optInMarketingByToken('some-token');
+      expect(prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { marketingConsent: true },
+      });
+    });
+
+    it('optInMarketingByToken rifiuta con NotFoundException se il token non esiste', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      await expect(service.optInMarketingByToken('bad-token')).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('deleteByToken elimina la scheda cliente', async () => {

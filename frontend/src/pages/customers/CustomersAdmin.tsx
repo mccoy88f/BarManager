@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -8,18 +8,19 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   IconButton,
-  Switch,
+  InputAdornment,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -49,7 +50,8 @@ interface ImportResult {
   errors: string[];
 }
 
-const emptyForm = { firstName: '', lastName: '', email: '', phone: '', notes: '', marketingConsent: false };
+const emptyForm = { firstName: '', lastName: '', email: '', phone: '', notes: '' };
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -66,15 +68,20 @@ function formatDate(value: string | null): string {
 
 /**
  * Anagrafica clienti (§5.8 di DEVELOPMENT.md): creata/aggiornata in automatico
- * a ogni prenotazione, ma gestibile anche a mano qui (CRUD completo), oltre
- * a importazione/esportazione massiva in xlsx (stesso formato in entrambe le
- * direzioni: colonne per intestazione, non per posizione). Le date di
- * prima/ultima prenotazione sono di sola lettura quando derivano dalle
- * prenotazioni (calcolate dal backend): "ultima prenotazione" è pensata
- * anche come riferimento per un futuro invio di campagne (email/SMS/WhatsApp),
- * non ancora implementato — il consenso marketing è invece raccolto
- * esplicitamente (casella nel widget di prenotazione o qui a mano), non
- * dedotto dall'aver prenotato.
+ * a ogni prenotazione, ma gestibile anche a mano qui (CRUD completo, tranne
+ * il consenso marketing — v. sotto), oltre a importazione/esportazione
+ * massiva in xlsx (stesso formato in entrambe le direzioni: colonne per
+ * intestazione, non per posizione). Le date di prima/ultima prenotazione
+ * sono di sola lettura quando derivano dalle prenotazioni (calcolate dal
+ * backend): "ultima prenotazione" è pensata anche come riferimento per un
+ * futuro invio di campagne (email/SMS/WhatsApp), non ancora implementato.
+ * Il consenso marketing è di sola lettura anche qui in pagina (solo un
+ * Chip, mai un controllo editabile): può essere dato o ritirato solo dal
+ * cliente stesso, alla prenotazione o dalla pagina pubblica "gestisci i
+ * tuoi dati personali" — mai dallo staff (v. nota su CreateCustomerDto/
+ * UpdateCustomerDto nel backend). Ricerca (nome/cognome/email/telefono) e
+ * paginazione (10/25/50/100 righe) sono interamente lato client: la lista
+ * completa arriva già da /customers in un'unica chiamata.
  */
 export function CustomersAdmin() {
   const queryClient = useQueryClient();
@@ -85,12 +92,31 @@ export function CustomersAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [importErrors, setImportErrors] = useState<string[] | null>(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
     queryFn: async () => (await api.get<Customer[]>('/customers')).data,
   });
+
+  const filteredCustomers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customersQuery.data ?? [];
+    return (customersQuery.data ?? []).filter((c) =>
+      [c.firstName, c.lastName, c.email, c.phone ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [customersQuery.data, search]);
+
+  const paginatedCustomers = useMemo(
+    () => filteredCustomers.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [filteredCustomers, page, rowsPerPage],
+  );
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customers'] });
 
@@ -102,7 +128,6 @@ export function CustomersAdmin() {
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
         notes: form.notes.trim() || undefined,
-        marketingConsent: form.marketingConsent,
       };
       return editing
         ? (await api.patch(`/customers/${editing.id}`, payload)).data
@@ -170,7 +195,6 @@ export function CustomersAdmin() {
       email: customer.email,
       phone: customer.phone ?? '',
       notes: customer.notes ?? '',
-      marketingConsent: customer.marketingConsent,
     });
     setError(null);
     setOpen(true);
@@ -227,6 +251,24 @@ export function CustomersAdmin() {
         </Alert>
       )}
 
+      <TextField
+        placeholder="Cerca per nome, cognome, email o telefono…"
+        size="small"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setPage(0);
+        }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+        sx={{ maxWidth: 420 }}
+      />
+
       <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
         <Table size="small">
           <TableHead>
@@ -242,7 +284,7 @@ export function CustomersAdmin() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {customersQuery.data?.map((customer) => (
+            {paginatedCustomers.map((customer) => (
               <TableRow key={customer.id}>
                 <TableCell>
                   {customer.firstName} {customer.lastName}
@@ -254,6 +296,7 @@ export function CustomersAdmin() {
                     size="small"
                     label={customer.marketingConsent ? 'Sì' : 'No'}
                     color={customer.marketingConsent ? 'success' : 'default'}
+                    title="Consenso gestito solo dal cliente (prenotazione o pagina dati personali): qui è di sola lettura"
                   />
                 </TableCell>
                 <TableCell align="center">
@@ -273,10 +316,29 @@ export function CustomersAdmin() {
             ))}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={filteredCustomers.length}
+          page={page}
+          onPageChange={(_e, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+          labelRowsPerPage="Righe per pagina"
+          labelDisplayedRows={({ from, to, count }) => `${from}–${to} di ${count}`}
+        />
       </TableContainer>
       {customersQuery.data?.length === 0 && (
         <Typography variant="body2" color="text.secondary">
           Nessun cliente ancora registrato: verranno aggiunti automaticamente con la prima prenotazione, oppure puoi inserirli a mano o importarli da xlsx.
+        </Typography>
+      )}
+      {customersQuery.data && customersQuery.data.length > 0 && filteredCustomers.length === 0 && (
+        <Typography variant="body2" color="text.secondary">
+          Nessun cliente corrisponde alla ricerca.
         </Typography>
       )}
 
@@ -311,15 +373,21 @@ export function CustomersAdmin() {
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.marketingConsent}
-                onChange={(e) => setForm((f) => ({ ...f, marketingConsent: e.target.checked }))}
+          {editing && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Consenso marketing:
+              </Typography>
+              <Chip
+                size="small"
+                label={editing.marketingConsent ? 'Sì' : 'No'}
+                color={editing.marketingConsent ? 'success' : 'default'}
               />
-            }
-            label="Consenso a comunicazioni promozionali (marketing)"
-          />
+              <Typography variant="caption" color="text.secondary">
+                (solo il cliente può attivarlo/disattivarlo, alla prenotazione o dalla pagina "gestisci i tuoi dati personali")
+              </Typography>
+            </Box>
+          )}
           {error && <Alert severity="error">{error}</Alert>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>

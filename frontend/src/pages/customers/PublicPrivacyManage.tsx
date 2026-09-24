@@ -25,16 +25,18 @@ function extractErrorMessage(error: unknown): string {
  * Pagina pubblica "gestisci i tuoi dati personali" (§5.8 di
  * DEVELOPMENT.md), senza login: raggiunta dal link in fondo alle email di
  * prenotazione, sullo stesso principio di una pagina di cancellazione da
- * una mailing list. Due sole azioni, non distruttive per il resto del
- * sistema: rimuovere il consenso marketing, o eliminare la propria scheda
- * cliente (non le prenotazioni già effettuate, che restano nello storico
- * del locale — dichiarato esplicitamente qui prima di confermare).
+ * una mailing list. Il consenso marketing può essere attivato o rimosso da
+ * qui (l'unico altro punto, oltre alla prenotazione stessa, da cui il
+ * cliente può farlo — mai lo staff), oppure si può eliminare la propria
+ * scheda cliente (non le prenotazioni già effettuate, che restano nello
+ * storico del locale — dichiarato esplicitamente qui prima di confermare).
  */
 export function PublicPrivacyManage() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token') ?? '';
 
   const [optedOut, setOptedOut] = useState(false);
+  const [optedIn, setOptedIn] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -46,7 +48,18 @@ export function PublicPrivacyManage() {
 
   const optOutMutation = useMutation({
     mutationFn: async () => (await api.patch('/public/customers/privacy/opt-out', null, { params: { token } })).data,
-    onSuccess: () => setOptedOut(true),
+    onSuccess: () => {
+      setOptedOut(true);
+      setOptedIn(false);
+    },
+  });
+
+  const optInMutation = useMutation({
+    mutationFn: async () => (await api.patch('/public/customers/privacy/opt-in', null, { params: { token } })).data,
+    onSuccess: () => {
+      setOptedIn(true);
+      setOptedOut(false);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -93,7 +106,7 @@ export function PublicPrivacyManage() {
   }
 
   const { firstName, lastName, email, venueName } = query.data;
-  const marketingConsent = optedOut ? false : query.data.marketingConsent;
+  const marketingConsent = optedOut ? false : optedIn ? true : query.data.marketingConsent;
 
   return (
     <Box sx={{ maxWidth: 480, mx: 'auto', px: 2, py: 4 }}>
@@ -114,7 +127,9 @@ export function PublicPrivacyManage() {
             {marketingConsent ? (
               <>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Al momento accetti di ricevere comunicazioni promozionali da {venueName}.
+                  {optedIn
+                    ? `Consenso attivato: riceverai comunicazioni promozionali da ${venueName}.`
+                    : `Al momento accetti di ricevere comunicazioni promozionali da ${venueName}.`}
                 </Typography>
                 {optOutMutation.isError && (
                   <Alert severity="error" sx={{ mb: 1 }}>{extractErrorMessage(optOutMutation.error)}</Alert>
@@ -128,11 +143,23 @@ export function PublicPrivacyManage() {
                 </Button>
               </>
             ) : (
-              <Alert severity="success">
-                {optedOut
-                  ? 'Consenso rimosso: non riceverai più comunicazioni promozionali.'
-                  : 'Non hai dato il consenso a ricevere comunicazioni promozionali.'}
-              </Alert>
+              <>
+                <Alert severity={optedOut ? 'success' : 'info'} sx={{ mb: 1 }}>
+                  {optedOut
+                    ? 'Consenso rimosso: non riceverai più comunicazioni promozionali.'
+                    : 'Non hai dato il consenso a ricevere comunicazioni promozionali.'}
+                </Alert>
+                {optInMutation.isError && (
+                  <Alert severity="error" sx={{ mb: 1 }}>{extractErrorMessage(optInMutation.error)}</Alert>
+                )}
+                <Button
+                  variant="outlined"
+                  disabled={optInMutation.isPending}
+                  onClick={() => optInMutation.mutate()}
+                >
+                  Voglio ricevere comunicazioni promozionali
+                </Button>
+              </>
             )}
           </Box>
 

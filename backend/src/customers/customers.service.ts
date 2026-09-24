@@ -99,7 +99,10 @@ export class CustomersService {
         email,
         phone: dto.phone,
         notes: dto.notes,
-        marketingConsent: dto.marketingConsent ?? false,
+        // Sempre false qui: il consenso marketing lo dà solo il cliente
+        // stesso (alla prenotazione o dalla pagina "gestisci i tuoi dati
+        // personali"), mai lo staff con l'inserimento manuale.
+        marketingConsent: false,
       },
     });
   }
@@ -112,13 +115,12 @@ export class CustomersService {
       email: string;
       phone: string | null;
       notes: string | null;
-      marketingConsent: boolean;
     }> = {};
     if (dto.firstName !== undefined) data.firstName = dto.firstName;
     if (dto.lastName !== undefined) data.lastName = dto.lastName;
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.notes !== undefined) data.notes = dto.notes;
-    if (dto.marketingConsent !== undefined) data.marketingConsent = dto.marketingConsent;
+    // marketingConsent non è modificabile da qui: v. nota su UpdateCustomerDto.
     if (dto.email !== undefined) {
       const email = dto.email.trim().toLowerCase();
       const existing = await this.prisma.customer.findUnique({
@@ -245,6 +247,17 @@ export class CustomersService {
     const customer = await this.prisma.customer.findUnique({ where: { privacyToken: token } });
     if (!customer) throw new NotFoundException('Link non valido');
     await this.prisma.customer.update({ where: { id: customer.id }, data: { marketingConsent: false } });
+  }
+
+  /**
+   * Attiva il consenso marketing dalla stessa pagina pubblica (§5.8):
+   * unico altro punto, insieme alla prenotazione, da cui il consenso può
+   * essere dato (mai dallo staff, v. CreateCustomerDto/UpdateCustomerDto).
+   */
+  async optInMarketingByToken(token: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { privacyToken: token } });
+    if (!customer) throw new NotFoundException('Link non valido');
+    await this.prisma.customer.update({ where: { id: customer.id }, data: { marketingConsent: true } });
   }
 
   /**

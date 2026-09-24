@@ -332,6 +332,14 @@ export class ReservationsService {
     if (!venue.reservationsEnabled) {
       throw new NotFoundException('Prenotazioni non disponibili per questo locale');
     }
+    // Obbligatoria solo qui (widget pubblico), non per l'aggiunta manuale
+    // dello staff: senza questa autorizzazione non è possibile completare
+    // la prenotazione (§10 di DEVELOPMENT.md).
+    if (dto.privacyPolicyConsent !== true) {
+      throw new BadRequestException(
+        'Devi autorizzare il trattamento dei dati personali per completare la prenotazione.',
+      );
+    }
     const reservedAt = this.validateRequestedTime(venue, dto.reservedAt);
 
     const tables = await this.prisma.table.findMany({ where: { venueId, active: true } });
@@ -390,6 +398,7 @@ export class ReservationsService {
           allergiesNote: dto.allergiesNote,
           notes: dto.notes,
           marketingConsent: dto.marketingConsent ?? false,
+          privacyPolicyConsent: true,
           status,
           tables: bestFit ? { create: [{ tableId: bestFit.id }] } : undefined,
           manageToken: randomUUID(),
@@ -657,6 +666,7 @@ export class ReservationsService {
           allergiesNote: dto.allergiesNote,
           notes: dto.notes,
           marketingConsent: dto.marketingConsent ?? false,
+          privacyPolicyConsent: dto.privacyPolicyConsent ?? true,
           status: ReservationStatus.CONFIRMED,
           tables: { create: tableIds.map((tableId) => ({ tableId })) },
           slotDurationMinutes: dto.slotDurationMinutes ?? null,

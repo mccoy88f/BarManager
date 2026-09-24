@@ -54,4 +54,14 @@ export class CreateReservationDto {
   @IsOptional()
   @IsBoolean()
   marketingConsent?: boolean;
+
+  /**
+   * Autorizzazione al trattamento dei dati personali (GDPR), obbligatoria
+   * per il widget pubblico: il controllo "deve essere true" è nel service
+   * (`createPublicReservation`), non qui, perché questo stesso DTO è
+   * riusato anche dall'aggiunta manuale dello staff, dove non si applica.
+   */
+  @IsOptional()
+  @IsBoolean()
+  privacyPolicyConsent?: boolean;
 }

@@ -909,6 +909,14 @@ model Reservation {
   // DEVELOPMENT.md). Propagato al Customer corrispondente ad ogni
   // prenotazione (l'ultimo valore dichiarato vince).
   marketingConsent    Boolean           @default(false)
+  // Autorizzazione al trattamento dei dati personali (GDPR), obbligatoria
+  // per completare la prenotazione dal widget pubblico (v. createPublicReservation
+  // in reservations.service.ts, che rifiuta la richiesta se non è true) —
+  // non richiesta per l'aggiunta manuale dallo staff. Default true perché
+  // obbligatoria da qui in avanti; le righe già esistenti prima di questo
+  // campo non riflettono un consenso storico verificato, solo la coerenza
+  // dello schema.
+  privacyPolicyConsent Boolean          @default(true)
   status              ReservationStatus @default(PENDING)
   // Obbligatoria solo se status = REJECTED.
   rejectionReason     String?
@@ -951,8 +959,13 @@ model Customer {
   lastReservationAt  DateTime?
   reservationsCount  Int       @default(0)
   // Ultimo consenso marketing dichiarato dal cliente (v. Reservation.marketingConsent):
-  // aggiornato automaticamente ad ogni prenotazione, modificabile anche a mano
-  // dall'admin (CRUD) o tramite import xlsx.
+  // aggiornato automaticamente ad ogni prenotazione. Non modificabile
+  // dall'admin tramite il CRUD di anagrafica (§5.8): solo di sola lettura
+  // lì, perché il consenso può essere dato/ritirato solo dal cliente
+  // stesso (alla prenotazione, o dalla pagina "gestisci i tuoi dati
+  // personali"). Resta invece modificabile in blocco tramite import xlsx,
+  // pensato per migrazioni da un altro sistema con consensi già raccolti
+  // altrove, non per un cambio dall'admin sulla singola scheda.
   marketingConsent   Boolean   @default(false)
   // Token opaco per la pagina pubblica "gestisci i tuoi dati personali"
   // (link in fondo alle email di prenotazione, §5.8): unico a livello
