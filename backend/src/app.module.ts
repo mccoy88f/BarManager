@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './common/audit/audit.module';
+import { MailModule } from './common/mail/mail.module';
 import { ReportsModule } from './reports/reports.module';
 import { TenantMiddleware } from './common/tenant/tenant.middleware';
 import { AuthModule } from './auth/auth.module';
@@ -31,6 +32,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrismaModule,
     AuditModule,
+    MailModule,
     ReportsModule,
     AuthModule,
     UsersModule,

@@ -3,7 +3,7 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { MailService } from './mail.service';
+import { MailService } from '../common/mail/mail.service';
 import { PdfService } from '../reports/pdf.service';
 
 const adminUser: AuthenticatedUser = {
@@ -161,7 +161,7 @@ describe('OrdersService.createOrdersByCategory', () => {
 
 describe('OrdersService.sendOrders', () => {
   let prisma: { order: { findUnique: jest.Mock; update: jest.Mock }; employee: { findMany: jest.Mock } };
-  let mail: { sendOrderEmail: jest.Mock };
+  let mail: { send: jest.Mock };
   let service: OrdersService;
 
   const draftOrder = (id: string, supplierName: string) => ({
@@ -178,7 +178,7 @@ describe('OrdersService.sendOrders', () => {
       order: { findUnique: jest.fn(), update: jest.fn() },
       employee: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    mail = { sendOrderEmail: jest.fn().mockResolvedValue({ sent: true }) };
+    mail = { send: jest.fn().mockResolvedValue({ sent: true }) };
     service = new OrdersService(
       prisma as unknown as PrismaService,
       { log: jest.fn() } as unknown as AuditService,
@@ -199,7 +199,7 @@ describe('OrdersService.sendOrders', () => {
 
     expect(results).toHaveLength(2);
     expect(results.every((r) => r.sent)).toBe(true);
-    expect(mail.sendOrderEmail).toHaveBeenCalledTimes(2);
+    expect(mail.send).toHaveBeenCalledTimes(2);
   });
 
   it('un fornitore che fallisce non blocca gli altri', async () => {
@@ -217,7 +217,7 @@ describe('OrdersService.sendOrders', () => {
   it('registra sull\'ordine l\'esito reale dell\'invio email, anche se fallisce', async () => {
     prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
     prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
-    mail.sendOrderEmail.mockResolvedValue({ sent: false, error: 'SMTP down' });
+    mail.send.mockResolvedValue({ sent: false, error: 'SMTP down' });
 
     await service.sendOrder(adminUser, 'order-1');
 
@@ -236,7 +236,7 @@ describe('OrdersService.sendOrders', () => {
 
     await service.sendOrder(adminUser, 'order-1');
 
-    expect(mail.sendOrderEmail).toHaveBeenCalledWith(
+    expect(mail.send).toHaveBeenCalledWith(
       expect.objectContaining({ venueName: 'Bar Test', replyTo: 'info@bartest.it' }),
     );
   });
@@ -247,7 +247,7 @@ describe('OrdersService.sendOrders', () => {
 
     await service.sendOrder(adminUser, 'order-1');
 
-    expect(mail.sendOrderEmail).toHaveBeenCalledWith(expect.objectContaining({ replyTo: null }));
+    expect(mail.send).toHaveBeenCalledWith(expect.objectContaining({ replyTo: null }));
   });
 
   it('include nome e indirizzo del locale in cima al testo della mail', async () => {
@@ -256,7 +256,7 @@ describe('OrdersService.sendOrders', () => {
 
     await service.sendOrder(adminUser, 'order-1');
 
-    expect(mail.sendOrderEmail).toHaveBeenCalledWith(
+    expect(mail.send).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.stringContaining('Bar Test') }),
     );
   });

@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import nodemailer from 'nodemailer';
+import { Injectable } from '@nestjs/common';
 import { Reservation } from '@prisma/client';
+import { MailService } from '../common/mail/mail.service';
 
 /** Sfugge i campi inseriti dal cliente prima di iniettarli nell'HTML dell'email al locale. */
 function escapeHtml(input: string): string {
@@ -14,72 +14,20 @@ function escapeHtml(input: string): string {
 
 /**
  * Email al cliente sull'esito della sua richiesta di prenotazione, ed email
- * al locale su ogni nuova richiesta (con pulsanti Accetta/Rifiuta). Stessa
- * configurazione SMTP di inventory/mail.service.ts (variabili d'ambiente
- * condivise): un locale non deve configurare due volte l'invio email.
+ * al locale su ogni nuova richiesta (con pulsanti Accetta/Rifiuta). Costruisce
+ * solo i testi/template: l'invio vero e proprio (transporter SMTP, regole sul
+ * mittente, logging) è delegato al MailService condiviso da tutta l'app.
  */
 @Injectable()
 export class ReservationsMailService {
-  private readonly logger = new Logger(ReservationsMailService.name);
-  private transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE
-      ? process.env.SMTP_SECURE === 'true'
-      : Number(process.env.SMTP_PORT) === 465,
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS }
-      : undefined,
-  });
-
-  private async send(params: {
-    to: string;
-    subject: string;
-    text: string;
-    html?: string;
-    venueName: string;
-    replyTo?: string | null;
-  }): Promise<void> {
-    try {
-      const info = await this.transporter.sendMail({
-        from: this.technicalFrom(params.venueName),
-        to: params.to,
-        replyTo: params.replyTo || undefined,
-        subject: params.subject,
-        text: params.text,
-        html: params.html,
-      });
-      // Un log anche sul successo: senza, un invio "accettato" dal server
-      // SMTP ma mai consegnato (es. filtrato come spam) è indistinguibile,
-      // guardando i soli log, da un invio mai nemmeno tentato.
-      this.logger.log(`Email "${params.subject}" inviata a ${params.to} (messageId: ${info.messageId})`);
-    } catch (err) {
-      this.logger.error(`Invio email prenotazione a ${params.to} fallito: ${(err as Error).message}`);
-    }
-  }
-
-  /**
-   * Mittente sempre fisso e autenticato (mai l'email del locale): molti
-   * provider SMTP (Aruba, Register.it, Gmail/Office365 come relay, ecc.)
-   * rifiutano — o peggio, scartano silenziosamente senza errore — un
-   * messaggio il cui header From non corrisponde all'account autenticato
-   * (`SMTP_USER`), il classico sintomo "nessuna email arriva e nessun
-   * errore in log". L'email del locale, se impostata, va invece in
-   * Reply-To: il cliente che risponde raggiunge comunque il locale, ma
-   * l'invio non rischia più di essere bloccato o droppato.
-   */
-  private technicalFrom(venueName: string): string {
-    const configured = process.env.SMTP_FROM || process.env.SMTP_USER || 'prenotazioni@barmanager.local';
-    const address = configured.match(/<(.+)>/)?.[1] ?? configured;
-    return `${venueName} <${address}>`;
-  }
+  constructor(private mail: MailService) {}
 
   private when(reservedAt: Date): string {
     return `${reservedAt.toLocaleDateString('it-IT')} alle ${reservedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
   }
 
   sendReceived(reservation: Reservation, venueName: string, venueEmail?: string | null) {
-    return this.send({
+    return this.mail.send({
       to: reservation.email,
       subject: `${venueName} — richiesta di prenotazione ricevuta`,
       text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.\n\nGrazie,\n${venueName}`,
@@ -89,7 +37,7 @@ export class ReservationsMailService {
   }
 
   sendConfirmed(reservation: Reservation, venueName: string, venueEmail?: string | null) {
-    return this.send({
+    return this.mail.send({
       to: reservation.email,
       subject: `${venueName} — prenotazione confermata`,
       text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.\n\nTi aspettiamo,\n${venueName}`,
@@ -104,7 +52,7 @@ export class ReservationsMailService {
     reason: string,
     venueEmail?: string | null,
   ) {
-    return this.send({
+    return this.mail.send({
       to: reservation.email,
       subject: `${venueName} — prenotazione non confermata`,
       text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}\n\n${venueName}`,
@@ -115,7 +63,7 @@ export class ReservationsMailService {
 
   /** Annullamento da parte del locale (es. il cliente disdice per telefono, o l'admin corregge un errore). */
   sendCancelled(reservation: Reservation, venueName: string, venueEmail?: string | null) {
-    return this.send({
+    return this.mail.send({
       to: reservation.email,
       subject: `${venueName} — prenotazione annullata`,
       text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.\n\n${venueName}`,
@@ -138,7 +86,7 @@ export class ReservationsMailService {
     venueEmail?: string | null,
   ) {
     const newWhen = reservation.proposedReservedAt ? this.when(reservation.proposedReservedAt) : '';
-    return this.send({
+    return this.mail.send({
       to: reservation.email,
       subject: `${venueName} — nuovo orario da confermare`,
       text: `Ciao ${reservation.firstName},\n\n${venueName} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.\n\n${venueName}`,
@@ -218,7 +166,7 @@ export class ReservationsMailService {
         ${actionsHtml}
       </div>`;
 
-    return this.send({
+    return this.mail.send({
       to: venueEmail,
       subject: needsAction
         ? `Nuova prenotazione da confermare — ${reservation.firstName} ${reservation.lastName}`

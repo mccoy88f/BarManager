@@ -5,7 +5,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
 import { CreateOrderDto, OrderLineInput } from './dto/create-order.dto';
 import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
-import { MailService } from './mail.service';
+import { MailService } from '../common/mail/mail.service';
 import { PdfService } from '../reports/pdf.service';
 
 const ORDER_INCLUDE = {
@@ -187,7 +187,7 @@ export class OrdersService {
       (l) => `- ${l.product.name}: ${l.orderedQty} ${l.product.unit}`,
     );
     const letterhead = [order.venue.name, order.venue.menuAddress].filter(Boolean).join('\n');
-    const emailResult = await this.mail.sendOrderEmail({
+    const emailResult = await this.mail.send({
       to: order.supplier.email,
       cc,
       subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
