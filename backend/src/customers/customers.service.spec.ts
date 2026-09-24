@@ -96,6 +96,10 @@ describe('CustomersService', () => {
   });
 
   describe('recordReservation', () => {
+    beforeEach(() => {
+      prisma.customer.upsert.mockResolvedValue({ id: 'c1', privacyToken: 'already-set' });
+    });
+
     it('crea il cliente alla prima prenotazione con reservationsCount=1', async () => {
       await service.recordReservation('venue-1', {
         firstName: 'Mario',
@@ -133,6 +137,133 @@ describe('CustomersService', () => {
 
       const { create } = prisma.customer.upsert.mock.calls[0][0];
       expect(create.firstReservationAt).toEqual(create.lastReservationAt);
+    });
+
+    it('genera un privacyToken alla creazione', async () => {
+      await service.recordReservation('venue-1', {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333',
+        marketingConsent: false,
+      });
+
+      const { create, update } = prisma.customer.upsert.mock.calls[0][0];
+      expect(typeof create.privacyToken).toBe('string');
+      expect(create.privacyToken.length).toBeGreaterThan(0);
+      expect(update.privacyToken).toBeUndefined(); // stabile: mai riscritto su un cliente già esistente
+    });
+
+    it('non tocca più privacyToken se il cliente esistente ce l\'ha già', async () => {
+      const result = await service.recordReservation('venue-1', {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333',
+        marketingConsent: false,
+      });
+
+      expect(prisma.customer.update).not.toHaveBeenCalled();
+      expect(result.privacyToken).toBe('already-set');
+    });
+
+    it('genera e persiste un privacyToken per un cliente esistente creato prima di questo campo', async () => {
+      prisma.customer.upsert.mockResolvedValue({ id: 'c1', privacyToken: null });
+      prisma.customer.update.mockResolvedValue({ id: 'c1', privacyToken: 'backfilled-token' });
+
+      const result = await service.recordReservation('venue-1', {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '333',
+        marketingConsent: false,
+      });
+
+      expect(prisma.customer.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c1' } }),
+      );
+      expect(result.privacyToken).toBe('backfilled-token');
+    });
+  });
+
+  describe('ensurePrivacyToken', () => {
+    it('restituisce il token esistente senza aggiornare nulla', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1', privacyToken: 'existing-token' });
+
+      const token = await service.ensurePrivacyToken('venue-1', 'mario@test.it');
+
+      expect(token).toBe('existing-token');
+      expect(prisma.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('genera e persiste un token se assente', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1', privacyToken: null });
+      prisma.customer.update.mockResolvedValue({ id: 'c1', privacyToken: 'new-token' });
+
+      const token = await service.ensurePrivacyToken('venue-1', 'Mario@Test.IT');
+
+      expect(prisma.customer.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c1' } }),
+      );
+      expect(token).toBe('new-token');
+    });
+
+    it('restituisce null se il cliente non esiste', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      const token = await service.ensurePrivacyToken('venue-1', 'sconosciuto@test.it');
+      expect(token).toBeNull();
+    });
+  });
+
+  describe('pagina pubblica "gestisci i tuoi dati personali" (§5.8)', () => {
+    it('getForPrivacyPage restituisce i dati del cliente e il nome del locale', async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        marketingConsent: true,
+        venue: { name: 'Bar Test' },
+      });
+
+      const result = await service.getForPrivacyPage('some-token');
+
+      expect(result).toEqual({
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        marketingConsent: true,
+        venueName: 'Bar Test',
+      });
+    });
+
+    it('getForPrivacyPage rifiuta con NotFoundException se il token non esiste', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      await expect(service.getForPrivacyPage('bad-token')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('optOutMarketingByToken rimuove il consenso marketing', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1' });
+      await service.optOutMarketingByToken('some-token');
+      expect(prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { marketingConsent: false },
+      });
+    });
+
+    it('optOutMarketingByToken rifiuta con NotFoundException se il token non esiste', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      await expect(service.optOutMarketingByToken('bad-token')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('deleteByToken elimina la scheda cliente', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1' });
+      await service.deleteByToken('some-token');
+      expect(prisma.customer.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+    });
+
+    it('deleteByToken rifiuta con NotFoundException se il token non esiste', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+      await expect(service.deleteByToken('bad-token')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

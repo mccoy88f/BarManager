@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { XlsxService } from '../reports/xlsx.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -158,7 +159,7 @@ export class CustomersService {
   ) {
     const email = data.email.trim().toLowerCase();
     const now = new Date();
-    await this.prisma.customer.upsert({
+    const customer = await this.prisma.customer.upsert({
       where: { venueId_email: { venueId, email } },
       create: {
         venueId,
@@ -170,6 +171,7 @@ export class CustomersService {
         firstReservationAt: now,
         lastReservationAt: now,
         reservationsCount: 1,
+        privacyToken: randomUUID(),
       },
       update: {
         firstName: data.firstName,
@@ -178,8 +180,84 @@ export class CustomersService {
         marketingConsent: data.marketingConsent,
         lastReservationAt: now,
         reservationsCount: { increment: 1 },
+        // privacyToken NON toccato qui: deve restare stabile una volta
+        // generato, altrimenti un link "gestisci i tuoi dati" mandato in
+        // un'email precedente smetterebbe di funzionare. Un cliente creato
+        // prima di questo campo (privacyToken ancora null) lo riceve al
+        // volo sotto.
       },
     });
+    if (!customer.privacyToken) {
+      return this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { privacyToken: randomUUID() },
+      });
+    }
+    return customer;
+  }
+
+  /**
+   * Garantisce (generandolo se assente) il token per la pagina pubblica
+   * "gestisci i tuoi dati personali", per un cliente già esistente (es.
+   * prima di mandare un'email che deve includere quel link, ma senza
+   * passare da recordReservation — accetta/rifiuta, annulla, ecc.). Se il
+   * cliente non esiste ancora per qualche motivo, restituisce null: il
+   * chiamante allora costruisce l'email senza quel link, piuttosto che
+   * fallire l'invio.
+   */
+  async ensurePrivacyToken(venueId: string, email: string): Promise<string | null> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const customer = await this.prisma.customer.findUnique({
+      where: { venueId_email: { venueId, email: normalizedEmail } },
+    });
+    if (!customer) return null;
+    if (customer.privacyToken) return customer.privacyToken;
+    const updated = await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { privacyToken: randomUUID() },
+    });
+    return updated.privacyToken;
+  }
+
+  /**
+   * Dati per la pagina pubblica "gestisci i tuoi dati personali" (§5.8,
+   * link in fondo alle email di prenotazione): il token è l'unico
+   * identificativo nel link, unico a livello globale (non solo per
+   * locale), quindi qui non serve alcun venueId.
+   */
+  async getForPrivacyPage(token: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { privacyToken: token },
+      include: { venue: { select: { name: true } } },
+    });
+    if (!customer) throw new NotFoundException('Link non valido');
+    return {
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      email: customer.email,
+      marketingConsent: customer.marketingConsent,
+      venueName: customer.venue.name,
+    };
+  }
+
+  /** Rimuove il consenso marketing dalla pagina pubblica, senza login (§5.8). */
+  async optOutMarketingByToken(token: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { privacyToken: token } });
+    if (!customer) throw new NotFoundException('Link non valido');
+    await this.prisma.customer.update({ where: { id: customer.id }, data: { marketingConsent: false } });
+  }
+
+  /**
+   * Elimina la scheda cliente dalla pagina pubblica, senza login (§5.8):
+   * rimuove solo l'anagrafica (nome/cognome/email/telefono/note/consenso),
+   * non le prenotazioni già effettuate presso il locale, che restano nello
+   * storico operativo del locale (§5.7) — distinzione dichiarata anche in
+   * pagina, non solo qui.
+   */
+  async deleteByToken(token: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { privacyToken: token } });
+    if (!customer) throw new NotFoundException('Link non valido');
+    await this.prisma.customer.delete({ where: { id: customer.id } });
   }
 
   /** Esporta l'anagrafica clienti in xlsx, stesso formato accettato da importXlsx (v. sotto). */

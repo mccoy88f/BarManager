@@ -61,6 +61,7 @@ interface VenueHours {
   slug: string;
   openingHours: OpeningHoursDay[];
   menuCoverUrl?: string;
+  logoUrl?: string;
   menuAddress?: string;
   menuPhone?: string;
   menuInstagramUrl?: string;
@@ -159,6 +160,18 @@ export function VenueSettings() {
     onSuccess: () => {
       menuQueryInvalidate();
       showToast('Copertina aggiornata');
+    },
+  });
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('photo', file);
+      return (await api.post('/venues/me/logo', form)).data;
+    },
+    onSuccess: () => {
+      menuQueryInvalidate();
+      showToast('Logo aggiornato');
     },
   });
 
@@ -331,6 +344,39 @@ export function VenueSettings() {
           >
             Salva
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Logo
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Mostrato in alto nelle email di prenotazione inviate ai clienti (distinto dalla
+            copertina del menù pubblico qui sotto, pensato per un marchio/logo vero e proprio).
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+            <Avatar variant="rounded" src={venueQuery.data?.logoUrl} sx={{ width: 64, height: 64 }} />
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<PhotoCameraIcon />}
+              disabled={uploadLogoMutation.isPending}
+            >
+              {venueQuery.data?.logoUrl ? 'Cambia logo' : 'Carica logo'}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadLogoMutation.mutate(file);
+                  e.target.value = '';
+                }}
+              />
+            </Button>
+          </Box>
         </CardContent>
       </Card>
 

@@ -56,6 +56,11 @@ model Venue {
   menuFacebookUrl  String?
   menuWebsiteUrl   String?
 
+  // Logo del locale, mostrato in alto nelle email inviate ai clienti
+  // (prenotazioni): distinto dalla copertina del menù, pensato per un
+  // marchio/logo vero e proprio più adatto a un'intestazione email.
+  logoUrl String?
+
   // Integrazione Loyverse: quando attiva, categorie/voci/prezzi/immagini del
   // menù arrivano da Loyverse (fonte unica per il catalogo) e in BarManager
   // si gestisce solo la visibilità/disponibilità online — niente aggiunte o
@@ -949,6 +954,13 @@ model Customer {
   // aggiornato automaticamente ad ogni prenotazione, modificabile anche a mano
   // dall'admin (CRUD) o tramite import xlsx.
   marketingConsent   Boolean   @default(false)
+  // Token opaco per la pagina pubblica "gestisci i tuoi dati personali"
+  // (link in fondo alle email di prenotazione, §5.8): unico a livello
+  // globale (non solo per locale, a differenza di [venueId, email]) perché
+  // è l'unico identificativo nel link, senza altro contesto. Generato al
+  // bisogno (non alla creazione del cliente) — nullable per non rompere
+  // "prisma db push" su righe già esistenti prima di questo campo.
+  privacyToken       String?   @unique
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

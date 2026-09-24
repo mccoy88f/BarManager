@@ -20,6 +20,7 @@ interface ReservationVenueSettings {
   slug: string;
   email: string | null;
   menuPhone: string | null;
+  logoUrl: string | null;
   reservationsEnabled: boolean;
   reservationAutoConfirmMaxSeats: number;
   reservationSlotDurationMinutes: number;
@@ -35,6 +36,7 @@ const VENUE_SELECT = {
   slug: true,
   email: true,
   menuPhone: true,
+  logoUrl: true,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: true,
   reservationSlotDurationMinutes: true,
@@ -292,6 +294,16 @@ export class ReservationsService {
     return this.buildPublicUrl(venue, `/prenota/modifica/${reservationId}?token=${token}`);
   }
 
+  /** URL della pagina pubblica "gestisci i tuoi dati personali" (§5.8), in fondo alle email al cliente — null se il cliente non ha ancora un token (non dovrebbe succedere, v. CustomersService.ensurePrivacyToken). */
+  private buildPrivacyUrl(venue: ReservationVenueSettings, privacyToken: string | null): string | null {
+    return privacyToken ? this.buildPublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
+  }
+
+  /** URL assoluto del logo del locale (Impostazioni locale), per l'intestazione delle email — null se non impostato. */
+  private venueLogoUrl(venue: ReservationVenueSettings): string | null {
+    return venue.logoUrl ? this.buildPublicUrl(venue, venue.logoUrl) : null;
+  }
+
   /** Termine ultimo per l'auto-gestione: SELF_EDIT_WINDOW_MINUTES dalla creazione della richiesta (non dall'orario prenotato). */
   private selfEditDeadline(reservation: { createdAt: Date }): Date {
     return new Date(reservation.createdAt.getTime() + SELF_EDIT_WINDOW_MINUTES * 60000);
@@ -386,7 +398,7 @@ export class ReservationsService {
       }),
     );
 
-    await this.customers.recordReservation(venueId, {
+    const customer = await this.customers.recordReservation(venueId, {
       firstName: reservation.firstName,
       lastName: reservation.lastName,
       email: reservation.email,
@@ -395,10 +407,12 @@ export class ReservationsService {
     });
 
     const selfManageUrl = this.buildSelfManageUrl(venue, reservation.id, reservation.manageToken);
+    const privacyUrl = this.buildPrivacyUrl(venue, customer.privacyToken);
+    const logoUrl = this.venueLogoUrl(venue);
     if (status === ReservationStatus.CONFIRMED) {
-      await this.mail.sendConfirmed(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone);
+      await this.mail.sendConfirmed(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone, privacyUrl, logoUrl);
     } else {
-      await this.mail.sendReceived(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone);
+      await this.mail.sendReceived(reservation, venue.name, venue.email, selfManageUrl, venue.menuPhone, privacyUrl, logoUrl);
       const admins = await this.prisma.user.findMany({ where: { venueId, role: 'ADMIN' } });
       await this.prisma.notification.createMany({
         data: admins.map((a) => ({
@@ -421,6 +435,7 @@ export class ReservationsService {
         venue.email,
         manageUrl,
         status === ReservationStatus.PENDING,
+        logoUrl,
       );
     }
 
@@ -650,7 +665,7 @@ export class ReservationsService {
       action: 'CREATE',
       after: reservation,
     });
-    await this.customers.recordReservation(venueId, {
+    const customer = await this.customers.recordReservation(venueId, {
       firstName: reservation.firstName,
       lastName: reservation.lastName,
       email: reservation.email,
@@ -663,6 +678,8 @@ export class ReservationsService {
       venue.email,
       this.buildSelfManageUrl(venue, reservation.id, reservation.manageToken),
       venue.menuPhone,
+      this.buildPrivacyUrl(venue, customer.privacyToken),
+      this.venueLogoUrl(venue),
     );
     return reservation;
   }
@@ -786,12 +803,15 @@ export class ReservationsService {
         after,
       });
     }
+    const privacyToken = await this.customers.ensurePrivacyToken(before.venueId, after.email);
     await this.mail.sendConfirmed(
       after,
       venue.name,
       venue.email,
       this.buildSelfManageUrl(venue, after.id, after.manageToken),
       venue.menuPhone,
+      this.buildPrivacyUrl(venue, privacyToken),
+      this.venueLogoUrl(venue),
     );
     return after;
   }
@@ -829,7 +849,15 @@ export class ReservationsService {
         after,
       });
     }
-    await this.mail.sendRejected(after, venue.name, reason, venue.email);
+    const privacyToken = await this.customers.ensurePrivacyToken(before.venueId, after.email);
+    await this.mail.sendRejected(
+      after,
+      venue.name,
+      reason,
+      venue.email,
+      this.buildPrivacyUrl(venue, privacyToken),
+      this.venueLogoUrl(venue),
+    );
     return after;
   }
 
@@ -856,7 +884,14 @@ export class ReservationsService {
       before,
       after,
     });
-    await this.mail.sendCancelled(after, venue.name, venue.email);
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, after.email);
+    await this.mail.sendCancelled(
+      after,
+      venue.name,
+      venue.email,
+      this.buildPrivacyUrl(venue, privacyToken),
+      this.venueLogoUrl(venue),
+    );
     return after;
   }
 
@@ -943,7 +978,15 @@ export class ReservationsService {
     });
 
     const confirmUrl = this.buildManageUrl(venue, reservationId, updated.manageToken);
-    await this.mail.sendTimeChangeRequest(updated, venue.name, confirmUrl, venue.email);
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
+    await this.mail.sendTimeChangeRequest(
+      updated,
+      venue.name,
+      confirmUrl,
+      venue.email,
+      this.buildPrivacyUrl(venue, privacyToken),
+      this.venueLogoUrl(venue),
+    );
     return updated;
   }
 
@@ -1104,7 +1147,15 @@ export class ReservationsService {
     );
 
     const venue = await this.getVenueSettings(after.venueId);
-    await this.mail.sendSelfEditPending(after, venue.name, venue.email);
+    const logoUrl = this.venueLogoUrl(venue);
+    const privacyToken = await this.customers.ensurePrivacyToken(after.venueId, after.email);
+    await this.mail.sendSelfEditPending(
+      after,
+      venue.name,
+      venue.email,
+      this.buildPrivacyUrl(venue, privacyToken),
+      logoUrl,
+    );
 
     const admins = await this.prisma.user.findMany({ where: { venueId: after.venueId, role: 'ADMIN' } });
     await this.prisma.notification.createMany({
@@ -1117,7 +1168,7 @@ export class ReservationsService {
 
     if (venue.email) {
       const manageUrl = this.buildManageUrl(venue, after.id, after.manageToken);
-      await this.mail.sendModifiedNotificationToVenue(after, venue.name, venue.email, manageUrl);
+      await this.mail.sendModifiedNotificationToVenue(after, venue.name, venue.email, manageUrl, logoUrl);
     }
 
     return after;

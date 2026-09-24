@@ -38,6 +38,7 @@ import { PublicReservation } from './pages/reservations/PublicReservation';
 import { PublicReservationManage } from './pages/reservations/PublicReservationManage';
 import { PublicReservationSelfManage } from './pages/reservations/PublicReservationSelfManage';
 import { CustomersAdmin } from './pages/customers/CustomersAdmin';
+import { PublicPrivacyManage } from './pages/customers/PublicPrivacyManage';
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
       <Route path="/prenota" element={<PublicReservation />} />
       <Route path="/prenota/gestisci/:id" element={<PublicReservationManage />} />
       <Route path="/prenota/modifica/:id" element={<PublicReservationSelfManage />} />
+      <Route path="/privacy" element={<PublicPrivacyManage />} />
 
       <Route path="/login" element={<Login />} />
 

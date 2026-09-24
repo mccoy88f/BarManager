@@ -123,6 +123,25 @@ export class VenuesController {
     return this.venuesService.setMenuCover(requireVenueId(user), `/uploads/menu/${file.filename}`);
   }
 
+  /** Logo mostrato in alto nelle email di prenotazione inviate ai clienti (distinto dalla copertina del menù). */
+  @Post('me/logo')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      storage: diskStorage({
+        destination: `${process.env.UPLOADS_DIR || './uploads'}/venues`,
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (_req, file, cb) => {
+        cb(null, /^image\/(jpe?g|png|webp)$/.test(file.mimetype));
+      },
+    }),
+  )
+  uploadLogo(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: Express.Multer.File) {
+    return this.venuesService.setLogo(requireVenueId(user), `/uploads/venues/${file.filename}`);
+  }
+
   /** Impostazioni del modulo Prenotazioni (§5.7): soglia conferma automatica, durata slot, orizzonte. */
   @Patch('me/reservation-settings')
   @Roles(Role.ADMIN)

@@ -11,6 +11,12 @@ export interface MailSendParams {
   /** Email del locale (o del cliente, a seconda di chi deve ricevere le risposte): mai usata come From. */
   replyTo?: string | null;
   cc?: string[];
+  /**
+   * URL assoluto del logo del locale (Impostazioni locale): se presente E
+   * se `html` è impostato, viene anteposto come intestazione dell'email.
+   * Ignorato sulle email solo testo (niente logo da inserire).
+   */
+  logoUrl?: string | null;
 }
 
 export interface MailSendResult {
@@ -51,6 +57,10 @@ export class MailService {
 
   async send(params: MailSendParams): Promise<MailSendResult> {
     try {
+      const html =
+        params.html && params.logoUrl
+          ? `<div style="text-align:center;margin-bottom:20px;"><img src="${params.logoUrl}" alt="${this.escapeHtmlAttr(params.venueName)}" style="max-height:80px;max-width:280px;" /></div>${params.html}`
+          : params.html;
       const info = await this.transporter.sendMail({
         from: this.technicalFrom(params.venueName),
         to: params.to,
@@ -58,7 +68,7 @@ export class MailService {
         replyTo: params.replyTo || undefined,
         subject: params.subject,
         text: params.text,
-        html: params.html,
+        html,
       });
       // Un log anche sul successo: senza, un invio "accettato" dal server
       // SMTP ma mai consegnato (es. mittente non autorizzato dal provider,
@@ -87,5 +97,9 @@ export class MailService {
     const configured = process.env.SMTP_FROM || process.env.SMTP_USER || 'notifiche@barmanager.local';
     const address = configured.match(/<(.+)>/)?.[1] ?? configured;
     return `${venueName} <${address}>`;
+  }
+
+  private escapeHtmlAttr(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 }

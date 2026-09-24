@@ -20,6 +20,7 @@ const baseVenue = {
   slug: 'bar-test',
   email: null as string | null,
   menuPhone: null as string | null,
+  logoUrl: null as string | null,
   reservationsEnabled: true,
   reservationAutoConfirmMaxSeats: 6,
   reservationSlotDurationMinutes: 120,
@@ -74,7 +75,7 @@ describe('ReservationsService', () => {
     sendSelfEditPending: jest.Mock;
     sendModifiedNotificationToVenue: jest.Mock;
   };
-  let customers: { recordReservation: jest.Mock };
+  let customers: { recordReservation: jest.Mock; ensurePrivacyToken: jest.Mock };
   let service: ReservationsService;
 
   beforeEach(() => {
@@ -101,7 +102,10 @@ describe('ReservationsService', () => {
       sendSelfEditPending: jest.fn(),
       sendModifiedNotificationToVenue: jest.fn(),
     };
-    customers = { recordReservation: jest.fn() };
+    customers = {
+      recordReservation: jest.fn().mockResolvedValue({ privacyToken: 'privacy-token' }),
+      ensurePrivacyToken: jest.fn().mockResolvedValue('privacy-token'),
+    };
     service = new ReservationsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
@@ -343,6 +347,7 @@ describe('ReservationsService', () => {
         'info@bartest.it',
         expect.stringContaining('/prenota/gestisci/res-1?token='),
         true,
+        null,
       );
     });
 
@@ -361,6 +366,7 @@ describe('ReservationsService', () => {
         'info@bartest.it',
         expect.any(String),
         false,
+        null,
       );
     });
 
@@ -534,6 +540,8 @@ describe('ReservationsService', () => {
       expect(mail.sendCancelled).toHaveBeenCalledWith(
         expect.objectContaining({ status: ReservationStatus.CANCELLED }),
         'Bar Test',
+        null,
+        'http://localhost:5173/privacy?token=privacy-token',
         null,
       );
     });
@@ -1250,6 +1258,7 @@ describe('ReservationsService', () => {
           'Bar Test',
           'info@bartest.it',
           expect.stringContaining('/prenota/gestisci/res-1?token='),
+          null,
         );
       });
 

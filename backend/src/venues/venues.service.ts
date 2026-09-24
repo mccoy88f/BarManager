@@ -87,6 +87,7 @@ export class VenuesService {
         attendanceRetentionUnit: true,
         gpsRadiusMeters: true,
         menuCoverUrl: true,
+        logoUrl: true,
         menuAddress: true,
         menuPhone: true,
         menuInstagramUrl: true,
@@ -122,6 +123,10 @@ export class VenuesService {
 
   setMenuCover(venueId: string, menuCoverUrl: string) {
     return this.prisma.venue.update({ where: { id: venueId }, data: { menuCoverUrl } });
+  }
+
+  setLogo(venueId: string, logoUrl: string) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: { logoUrl } });
   }
 
   updateReservationSettings(venueId: string, dto: UpdateReservationSettingsDto) {
