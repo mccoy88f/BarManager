@@ -24,6 +24,7 @@ describe('CleaningService', () => {
     cleaningTask: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock };
     cleaningLog: { count: jest.Mock; create: jest.Mock; findMany: jest.Mock };
     employee: { findUnique: jest.Mock };
+    venue: { findUnique: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: CleaningService;
@@ -33,12 +34,45 @@ describe('CleaningService', () => {
       cleaningTask: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
       cleaningLog: { count: jest.fn(), create: jest.fn(), findMany: jest.fn() },
       employee: { findUnique: jest.fn() },
+      venue: { findUnique: jest.fn().mockResolvedValue({ timezone: 'Europe/Rome' }) },
     };
     audit = { log: jest.fn() };
     service = new CleaningService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
     );
+  });
+
+  describe('listDueToday — fuso orario del locale', () => {
+    it('calcola il periodo "oggi" a partire dalla mezzanotte nel fuso del locale, non UTC', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-01T21:30:00.000Z'));
+      prisma.venue.findUnique.mockResolvedValue({ timezone: 'Europe/Rome' });
+      prisma.cleaningTask.findMany.mockResolvedValue([
+        {
+          id: 'task-1',
+          description: 'Sgrassare friggitrice',
+          location: 'Cucina',
+          frequencyUnit: CleaningFrequencyUnit.DAY,
+          timesPerUnit: 1,
+          venueId: 'venue-1',
+        },
+      ]);
+      prisma.cleaningLog.count.mockResolvedValue(0);
+
+      await service.listDueToday('venue-1');
+
+      expect(prisma.cleaningLog.count).toHaveBeenCalledWith({
+        where: {
+          taskId: 'task-1',
+          completedAt: {
+            gte: new Date('2026-09-30T22:00:00.000Z'), // 2026-10-01 00:00 CEST
+            lt: new Date('2026-10-01T22:00:00.000Z'), // 2026-10-02 00:00 CEST
+          },
+        },
+      });
+
+      jest.useRealTimers();
+    });
   });
 
   describe('listDueToday', () => {

@@ -32,6 +32,13 @@ const baseVenue = {
   lunchEnd: '15:00',
   dinnerStart: '19:00',
   dinnerEnd: '23:00',
+  // Le date di test qui sotto (nextDinnerSlot, .setHours(...)) sono costruite
+  // nel fuso orario del processo che esegue i test: il locale mockato deve
+  // avere lo stesso fuso, altrimenti isoWeekdayInZone/minutesOfDayInZone
+  // (che ora usano Venue.timezone, non più l'ora del server) le
+  // interpreterebbero in un fuso diverso da quello con cui sono state
+  // costruite.
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 };
 
 /** Prossimo orario di cena (entro l'orizzonte), evita di dipendere dall'ora in cui girano i test. */
@@ -152,6 +159,23 @@ describe('ReservationsService', () => {
       const badTime = nextDinnerSlot();
       badTime.setHours(17, 0, 0, 0); // fuori pranzo (12-15) e cena (19-23)
       await expect(service.getAvailability('venue-1', badTime.toISOString())).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('lo stesso istante può ricadere dentro o fuori una fascia secondo il fuso orario del locale', async () => {
+      // 21:30 UTC: dentro la cena (19-23) se il locale è in UTC, ma 16:30
+      // se è a Bogotà (UTC-5, senza ora legale) — fuori da entrambe le
+      // fasce (pranzo 12-15, cena 19-23). Prova diretta del fix: prima di
+      // usare Venue.timezone questo calcolo dipendeva dal fuso del
+      // server, non da quello configurato per il locale.
+      const instant = new Date('2026-10-01T21:30:00.000Z');
+
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, timezone: 'UTC' });
+      await expect(service.getAvailability('venue-1', instant.toISOString())).resolves.toBeDefined();
+
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, timezone: 'America/Bogota' });
+      await expect(service.getAvailability('venue-1', instant.toISOString())).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });

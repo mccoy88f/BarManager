@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsIanaTimezone } from '../../common/timezone/is-iana-timezone.decorator';
 
 /** Una stringa vuota significa "svuota il campo": diventa null (non deve fallire IsUrl). */
 const emptyToNull = ({ value }: { value: string }) => (value === '' ? null : value);
@@ -53,4 +54,9 @@ export class UpdateMenuSettingsDto {
   @Transform(emptyToNull)
   @IsUrl()
   menuWebsiteUrl?: string | null;
+
+  /** Fuso orario IANA del locale (es. "Europe/Rome"): usato per ogni calcolo di "oggi" riferito al locale (prenotazioni, ordini, HACCP, pulizie — v. common/timezone). */
+  @IsOptional()
+  @IsIanaTimezone()
+  timezone?: string;
 }

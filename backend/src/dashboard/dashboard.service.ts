@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { isoWeekdayInZone } from '../common/timezone/timezone';
 
 /**
  * Riepilogo per la home dell'amministrazione: richieste dei dipendenti in
@@ -12,8 +13,9 @@ export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
   async getAdminSummary(venueId: string, userId: string) {
-    const isoWeekday = ((new Date().getDay() + 6) % 7) + 1; // 1=lun .. 7=dom
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { timezone: true } });
     const now = new Date();
+    const isoWeekday = isoWeekdayInZone(now, venue?.timezone);
 
     const [pendingLeaveRequests, notifications, ordersDueToday, openTasks] = await Promise.all([
       this.prisma.leaveRequest.findMany({

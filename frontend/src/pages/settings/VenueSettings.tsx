@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Avatar,
   Box,
   Button,
@@ -69,6 +70,7 @@ interface VenueHours {
   menuWebsiteUrl?: string;
   city?: string;
   vatNumber?: string;
+  timezone?: string;
 }
 
 /** Lunedì(1)...domenica(0), nell'ordine in cui mostrarli in UI: Date#getDay() usa invece 0=domenica. */
@@ -92,6 +94,10 @@ function extractErrorMessage(error: unknown): string {
   return 'Errore durante il salvataggio.';
 }
 
+/** Lista IANA completa (Chrome/Edge/Node — non ancora in Safari/Firefox: in tal caso resta solo il fuso già salvato, selezionabile lo stesso). */
+const timezoneOptions: string[] =
+  typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : ['Europe/Rome'];
+
 /** Fasce orarie pranzo/cena del locale: determinano quali voci di menù sono
  * mostrate come disponibili nel menù pubblico in base all'ora corrente. */
 export function VenueSettings() {
@@ -109,6 +115,7 @@ export function VenueSettings() {
     menuWebsiteUrl: '',
     city: '',
     vatNumber: '',
+    timezone: '',
   });
 
   const venueQuery = useQuery({
@@ -129,6 +136,7 @@ export function VenueSettings() {
         menuWebsiteUrl: venueQuery.data.menuWebsiteUrl ?? '',
         city: venueQuery.data.city ?? '',
         vatNumber: venueQuery.data.vatNumber ?? '',
+        timezone: venueQuery.data.timezone ?? 'Europe/Rome',
       });
     }
   }, [venueQuery.data]);
@@ -454,6 +462,20 @@ export function VenueSettings() {
               helperText="Come sopra, per l'intestazione delle email di ordine ai fornitori."
               value={menuSettings.vatNumber}
               onChange={(e) => setMenuSettings((s) => ({ ...s, vatNumber: e.target.value }))}
+            />
+            <Autocomplete
+              options={timezoneOptions}
+              value={menuSettings.timezone}
+              disableClearable
+              onChange={(_e, value) => setMenuSettings((s) => ({ ...s, timezone: value ?? 'Europe/Rome' }))}
+              sx={{ gridColumn: '1 / -1' }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Fuso orario"
+                  helperText="Usato per calcolare 'oggi'/l'orario corrente in Prenotazioni, Ordini, HACCP e Pulizie."
+                />
+              )}
             />
             <TextField
               label="Telefono"

@@ -37,6 +37,15 @@ model Venue {
   // d'ambiente). Se assente si ricade su SMTP_FROM.
   email String?
 
+  // Fuso orario IANA (es. "Europe/Rome") usato per ogni calcolo di "oggi"/
+  // giorno della settimana/orario riferito al locale: validazione orario
+  // prenotazioni, fascia pranzo/cena del menù, fornitori da ordinare oggi,
+  // periodo corrente delle pulizie HACCP, range data dei report HACCP.
+  // Il processo Node gira in UTC (o nel fuso del server, comunque non
+  // legato al locale): senza questo campo tutti quei calcoli userebbero
+  // implicitamente quel fuso invece di quello reale del locale.
+  timezone String @default("Europe/Rome")
+
   // Orari di apertura settimanali del locale: un array di 7 giorni
   // (0=domenica..6=sabato, come Date#getDay()), ciascuno "chiuso" oppure
   // aperto con una o due fasce orarie (es. pranzo+cena, con pausa fra le

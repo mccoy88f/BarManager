@@ -77,10 +77,13 @@ export class HaccpController {
   async printJob(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
-    @Body() body: { reportDate: string; signedByName: string },
+    @Body() body: { reportDate: string },
   ) {
     const venueId = requireVenueId(user);
-    const readings = await this.haccpService.listReadings(venueId, body.reportDate, body.reportDate);
+    const [readings, signedByName] = await Promise.all([
+      this.haccpService.listReadings(venueId, body.reportDate, body.reportDate),
+      this.haccpService.resolveSignerName(user.userId),
+    ]);
 
     const lines = readings.map(
       (r) =>
@@ -91,7 +94,7 @@ export class HaccpController {
       {
         title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
         lines,
-        footer: [`Firmato da: ${body.signedByName}`, '', '_________________________'],
+        footer: [`Firmato da: ${signedByName}`, '', '_________________________'],
       },
     ]);
     res.set({
@@ -104,18 +107,20 @@ export class HaccpController {
   /**
    * Registra la firma del report giornaliero. `printedOnPos` riflette
    * l'esito della stampa già tentata dal browser (v. `report/print-job`),
-   * non uno stato deciso qui.
+   * non uno stato deciso qui. Chi firma è sempre chi ha fatto login: non
+   * va chiesto nel form (v. `HaccpService.resolveSignerName`).
    */
   @Post('report/print')
   @Roles(Role.ADMIN, Role.MANAGER)
   async printReport(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { reportDate: string; signedByName: string; printedOnPos: boolean },
+    @Body() body: { reportDate: string; printedOnPos: boolean },
   ) {
     const venueId = requireVenueId(user);
+    const signedByName = await this.haccpService.resolveSignerName(user.userId);
     const report = await this.haccpService.signReport(venueId, {
       reportDate: body.reportDate,
-      signedByName: body.signedByName,
+      signedByName,
       printedOnPos: body.printedOnPos,
     });
 
@@ -128,14 +133,17 @@ export class HaccpController {
   async signDigital(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
-    @Body() body: { reportDate: string; signedByName: string; signatureImg: string },
+    @Body() body: { reportDate: string; signatureImg: string },
   ) {
     const venueId = requireVenueId(user);
-    const readings = await this.haccpService.listReadings(venueId, body.reportDate, body.reportDate);
+    const [readings, signedByName] = await Promise.all([
+      this.haccpService.listReadings(venueId, body.reportDate, body.reportDate),
+      this.haccpService.resolveSignerName(user.userId),
+    ]);
 
     await this.haccpService.signReport(venueId, {
       reportDate: body.reportDate,
-      signedByName: body.signedByName,
+      signedByName,
       signatureImg: body.signatureImg,
       printedOnPos: false,
     });
@@ -148,7 +156,7 @@ export class HaccpController {
           `${r.fridge.label} — ${r.value}°C ${r.outOfRange ? '(FUORI SOGLIA: ' + r.correctiveAction + ')' : ''} — ${r.recordedAt.toLocaleString('it-IT')}`,
         );
       });
-      doc.moveDown().text(`Firmato da: ${body.signedByName}`);
+      doc.moveDown().text(`Firmato da: ${signedByName}`);
       if (body.signatureImg?.startsWith('data:image')) {
         const base64 = body.signatureImg.split(',')[1];
         doc.image(Buffer.from(base64, 'base64'), { width: 150 });

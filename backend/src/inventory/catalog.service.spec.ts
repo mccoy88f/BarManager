@@ -142,3 +142,47 @@ describe('CatalogService.getProductTrends', () => {
     expect(prisma.order.findMany).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('CatalogService.listSuppliersDueToday — fuso orario del locale', () => {
+  let prisma: {
+    venue: { findUnique: jest.Mock };
+    supplier: { findMany: jest.Mock };
+  };
+  let service: CatalogService;
+
+  beforeEach(() => {
+    prisma = {
+      venue: { findUnique: jest.fn() },
+      supplier: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    service = new CatalogService(prisma as unknown as PrismaService);
+    // Giovedì 15 gennaio 2026 23:30 UTC (ISO weekday 4) è già venerdì
+    // (ISO weekday 5) a Roma — prova diretta che il calcolo usa il fuso
+    // del locale, non quello UTC/del server.
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-15T23:30:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('usa il fuso orario del locale per calcolare il giorno della settimana', async () => {
+    prisma.venue.findUnique.mockResolvedValue({ timezone: 'Europe/Rome' });
+
+    await service.listSuppliersDueToday('venue-1');
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orderDays: { has: 5 } }) }),
+    );
+  });
+
+  it('due fusi diversi per lo stesso istante possono dare un giorno diverso', async () => {
+    prisma.venue.findUnique.mockResolvedValue({ timezone: 'America/Los_Angeles' });
+
+    await service.listSuppliersDueToday('venue-1');
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orderDays: { has: 4 } }) }),
+    );
+  });
+});

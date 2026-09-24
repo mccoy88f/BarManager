@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException, Injectable } from '@nestjs/comm
 import { MenuAvailability } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
+import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
@@ -241,15 +242,14 @@ export class MenuService {
   /**
    * Determina la fascia corrente (pranzo/cena/nessuna) in base agli orari
    * di apertura configurati dal locale per il giorno corrente (prima
-   * fascia = "pranzo", seconda fascia opzionale = "cena"). Usa l'ora del
-   * server: la gestione del fuso orario per-locale è una rifinitura
-   * futura (v. roadmap).
+   * fascia = "pranzo", seconda fascia opzionale = "cena"), calcolati nel
+   * fuso orario del locale (`Venue.timezone`), non in quello del server.
    */
-  private currentPeriod(openingHoursRaw: unknown): 'LUNCH' | 'DINNER' | 'NONE' {
+  private currentPeriod(openingHoursRaw: unknown, timezone: string): 'LUNCH' | 'DINNER' | 'NONE' {
     const schedule = resolveOpeningHours(openingHoursRaw);
     const now = new Date();
-    const day = schedule.find((d) => d.dayOfWeek === now.getDay())!;
-    const minutes = now.getHours() * 60 + now.getMinutes();
+    const day = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(now, timezone))!;
+    const minutes = minutesOfDayInZone(now, timezone);
     const slot = findOpenSlot(day, minutes);
     return slot === 1 ? 'LUNCH' : slot === 2 ? 'DINNER' : 'NONE';
   }
@@ -260,7 +260,7 @@ export class MenuService {
       throw new NotFoundException('Locale non trovato');
     }
 
-    const period = this.currentPeriod(venue.openingHours);
+    const period = this.currentPeriod(venue.openingHours, venue.timezone);
     const allowedAvailabilities: MenuAvailability[] =
       period === 'LUNCH'
         ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
+import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
 import { venueLogoAbsoluteUrl, venuePublicUrl } from '../common/venue-url/venue-url';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CustomersService } from '../customers/customers.service';
@@ -30,6 +31,7 @@ interface ReservationVenueSettings {
   reservationOverbookingExtraSeats: number;
   reservationMinLeadMinutes: number;
   openingHours: unknown;
+  timezone: string;
 }
 
 const VENUE_SELECT = {
@@ -47,6 +49,7 @@ const VENUE_SELECT = {
   reservationOverbookingExtraSeats: true,
   reservationMinLeadMinutes: true,
   openingHours: true,
+  timezone: true,
 } as const;
 
 /** Finestra di auto-gestione (§10 di DEVELOPMENT.md): il cliente può modificare/annullare da sé la propria richiesta entro questi minuti dalla creazione, dopo deve contattare il locale direttamente. */
@@ -142,14 +145,14 @@ export class ReservationsService {
         `Non è possibile prenotare oltre ${venue.reservationHorizonDays} giorni da oggi`,
       );
     }
-    if (reservedAt.getMinutes() % 15 !== 0) {
+    const minutesOfDay = minutesOfDayInZone(reservedAt, venue.timezone);
+    if (minutesOfDay % 15 !== 0) {
       throw new BadRequestException(
         "L'orario deve essere ai 15 minuti (es. 20:00, 20:15, 20:30, 20:45)",
       );
     }
     const schedule = resolveOpeningHours(venue.openingHours);
-    const day = schedule.find((d) => d.dayOfWeek === reservedAt.getDay())!;
-    const minutesOfDay = reservedAt.getHours() * 60 + reservedAt.getMinutes();
+    const day = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(reservedAt, venue.timezone))!;
     if (findOpenSlot(day, minutesOfDay) === null) {
       throw new BadRequestException(
         day.closed

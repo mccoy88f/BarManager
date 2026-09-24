@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser, requireVenueId } from '../common/decorators/current-user.decorator';
+import { parseDateOnlyEndOfDayInZone, parseDateOnlyStartOfDayInZone } from '../common/timezone/timezone';
 import { CreateFridgeDto } from './dto/create-fridge.dto';
 import { UpdateFridgeDto } from './dto/update-fridge.dto';
 import { CreateReadingDto } from './dto/create-reading.dto';
@@ -12,6 +13,22 @@ export class HaccpService {
     private prisma: PrismaService,
     private audit: AuditService,
   ) {}
+
+  /**
+   * Nome di chi firma il report HACCP: non va chiesto a mano nel form (chi
+   * stampa/firma è sempre chi ha effettuato il login, non serve chiederlo
+   * di nuovo, ed evita che qualcuno firmi col nome di un altro) — nome e
+   * cognome se l'account ha una scheda `Employee` collegata, altrimenti
+   * l'email di login (es. un Admin puro, senza scheda dipendente).
+   */
+  async resolveSignerName(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    if (!user) throw new NotFoundException('Utente non trovato');
+    return user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email;
+  }
 
   // ---- Frigoriferi (censiti dall'admin) ------------------------------
 
@@ -92,20 +109,19 @@ export class HaccpService {
     return reading;
   }
 
-  listReadings(venueId: string, from?: string, to?: string) {
-    // "to" arriva come data (es. "2026-09-21"), che new Date() interpreta come
-    // mezzanotte UTC: senza estenderla a fine giornata, "lte" escluderebbe di
+  async listReadings(venueId: string, from?: string, to?: string) {
+    // "to" arriva come data (es. "2026-09-21"): va estesa a fine giornata
+    // (nel fuso orario del locale, non UTC) altrimenti "lte" escluderebbe di
     // fatto tutte le rilevazioni del giorno stesso (bug che rendeva vuoto
     // anche il report/stampa HACCP, che usa la stessa data sia per from che to).
-    const toDate = to ? new Date(to) : undefined;
-    toDate?.setUTCHours(23, 59, 59, 999);
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { timezone: true } });
 
     return this.prisma.temperatureReading.findMany({
       where: {
         fridge: { venueId },
         recordedAt: {
-          gte: from ? new Date(from) : undefined,
-          lte: toDate,
+          gte: from ? parseDateOnlyStartOfDayInZone(from, venue?.timezone) : undefined,
+          lte: to ? parseDateOnlyEndOfDayInZone(to, venue?.timezone) : undefined,
         },
       },
       include: { fridge: true, recordedBy: { select: { email: true } } },

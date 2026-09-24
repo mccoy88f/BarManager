@@ -58,7 +58,7 @@ export const navigation: NavItem[] = [
   },
   {
     key: 'attendance',
-    label: 'Presenze',
+    label: 'Dipendenti',
     path: '/attendance',
     icon: AccessTimeIcon,
     description: 'Timbratura, richieste assenza',
@@ -72,7 +72,7 @@ export const navigation: NavItem[] = [
       },
       {
         key: 'attendance-employees',
-        label: 'Dipendenti',
+        label: 'Anagrafiche',
         path: '/attendance/employees',
         icon: AccessTimeIcon,
         description: 'Aggiungi, modifica ed elimina gli account del personale',

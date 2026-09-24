@@ -62,10 +62,3 @@ export function findOpenSlot(day: OpeningHoursDay, minutesOfDay: number): 1 | 2 
   }
   return null;
 }
-
-/** Il locale è aperto nel giorno/orario dato? Usa l'ora locale del server (nessuna gestione fuso per-locale, rifinitura futura). */
-export function isOpenAt(schedule: OpeningHoursDay[], at: Date): boolean {
-  const day = schedule.find((d) => d.dayOfWeek === at.getDay()) ?? DEFAULT_OPENING_HOURS[at.getDay()];
-  const minutesOfDay = at.getHours() * 60 + at.getMinutes();
-  return findOpenSlot(day, minutesOfDay) !== null;
-}

@@ -7,6 +7,14 @@
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2021",
+    // Nessun "lib" esplicito prima: TS usa di default ES2021+DOM+DOM.Iterable
+    // per questo target. Va ripetuto qui esplicitamente perché indicare
+    // "lib" azzera quel default — l'unica aggiunta voluta è ES2022.Intl,
+    // per i tipi di "Intl.supportedValuesOf" (validazione fusi orari,
+    // common/timezone): l'emit resta ES2021, questa lib aggiunge solo le
+    // dichiarazioni di tipo, non richiede un runtime più recente (Node 20
+    // lo supporta comunque nativamente).
+    "lib": ["ES2021", "DOM", "DOM.Iterable", "ES2022.Intl"],
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",

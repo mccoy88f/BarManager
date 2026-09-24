@@ -23,6 +23,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
+import { useAuthStore } from '../../store/authStore';
 import { shareReceiptPdf } from '../../printing/printJob';
 import type { Fridge } from './Fridges';
 
@@ -48,10 +49,10 @@ function extractErrorMessage(error: unknown): string {
 export function TemperatureEntry() {
   const queryClient = useQueryClient();
   const showToast = useToast();
+  const userEmail = useAuthStore((s) => s.user?.email);
   const [values, setValues] = useState<Record<string, string>>({});
   const [corrective, setCorrective] = useState<Record<string, string>>({});
   const [printOpen, setPrintOpen] = useState(false);
-  const [signedByName, setSignedByName] = useState('');
   const [printError, setPrintError] = useState<string | null>(null);
 
   const today = todayIso();
@@ -93,13 +94,12 @@ export function TemperatureEntry() {
     mutationFn: async () => {
       const response = await api.post(
         '/haccp/report/print-job',
-        { reportDate: today, signedByName: signedByName.trim() },
+        { reportDate: today },
         { responseType: 'blob' },
       );
       await shareReceiptPdf(response.data, `Report HACCP ${today}`);
       await api.post('/haccp/report/print', {
         reportDate: today,
-        signedByName: signedByName.trim(),
         printedOnPos: true,
       });
     },
@@ -107,7 +107,6 @@ export function TemperatureEntry() {
       setPrintError(null);
       showToast('Report registrato e condiviso per la stampa.');
       setPrintOpen(false);
-      setSignedByName('');
     },
     onError: (err) => setPrintError(extractErrorMessage(err)),
   });
@@ -233,21 +232,15 @@ export function TemperatureEntry() {
       <Dialog open={printOpen} onClose={() => setPrintOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Firma e stampa report di oggi</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
-          <TextField
-            label="Nome di chi firma"
-            value={signedByName}
-            onChange={(e) => setSignedByName(e.target.value)}
-            autoFocus
-          />
+          <Typography variant="body2" color="text.secondary">
+            Il report verrà firmato con l'account con cui hai effettuato l'accesso
+            {userEmail ? ` (${userEmail})` : ''}.
+          </Typography>
           {printError && <Alert severity="error">{printError}</Alert>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setPrintOpen(false)}>Annulla</Button>
-          <Button
-            variant="contained"
-            disabled={!signedByName.trim() || printMutation.isPending}
-            onClick={() => printMutation.mutate()}
-          >
+          <Button variant="contained" disabled={printMutation.isPending} onClick={() => printMutation.mutate()}>
             Firma e stampa
           </Button>
         </DialogActions>

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isoWeekdayInZone } from '../common/timezone/timezone';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
@@ -112,9 +113,10 @@ export class CatalogService {
     return { success: true };
   }
 
-  /** Fornitori il cui giorno di ordine ricorrente è oggi (usato in home). */
-  listSuppliersDueToday(venueId: string) {
-    const isoWeekday = ((new Date().getDay() + 6) % 7) + 1; // 1=lun .. 7=dom
+  /** Fornitori il cui giorno di ordine ricorrente è oggi (usato in home), nel fuso orario del locale. */
+  async listSuppliersDueToday(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { timezone: true } });
+    const isoWeekday = isoWeekdayInZone(new Date(), venue?.timezone);
     return this.prisma.supplier.findMany({
       where: { venueId, active: true, orderDays: { has: isoWeekday } },
       orderBy: { name: 'asc' },
