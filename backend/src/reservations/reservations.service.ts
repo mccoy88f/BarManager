@@ -342,6 +342,7 @@ export class ReservationsService {
           eventNote: dto.eventNote,
           allergiesNote: dto.allergiesNote,
           notes: dto.notes,
+          marketingConsent: dto.marketingConsent ?? false,
           status,
           tables: bestFit ? { create: [{ tableId: bestFit.id }] } : undefined,
           manageToken: randomUUID(),
@@ -355,6 +356,7 @@ export class ReservationsService {
       lastName: reservation.lastName,
       email: reservation.email,
       phone: reservation.phone,
+      marketingConsent: reservation.marketingConsent,
     });
 
     if (status === ReservationStatus.CONFIRMED) {
@@ -592,6 +594,7 @@ export class ReservationsService {
           eventNote: dto.eventNote,
           allergiesNote: dto.allergiesNote,
           notes: dto.notes,
+          marketingConsent: dto.marketingConsent ?? false,
           status: ReservationStatus.CONFIRMED,
           tables: { create: tableIds.map((tableId) => ({ tableId })) },
           slotDurationMinutes: dto.slotDurationMinutes ?? null,
@@ -616,6 +619,7 @@ export class ReservationsService {
       lastName: reservation.lastName,
       email: reservation.email,
       phone: reservation.phone,
+      marketingConsent: reservation.marketingConsent,
     });
     await this.mail.sendConfirmed(reservation, venue.name, venue.email);
     return reservation;

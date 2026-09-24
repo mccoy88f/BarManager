@@ -897,6 +897,12 @@ model Reservation {
   eventNote           String? // es. "Compleanno"
   allergiesNote       String?
   notes               String?
+  // Consenso a ricevere comunicazioni promozionali (email/SMS/WhatsApp),
+  // raccolto con una casella dedicata nel widget di prenotazione — non
+  // implicito nell'aver semplicemente prenotato (v. nota GDPR §5.8 di
+  // DEVELOPMENT.md). Propagato al Customer corrispondente ad ogni
+  // prenotazione (l'ultimo valore dichiarato vince).
+  marketingConsent    Boolean           @default(false)
   status              ReservationStatus @default(PENDING)
   // Obbligatoria solo se status = REJECTED.
   rejectionReason     String?
@@ -938,6 +944,10 @@ model Customer {
   firstReservationAt DateTime?
   lastReservationAt  DateTime?
   reservationsCount  Int       @default(0)
+  // Ultimo consenso marketing dichiarato dal cliente (v. Reservation.marketingConsent):
+  // aggiornato automaticamente ad ogni prenotazione, modificabile anche a mano
+  // dall'admin (CRUD) o tramite import xlsx.
+  marketingConsent   Boolean   @default(false)
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

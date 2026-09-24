@@ -64,6 +64,7 @@ const initialForm = {
   eventNote: '',
   allergiesNote: '',
   notes: '',
+  marketingConsent: false,
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -114,6 +115,7 @@ export function PublicReservation() {
             eventNote: form.isEvent ? form.eventNote.trim() : undefined,
             allergiesNote: form.allergiesNote.trim() || undefined,
             notes: form.notes.trim() || undefined,
+            marketingConsent: form.marketingConsent,
           },
           { params: venueSlug ? { venueSlug } : undefined },
         )
@@ -285,6 +287,16 @@ export function PublicReservation() {
             minRows={2}
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.marketingConsent}
+                onChange={(e) => setForm((f) => ({ ...f, marketingConsent: e.target.checked }))}
+              />
+            }
+            label="Accetto di ricevere comunicazioni promozionali via email/SMS/WhatsApp (facoltativo)"
           />
 
           {submitMutation.isError && (

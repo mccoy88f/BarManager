@@ -197,6 +197,7 @@ describe('ReservationsService', () => {
         lastName: 'Rossi',
         email: 'mario@test.it',
         phone: '3331234567',
+        marketingConsent: false,
       });
     });
 
@@ -823,6 +824,7 @@ describe('ReservationsService', () => {
         lastName: 'Bianchi',
         email: 'giulia.bianchi@test.it',
         phone: '3339876543',
+        marketingConsent: false,
       });
     });
 

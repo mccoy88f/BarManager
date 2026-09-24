@@ -49,4 +49,9 @@ export class CreateReservationDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** Consenso a ricevere comunicazioni promozionali (email/SMS/WhatsApp), raccolto con una casella dedicata. */
+  @IsOptional()
+  @IsBoolean()
+  marketingConsent?: boolean;
 }
