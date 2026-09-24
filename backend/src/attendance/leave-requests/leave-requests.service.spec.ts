@@ -121,6 +121,84 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
   });
 });
 
+describe('LeaveRequestsService.review — email al dipendente su approvazione/rifiuto', () => {
+  let prisma: {
+    leaveRequest: { findUnique: jest.Mock; update: jest.Mock };
+    notification: { create: jest.Mock };
+    venue: { findUnique: jest.Mock };
+  };
+  let mail: { send: jest.Mock };
+  let service: LeaveRequestsService;
+
+  const pending = { id: 'lr-1', status: 'PENDING' };
+
+  const baseEmployee = {
+    id: 'employee-2',
+    userId: 'user-2',
+    firstName: 'Mario',
+    email: null as string | null,
+    user: { email: 'mario.login@venue1.test' } as { email: string } | null,
+  };
+
+  const reviewedRequest = (
+    overrides: Partial<{ status: string; reviewNote: string | null; employee: Partial<typeof baseEmployee> }> = {},
+  ) => ({
+    id: 'lr-1',
+    type: 'VACATION',
+    startDate: new Date('2026-10-01'),
+    endDate: new Date('2026-10-05'),
+    status: 'APPROVED',
+    reviewNote: null,
+    ...overrides,
+    employee: { ...baseEmployee, ...overrides.employee },
+  });
+
+  beforeEach(() => {
+    prisma = {
+      leaveRequest: {
+        findUnique: jest.fn().mockResolvedValue(pending),
+        update: jest.fn().mockResolvedValue(reviewedRequest()),
+      },
+      notification: { create: jest.fn() },
+      venue: {
+        findUnique: jest.fn().mockResolvedValue({ name: 'Bar Test', slug: 'bar-test', logoUrl: null }),
+      },
+    };
+    mail = { send: jest.fn() };
+    service = new LeaveRequestsService(
+      prisma as unknown as PrismaService,
+      { log: jest.fn() } as unknown as AuditService,
+      mail as unknown as MailService,
+    );
+  });
+
+  it("invia un'email all'email di contatto del dipendente se impostata (preferita al login)", async () => {
+    prisma.leaveRequest.update.mockResolvedValue(
+      reviewedRequest({ employee: { email: 'mario.contatto@test.it' } }),
+    );
+    await service.review(admin, 'lr-1', { status: 'APPROVED' } as never);
+    expect(mail.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'mario.contatto@test.it' }));
+  });
+
+  it("usa l'email di login collegata se il dipendente non ha un'email di contatto propria", async () => {
+    prisma.leaveRequest.update.mockResolvedValue(
+      reviewedRequest({ status: 'REJECTED', reviewNote: 'Troppi assenti quel giorno' } as never),
+    );
+    await service.review(admin, 'lr-1', { status: 'REJECTED', reviewNote: 'Troppi assenti quel giorno' } as never);
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'mario.login@venue1.test', subject: expect.stringContaining('rifiutata') }),
+    );
+  });
+
+  it("non invia nessuna email se il dipendente non ha né email di contatto né account collegato", async () => {
+    prisma.leaveRequest.update.mockResolvedValue(
+      reviewedRequest({ employee: { email: null, user: null } }),
+    );
+    await service.review(admin, 'lr-1', { status: 'APPROVED' } as never);
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+});
+
 describe('LeaveRequestsService.remove — cancellazione richieste approvate', () => {
   let prisma: {
     employee: { findUnique: jest.Mock };

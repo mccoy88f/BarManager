@@ -173,7 +173,7 @@ export class LeaveRequestsService {
         reviewedById: reviewer.userId,
         reviewedAt: new Date(),
       },
-      include: { employee: true },
+      include: { employee: { include: { user: { select: { email: true } } } } },
     });
 
     await this.audit.log({
@@ -196,7 +196,62 @@ export class LeaveRequestsService {
       });
     }
 
+    await this.notifyEmployeeByEmail(requireVenueId(reviewer), after);
+
     return after;
+  }
+
+  /**
+   * Email al dipendente sull'esito (approvata/rifiutata), simmetrica alla
+   * notifica in-app già esistente sopra. Destinatario: l'email di contatto
+   * propria dell'Employee se impostata (`Employee.email`, usata anche per CC
+   * ordini, §5.3), altrimenti l'email di login del suo account utente
+   * collegato (`Employee.user.email`) — stesso ordine di preferenza già
+   * usato per i responsabili in CC alle email fornitori
+   * (`OrdersService.sendOrder`). Nessuna delle due presente (dipendente
+   * senza account e senza email di contatto) → nessuna email, non un errore.
+   */
+  private async notifyEmployeeByEmail(
+    venueId: string,
+    request: {
+      type: string;
+      status: string;
+      startDate: Date;
+      endDate: Date;
+      reviewNote: string | null;
+      employee: { firstName: string; email: string | null; user: { email: string } | null };
+    },
+  ): Promise<void> {
+    const to = request.employee.email ?? request.employee.user?.email;
+    if (!to) return;
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { name: true, slug: true, logoUrl: true },
+    });
+    if (!venue) return;
+
+    const typeLabel = typeLabels[request.type] ?? request.type;
+    const when = `${request.startDate.toLocaleDateString('it-IT')} — ${request.endDate.toLocaleDateString('it-IT')}`;
+    const verb = request.status === 'APPROVED' ? 'approvata' : 'rifiutata';
+
+    await this.mail.send({
+      to,
+      subject: `${venue.name} — richiesta di ${typeLabel.toLowerCase()} ${verb}`,
+      text: [
+        `Ciao ${request.employee.firstName},`,
+        '',
+        `La tua richiesta di ${typeLabel.toLowerCase()} per il periodo ${when} è stata ${verb}.`,
+        ...(request.reviewNote ? [`Nota: ${request.reviewNote}`] : []),
+      ].join('\n'),
+      html: `<div style="font-family:sans-serif;color:#222;">
+        <p>Ciao ${escapeHtml(request.employee.firstName)},</p>
+        <p>La tua richiesta di ${escapeHtml(typeLabel.toLowerCase())} per il periodo ${escapeHtml(when)} è stata <strong>${verb}</strong>.</p>
+        ${request.reviewNote ? `<p>Nota: ${escapeHtml(request.reviewNote)}</p>` : ''}
+      </div>`,
+      venueName: venue.name,
+      logoUrl: venueLogoAbsoluteUrl(venue),
+    });
   }
 
   /**
