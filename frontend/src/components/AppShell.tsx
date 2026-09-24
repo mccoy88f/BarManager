@@ -241,6 +241,19 @@ export function AppShell() {
         component="main"
         sx={{
           flexGrow: 1,
+          // Un elemento flex (questo Box lo è, del flex container root subito
+          // sopra) ha di default `min-width: auto`, che per lo spec CSS
+          // equivale al min-content del contenuto — calcolato attraversando
+          // qualunque discendente block "normale" (senza fermarsi a un
+          // `maxWidth` in percentuale, ignorato in questa fase). Una singola
+          // pagina con una tabella larga (es. molte colonne) può quindi
+          // "spingere" questo Box oltre i 100vw anche su mobile, allargando
+          // l'intera pagina — bug riprodotto su una nuova pagina (Storico
+          // comunicazioni) nonostante il suo TableContainer avesse già
+          // `overflowX: 'auto'`. `minWidth: 0` rimuove il vincolo, lasciando
+          // che sia il singolo TableContainer/overflow interno a gestire lo
+          // scroll orizzontale, come previsto, invece di allargare la pagina.
+          minWidth: 0,
           width: { md: user && user.role !== 'SUPER_ADMIN' ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%' },
         }}
       >

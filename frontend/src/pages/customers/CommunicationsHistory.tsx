@@ -97,7 +97,7 @@ export function CommunicationsHistory() {
         </Button>
       </Box>
 
-      <TableContainer>
+      <TableContainer sx={{ maxWidth: '100%', overflowX: 'auto' }}>
         <Table size="small">
           <TableHead>
             <TableRow>

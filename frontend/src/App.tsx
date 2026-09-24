@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { ScrollToTop } from './components/ScrollToTop';
 import { ProtectedRoute } from './routes/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -45,7 +46,9 @@ import { MyAccount } from './pages/account/MyAccount';
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <ScrollToTop />
+      <Routes>
       {/* Menù pubblico e widget prenotazioni: nessun login, nessuna shell applicativa */}
       <Route path="/menu" element={<PublicMenu />} />
       <Route path="/prenota" element={<PublicReservation />} />
@@ -124,6 +127,7 @@ export default function App() {
           </Route>
         </Route>
       </Route>
-    </Routes>
+      </Routes>
+    </>
   );
 }
