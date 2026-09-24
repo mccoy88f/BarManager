@@ -36,6 +36,7 @@ import { Tables } from './pages/reservations/Tables';
 import { ReservationSettings } from './pages/reservations/ReservationSettings';
 import { PublicReservation } from './pages/reservations/PublicReservation';
 import { PublicReservationManage } from './pages/reservations/PublicReservationManage';
+import { CustomersAdmin } from './pages/customers/CustomersAdmin';
 
 export default function App() {
   return (
@@ -103,6 +104,9 @@ export default function App() {
           <Route element={<ProtectedRoute moduleKey="reservations" />}>
             <Route path="/reservations" element={<ReservationsAdmin />} />
             <Route path="/reservations/tables" element={<Tables />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="customers" />}>
+            <Route path="/customers" element={<CustomersAdmin />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>

@@ -4,6 +4,7 @@ import { ReservationsService } from './reservations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { ReservationsMailService } from './reservations-mail.service';
+import { CustomersService } from '../customers/customers.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 const admin: AuthenticatedUser = {
@@ -70,6 +71,7 @@ describe('ReservationsService', () => {
     sendCancelled: jest.Mock;
     sendVenueNotification: jest.Mock;
   };
+  let customers: { recordReservation: jest.Mock };
   let service: ReservationsService;
 
   beforeEach(() => {
@@ -94,10 +96,12 @@ describe('ReservationsService', () => {
       sendCancelled: jest.fn(),
       sendVenueNotification: jest.fn(),
     };
+    customers = { recordReservation: jest.fn() };
     service = new ReservationsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       mail as unknown as ReservationsMailService,
+      customers as unknown as CustomersService,
     );
   });
 
@@ -188,6 +192,12 @@ describe('ReservationsService', () => {
       );
       expect(mail.sendConfirmed).toHaveBeenCalled();
       expect(mail.sendReceived).not.toHaveBeenCalled();
+      expect(customers.recordReservation).toHaveBeenCalledWith('venue-1', {
+        firstName: 'Mario',
+        lastName: 'Rossi',
+        email: 'mario@test.it',
+        phone: '3331234567',
+      });
     });
 
     it('usa il tavolo più piccolo che basta (best-fit), non uno più grande', async () => {
@@ -808,6 +818,12 @@ describe('ReservationsService', () => {
       expect(audit.log).toHaveBeenCalled();
       expect(mail.sendConfirmed).toHaveBeenCalled();
       expect(result.status).toBe(ReservationStatus.CONFIRMED);
+      expect(customers.recordReservation).toHaveBeenCalledWith('venue-1', {
+        firstName: 'Giulia',
+        lastName: 'Bianchi',
+        email: 'giulia.bianchi@test.it',
+        phone: '3339876543',
+      });
     });
 
     it('assegna il tavolo indicato se fornito, verificandone la proprietà', async () => {

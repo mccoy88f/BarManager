@@ -7,6 +7,9 @@ import { REQUIRE_MODULE_KEY, ModuleKey } from '../decorators/require-module.deco
 // Permessi di default quando il dipendente non ha mai avuto un elenco
 // esplicito impostato dall'admin (allowedModules vuoto): preserva il
 // comportamento pre-esistente (Manager vede tutto, Dipendente solo HACCP).
+// "reservations" e "customers" non compaiono qui: sono moduli opzionali
+// (spenti di default per il locale), l'admin li concede esplicitamente a
+// chi deve gestirli.
 const DEFAULT_MODULES_BY_ROLE: Partial<Record<Role, ModuleKey[]>> = {
   [Role.MANAGER]: ['haccp', 'inventory', 'menu', 'tasks'],
   [Role.EMPLOYEE]: ['haccp'],

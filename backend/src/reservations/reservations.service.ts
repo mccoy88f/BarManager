@@ -6,6 +6,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { ReservationsMailService } from './reservations-mail.service';
+import { CustomersService } from '../customers/customers.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
@@ -72,6 +73,7 @@ export class ReservationsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private mail: ReservationsMailService,
+    private customers: CustomersService,
   ) {}
 
   // ---- Tavoli / disponibilità --------------------------------------------
@@ -348,6 +350,13 @@ export class ReservationsService {
       }),
     );
 
+    await this.customers.recordReservation(venueId, {
+      firstName: reservation.firstName,
+      lastName: reservation.lastName,
+      email: reservation.email,
+      phone: reservation.phone,
+    });
+
     if (status === ReservationStatus.CONFIRMED) {
       await this.mail.sendConfirmed(reservation, venue.name, venue.email);
     } else {
@@ -601,6 +610,12 @@ export class ReservationsService {
       entityId: reservation.id,
       action: 'CREATE',
       after: reservation,
+    });
+    await this.customers.recordReservation(venueId, {
+      firstName: reservation.firstName,
+      lastName: reservation.lastName,
+      email: reservation.email,
+      phone: reservation.phone,
     });
     await this.mail.sendConfirmed(reservation, venue.name, venue.email);
     return reservation;

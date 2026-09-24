@@ -11,6 +11,7 @@ import StoreIcon from '@mui/icons-material/Store';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
+import PeopleIcon from '@mui/icons-material/People';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -211,6 +212,14 @@ export const navigation: NavItem[] = [
         roles: ['ADMIN'],
       },
     ],
+  },
+  {
+    key: 'customers',
+    label: 'Clienti',
+    path: '/customers',
+    icon: PeopleIcon,
+    description: 'Anagrafica clienti da prenotazioni e aggiunti a mano',
+    moduleKey: 'customers',
   },
   {
     key: 'settings',

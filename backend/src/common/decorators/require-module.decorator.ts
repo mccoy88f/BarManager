@@ -5,7 +5,7 @@ import { SetMetadata } from '@nestjs/common';
  * come la propria timbratura) concedibili per singolo dipendente
  * dall'amministratore, indipendentemente dal ruolo — vedi ModuleAccessGuard.
  */
-export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks' | 'reservations';
+export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks' | 'reservations' | 'customers';
 
 export const REQUIRE_MODULE_KEY = 'requireModule';
 export const RequireModule = (module: ModuleKey) => SetMetadata(REQUIRE_MODULE_KEY, module);

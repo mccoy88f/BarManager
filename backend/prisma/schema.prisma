@@ -132,6 +132,7 @@ model Venue {
   kbArticles        KbArticle[]
   tables            Table[]
   reservations      Reservation[]
+  customers         Customer[]
 }
 
 model User {
@@ -917,4 +918,33 @@ model Reservation {
   updatedAt DateTime @updatedAt
 
   @@index([venueId, reservedAt])
+}
+
+/// Anagrafica clienti (§5.8 di DEVELOPMENT.md): creata/aggiornata in automatico
+/// a ogni prenotazione (widget pubblico o aggiunta manuale), ma modificabile
+/// anche a mano dall'admin (CRUD dedicato). "firstReservationAt" è la data di
+/// prima prenotazione (usata come "registrazione" del cliente),
+/// "lastReservationAt" quella della più recente (pensata anche come proxy di
+/// aggiornamento consensi per future campagne marketing — non implica da sola
+/// un consenso esplicito, v. nota GDPR in DEVELOPMENT.md). Isolata per
+/// venueId, unica per email nello stesso locale.
+model Customer {
+  id                 String    @id @default(cuid())
+  firstName          String
+  lastName           String
+  email              String
+  phone              String?
+  notes              String?
+  firstReservationAt DateTime?
+  lastReservationAt  DateTime?
+  reservationsCount  Int       @default(0)
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([venueId, email])
+  @@index([venueId])
 }

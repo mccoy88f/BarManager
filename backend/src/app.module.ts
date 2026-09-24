@@ -24,6 +24,7 @@ import { BoardModule } from './board/board.module';
 import { KbModule } from './kb/kb.module';
 import { LoyverseModule } from './loyverse/loyverse.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     KbModule,
     LoyverseModule,
     ReservationsModule,
+    CustomersModule,
   ],
   providers: [
     // ThrottlerModule era registrato ma mai applicato: senza questo guard
