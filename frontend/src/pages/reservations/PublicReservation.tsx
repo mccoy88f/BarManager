@@ -32,24 +32,36 @@ interface ReservationInfo {
   openingHours: OpeningHoursDay[];
 }
 
-const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const DAY_LABELS: Record<number, string> = {
-  0: 'Domenica',
-  1: 'Lunedì',
-  2: 'Martedì',
-  3: 'Mercoledì',
-  4: 'Giovedì',
-  5: 'Venerdì',
-  6: 'Sabato',
-};
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
 
-function daySummary(day: OpeningHoursDay): string {
-  if (day.closed) return 'Chiuso';
-  const slots = [
-    day.slot1Start && day.slot1End ? `${day.slot1Start}–${day.slot1End}` : null,
-    day.slot2Start && day.slot2End ? `${day.slot2Start}–${day.slot2End}` : null,
-  ].filter(Boolean);
-  return slots.length > 0 ? slots.join(', ') : 'Chiuso';
+function minutesToLabel(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Orari selezionabili ai 15 minuti per il giorno indicato (entrambe le
+ * fasce, se presenti), senza esporre in pagina l'orario di apertura: il
+ * vincolo resta solo nelle opzioni offerte dal campo Autocomplete, non in
+ * un elenco visibile a parte (§5.7 di DEVELOPMENT.md — "orari non mostrati
+ * ma presi in considerazione"). `undefined` (giorno non ancora scelto)
+ * lascia il campo con tutti i 96 quarti d'ora, come prima di scegliere una
+ * data; un giorno chiuso restituisce un elenco vuoto.
+ */
+function quarterHourOptionsForDay(day: OpeningHoursDay | undefined): string[] {
+  if (!day || day.closed) return [];
+  const options: string[] = [];
+  const addSlot = (start: string | null, end: string | null) => {
+    if (!start || !end) return;
+    for (let m = toMinutes(start); m <= toMinutes(end); m += 15) options.push(minutesToLabel(m));
+  };
+  addSlot(day.slot1Start, day.slot1End);
+  addSlot(day.slot2Start, day.slot2End);
+  return options;
 }
 
 const initialForm = {
@@ -86,6 +98,12 @@ function extractErrorMessage(error: unknown): string {
  * trattamento dei dati personali è invece obbligatorio — se disattivato il
  * pulsante "Prenota" si disabilita e appare un avviso, e il backend rifiuta
  * comunque la richiesta se qualcuno la manda senza (§10 di DEVELOPMENT.md).
+ * Gli orari di apertura del locale **non sono mostrati** in pagina (né
+ * come elenco settimanale né come didascalia sotto la data scelta), ma
+ * sono comunque presi in considerazione: il campo Orario offre solo le
+ * opzioni ai 15 minuti realmente aperte per il giorno scelto
+ * (`quarterHourOptionsForDay`), e se quel giorno è tutto chiuso il campo
+ * resta disabilitato con un avviso generico, senza elencare gli orari.
  */
 export function PublicReservation() {
   const params = new URLSearchParams(window.location.search);
@@ -155,6 +173,8 @@ export function PublicReservation() {
   const selectedDaySchedule = form.date
     ? openingHours.find((d) => d.dayOfWeek === new Date(`${form.date}T00:00:00`).getDay())
     : undefined;
+  const dayClosed = !!form.date && !!selectedDaySchedule?.closed;
+  const timeOptions = form.date ? quarterHourOptionsForDay(selectedDaySchedule) : undefined;
 
   const canSubmit =
     form.firstName.trim() &&
@@ -187,22 +207,6 @@ export function PublicReservation() {
       <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
         Prenota un tavolo — {name}
       </Typography>
-      <Box sx={{ display: 'grid', gap: 0.25, mb: 1 }}>
-        {DAY_ORDER.map((dayOfWeek) => {
-          const day = openingHours.find((d) => d.dayOfWeek === dayOfWeek);
-          if (!day) return null;
-          return (
-            <Box key={dayOfWeek} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-              <Typography variant="caption" color="text.secondary">
-                {DAY_LABELS[dayOfWeek]}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {daySummary(day)}
-              </Typography>
-            </Box>
-          );
-        })}
-      </Box>
 
       <Card variant="outlined" sx={{ mt: 3 }}>
         <CardContent sx={{ display: 'grid', gap: 2 }}>
@@ -239,21 +243,19 @@ export function PublicReservation() {
               inputProps={{ min: today, max: maxDate }}
               fullWidth
               value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, time: '' }))}
             />
             <QuarterHourTimeField
               label="Orario"
               fullWidth
               value={form.time}
               onChange={(time) => setForm((f) => ({ ...f, time }))}
+              options={timeOptions}
+              disabled={dayClosed}
             />
           </Stack>
-          {selectedDaySchedule && (
-            <Typography variant="caption" color={selectedDaySchedule.closed ? 'error' : 'text.secondary'}>
-              {selectedDaySchedule.closed
-                ? 'Il locale è chiuso in questo giorno.'
-                : `Orario disponibile: ${daySummary(selectedDaySchedule)} (ai 15 minuti)`}
-            </Typography>
+          {dayClosed && (
+            <Alert severity="warning">Il locale è chiuso in questo giorno: scegli un'altra data.</Alert>
           )}
           <TextField
             label="Numero di persone"

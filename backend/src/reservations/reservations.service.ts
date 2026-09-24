@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
+import { venueLogoAbsoluteUrl, venuePublicUrl } from '../common/venue-url/venue-url';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CustomersService } from '../customers/customers.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
@@ -27,6 +28,7 @@ interface ReservationVenueSettings {
   reservationHorizonDays: number;
   reservationOverbookingUnlimited: boolean;
   reservationOverbookingExtraSeats: number;
+  reservationMinLeadMinutes: number;
   openingHours: unknown;
 }
 
@@ -43,11 +45,22 @@ const VENUE_SELECT = {
   reservationHorizonDays: true,
   reservationOverbookingUnlimited: true,
   reservationOverbookingExtraSeats: true,
+  reservationMinLeadMinutes: true,
   openingHours: true,
 } as const;
 
 /** Finestra di auto-gestione (§10 di DEVELOPMENT.md): il cliente può modificare/annullare da sé la propria richiesta entro questi minuti dalla creazione, dopo deve contattare il locale direttamente. */
 const SELF_EDIT_WINDOW_MINUTES = 15;
+
+/** "1 ora e 30 minuti" / "45 minuti" / "2 ore", per il messaggio di errore dell'anticipo minimo. */
+function formatLeadMinutes(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? 'ora' : 'ore'}`);
+  if (minutes > 0) parts.push(`${minutes} minuti`);
+  return parts.join(' e ');
+}
 
 /** Include standard per portare i tavoli assegnati (relazione molti-a-molti) dentro ogni prenotazione. */
 const TABLES_INCLUDE = { tables: { include: { table: true } } } as const;
@@ -96,9 +109,17 @@ export class ReservationsService {
    * Valida che l'orario richiesto sia nell'orizzonte prenotabile, ai 15
    * minuti (non al singolo minuto: es. 20:00/20:15/20:30, non 20:07) e
    * dentro una fascia di apertura del locale per quel giorno della
-   * settimana (§5.4/§5.7 di DEVELOPMENT.md).
+   * settimana (§5.4/§5.7 di DEVELOPMENT.md). `enforceMinLead` applica
+   * anche il vincolo di anticipo minimo (`Venue.reservationMinLeadMinutes`,
+   * §10): passato solo dal widget pubblico, non dalle chiamate di solo
+   * calcolo disponibilità (che altrimenti smetterebbero di funzionare per
+   * un orario ormai troppo vicino, anche se non si sta creando nulla).
    */
-  private validateRequestedTime(venue: ReservationVenueSettings, reservedAtIso: string): Date {
+  private validateRequestedTime(
+    venue: ReservationVenueSettings,
+    reservedAtIso: string,
+    enforceMinLead = false,
+  ): Date {
     const reservedAt = new Date(reservedAtIso);
     if (Number.isNaN(reservedAt.getTime())) {
       throw new BadRequestException('Data/ora non valida');
@@ -106,6 +127,14 @@ export class ReservationsService {
     const now = new Date();
     if (reservedAt.getTime() < now.getTime()) {
       throw new BadRequestException('Non è possibile prenotare nel passato');
+    }
+    if (enforceMinLead && venue.reservationMinLeadMinutes > 0) {
+      const leadMs = venue.reservationMinLeadMinutes * 60 * 1000;
+      if (reservedAt.getTime() < now.getTime() + leadMs) {
+        throw new BadRequestException(
+          `È possibile prenotare solo con almeno ${formatLeadMinutes(venue.reservationMinLeadMinutes)} di anticipo`,
+        );
+      }
     }
     const horizonMs = venue.reservationHorizonDays * 24 * 60 * 60 * 1000;
     if (reservedAt.getTime() > now.getTime() + horizonMs) {
@@ -271,17 +300,9 @@ export class ReservationsService {
     return tables.find((t) => t.seats >= partySize && !busyTableIds.has(t.id)) ?? null;
   }
 
-  /**
-   * Base + path di una pagina pubblica del locale (nessun login). Usa il
-   * sotto-dominio del locale quando ROOT_DOMAIN è configurato (produzione),
-   * altrimenti PUBLIC_APP_URL come base per lo sviluppo locale.
-   */
+  /** Base + path di una pagina pubblica del locale (nessun login): v. common/venue-url/venue-url.ts, condiviso anche da altri moduli (es. ordini). */
   private buildPublicUrl(venue: ReservationVenueSettings, path: string): string {
-    const rootDomain = process.env.ROOT_DOMAIN;
-    const base = rootDomain
-      ? `https://${venue.slug}.${rootDomain}`
-      : process.env.PUBLIC_APP_URL || 'http://localhost:5173';
-    return `${base}${path}`;
+    return venuePublicUrl(venue, path);
   }
 
   /** URL della pagina di gestione dello staff (accetta/rifiuta senza login, §5.7), mandata all'email del locale. */
@@ -299,9 +320,9 @@ export class ReservationsService {
     return privacyToken ? this.buildPublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
   }
 
-  /** URL assoluto del logo del locale (Impostazioni locale), per l'intestazione delle email — null se non impostato. */
+  /** URL assoluto del logo del locale (Impostazioni locale), per l'intestazione delle email. */
   private venueLogoUrl(venue: ReservationVenueSettings): string | null {
-    return venue.logoUrl ? this.buildPublicUrl(venue, venue.logoUrl) : null;
+    return venueLogoAbsoluteUrl(venue);
   }
 
   /** Termine ultimo per l'auto-gestione: SELF_EDIT_WINDOW_MINUTES dalla creazione della richiesta (non dall'orario prenotato). */
@@ -340,7 +361,7 @@ export class ReservationsService {
         'Devi autorizzare il trattamento dei dati personali per completare la prenotazione.',
       );
     }
-    const reservedAt = this.validateRequestedTime(venue, dto.reservedAt);
+    const reservedAt = this.validateRequestedTime(venue, dto.reservedAt, true);
 
     const tables = await this.prisma.table.findMany({ where: { venueId, active: true } });
     const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0);

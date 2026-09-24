@@ -27,6 +27,7 @@ const baseVenue = {
   reservationHorizonDays: 30,
   reservationOverbookingUnlimited: false,
   reservationOverbookingExtraSeats: 0,
+  reservationMinLeadMinutes: 0,
   lunchStart: '12:00',
   lunchEnd: '15:00',
   dinnerStart: '19:00',
@@ -401,6 +402,67 @@ describe('ReservationsService', () => {
       await service.createPublicReservation('venue-1', { ...dto, reservedAt: nextDinnerSlot().toISOString() });
 
       expect(mail.sendVenueNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('anticipo minimo di prenotazione (reservationMinLeadMinutes, §10)', () => {
+    const dto = {
+      firstName: 'Mario',
+      lastName: 'Rossi',
+      email: 'mario@test.it',
+      phone: '3331234567',
+      partySize: 4,
+      reservedAt: '',
+      privacyPolicyConsent: true,
+    };
+
+    // "Adesso" fissato in un orario di apertura (cena, mercoledì) per non
+    // dipendere dall'ora reale in cui girano i test.
+    const fixedNow = new Date('2025-01-15T20:00:00');
+
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+      jest.setSystemTime(fixedNow);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('rifiuta una richiesta più vicina del minimo di anticipo configurato', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationMinLeadMinutes: 30 });
+      const reservedAt = new Date(fixedNow.getTime() + 15 * 60 * 1000); // solo 15 minuti da adesso, sotto i 30 richiesti
+
+      await expect(
+        service.createPublicReservation('venue-1', { ...dto, reservedAt: reservedAt.toISOString() }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.reservation.create).not.toHaveBeenCalled();
+    });
+
+    it('accetta una richiesta che rispetta il minimo di anticipo configurato', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationMinLeadMinutes: 30 });
+      prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-small']) }),
+      );
+      const reservedAt = new Date(fixedNow.getTime() + 45 * 60 * 1000); // 45 minuti da adesso, sopra i 30 richiesti
+
+      await service.createPublicReservation('venue-1', { ...dto, reservedAt: reservedAt.toISOString() });
+
+      expect(prisma.reservation.create).toHaveBeenCalled();
+    });
+
+    it('non applica alcun vincolo se reservationMinLeadMinutes è 0 (default)', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, reservationMinLeadMinutes: 0 });
+      prisma.table.findMany.mockResolvedValue([{ id: 't-small', seats: 4, active: true }]);
+      prisma.reservation.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'res-1', ...data, tables: withTables(['t-small']) }),
+      );
+      const reservedAt = new Date(fixedNow.getTime() + 15 * 60 * 1000); // solo 15 minuti da adesso, ma nessun vincolo attivo
+
+      await service.createPublicReservation('venue-1', { ...dto, reservedAt: reservedAt.toISOString() });
+
+      expect(prisma.reservation.create).toHaveBeenCalled();
     });
   });
 

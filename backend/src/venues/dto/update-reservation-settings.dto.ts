@@ -33,4 +33,10 @@ export class UpdateReservationSettingsDto {
   @IsInt()
   @Min(0)
   reservationOverbookingExtraSeats?: number;
+
+  /** Anticipo minimo (minuti da adesso) richiesto per prenotare dal widget pubblico; 0 = nessun vincolo. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reservationMinLeadMinutes?: number;
 }

@@ -89,10 +89,7 @@ export function PublicPrivacyManage() {
   if (deleted) {
     return (
       <Box sx={{ maxWidth: 480, mx: 'auto', mt: 6, px: 2 }}>
-        <Alert severity="success">
-          I tuoi dati sono stati eliminati. Le prenotazioni già effettuate restano nello storico
-          del locale, come previsto.
-        </Alert>
+        <Alert severity="success">I tuoi dati sono stati eliminati.</Alert>
       </Box>
     );
   }
@@ -169,8 +166,7 @@ export function PublicPrivacyManage() {
             </Typography>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Elimina la tua scheda cliente presso {venueName} (nome, email, telefono, note,
-              consenso marketing). Le prenotazioni già effettuate restano nello storico del
-              locale e non vengono eliminate da questa azione.
+              consenso marketing).
             </Typography>
             {deleteMutation.isError && (
               <Alert severity="error" sx={{ mb: 1 }}>{extractErrorMessage(deleteMutation.error)}</Alert>
@@ -190,7 +186,7 @@ export function PublicPrivacyManage() {
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Eliminare i tuoi dati?"
-        message={`La tua scheda cliente presso ${venueName} verrà eliminata definitivamente. Le prenotazioni già effettuate restano nello storico del locale.`}
+        message={`La tua scheda cliente presso ${venueName} verrà eliminata definitivamente.`}
         confirmLabel="Elimina i miei dati"
         loading={deleteMutation.isPending}
         onCancel={() => setConfirmDeleteOpen(false)}

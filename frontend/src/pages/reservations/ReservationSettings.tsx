@@ -22,6 +22,7 @@ interface VenueReservationSettings {
   reservationHorizonDays: number;
   reservationOverbookingUnlimited: boolean;
   reservationOverbookingExtraSeats: number;
+  reservationMinLeadMinutes: number;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -49,6 +50,8 @@ export function ReservationSettings() {
     reservationHorizonDays: '',
     reservationOverbookingUnlimited: false,
     reservationOverbookingExtraSeats: '',
+    reservationMinLeadHours: '0',
+    reservationMinLeadMinutesPart: '0',
   });
 
   const venueQuery = useQuery({
@@ -65,6 +68,8 @@ export function ReservationSettings() {
         reservationHorizonDays: String(venueQuery.data.reservationHorizonDays),
         reservationOverbookingUnlimited: venueQuery.data.reservationOverbookingUnlimited,
         reservationOverbookingExtraSeats: String(venueQuery.data.reservationOverbookingExtraSeats),
+        reservationMinLeadHours: String(Math.floor(venueQuery.data.reservationMinLeadMinutes / 60)),
+        reservationMinLeadMinutesPart: String(venueQuery.data.reservationMinLeadMinutes % 60),
       });
     }
   }, [venueQuery.data]);
@@ -79,6 +84,8 @@ export function ReservationSettings() {
           reservationHorizonDays: Number(form.reservationHorizonDays),
           reservationOverbookingUnlimited: form.reservationOverbookingUnlimited,
           reservationOverbookingExtraSeats: Number(form.reservationOverbookingExtraSeats),
+          reservationMinLeadMinutes:
+            Number(form.reservationMinLeadHours || 0) * 60 + Number(form.reservationMinLeadMinutesPart || 0),
         })
       ).data,
     onSuccess: () => {
@@ -140,6 +147,31 @@ export function ReservationSettings() {
               sx={{ gridColumn: '1 / -1' }}
             />
           </Box>
+
+          <Typography variant="subtitle2" sx={{ mt: 3 }} gutterBottom>
+            Anticipo minimo
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Tempo minimo richiesto tra adesso e l'orario prenotato, dal widget pubblico (es. per
+            evitare richieste per "tra 5 minuti" impossibili da preparare). 0 ore e 0 minuti = nessun
+            vincolo. Non riguarda l'aggiunta manuale in backoffice.
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ mt: 1, maxWidth: 300 }}>
+            <TextField
+              label="Ore"
+              type="number"
+              inputProps={{ min: 0 }}
+              value={form.reservationMinLeadHours}
+              onChange={(e) => setForm((f) => ({ ...f, reservationMinLeadHours: e.target.value }))}
+            />
+            <TextField
+              label="Minuti"
+              type="number"
+              inputProps={{ min: 0, max: 59 }}
+              value={form.reservationMinLeadMinutesPart}
+              onChange={(e) => setForm((f) => ({ ...f, reservationMinLeadMinutesPart: e.target.value }))}
+            />
+          </Stack>
 
           <Typography variant="subtitle2" sx={{ mt: 3 }} gutterBottom>
             Overbooking

@@ -1,16 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Reservation } from '@prisma/client';
 import { MailService } from '../common/mail/mail.service';
-
-/** Sfugge i campi inseriti dal cliente prima di iniettarli nell'HTML dell'email al locale. */
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from '../common/mail/escape-html';
 
 /**
  * Email al cliente sull'esito della sua richiesta di prenotazione, ed email

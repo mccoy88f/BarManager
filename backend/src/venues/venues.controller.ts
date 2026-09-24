@@ -10,8 +10,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { randomUUID } from 'crypto';
+import sharp from 'sharp';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -123,23 +124,36 @@ export class VenuesController {
     return this.venuesService.setMenuCover(requireVenueId(user), `/uploads/menu/${file.filename}`);
   }
 
-  /** Logo mostrato in alto nelle email di prenotazione inviate ai clienti (distinto dalla copertina del menù). */
+  /**
+   * Logo mostrato in alto nelle email di prenotazione inviate ai clienti
+   * (distinto dalla copertina del menù). Convertito sempre in PNG con
+   * `sharp` a prescindere dal formato caricato (jpeg/png/webp): il webp,
+   * per quanto comodo per la trasparenza sul web, non è supportato in modo
+   * affidabile dai client email (es. Outlook) e la trasparenza risultava
+   * mostrata con uno sfondo nero al posto del trasparente — il PNG, che
+   * gestisce comunque la trasparenza, non ha questo problema. Ridimensionato
+   * in altezza (240px, senza allargare immagini più piccole) perché in
+   * email è mostrato al massimo a 80px: 3x basta per gli schermi retina
+   * senza portarsi dietro il peso del file originale. I loghi caricati
+   * prima di questa modifica restano nel loro formato originale finché non
+   * vengono ri-caricati.
+   */
   @Post('me/logo')
   @Roles(Role.ADMIN)
   @UseInterceptors(
     FileInterceptor('photo', {
-      storage: diskStorage({
-        destination: `${process.env.UPLOADS_DIR || './uploads'}/venues`,
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
       fileFilter: (_req, file, cb) => {
         cb(null, /^image\/(jpe?g|png|webp)$/.test(file.mimetype));
       },
     }),
   )
-  uploadLogo(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: Express.Multer.File) {
-    return this.venuesService.setLogo(requireVenueId(user), `/uploads/venues/${file.filename}`);
+  async uploadLogo(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: Express.Multer.File) {
+    const filename = `${randomUUID()}.png`;
+    const destination = `${process.env.UPLOADS_DIR || './uploads'}/venues/${filename}`;
+    await sharp(file.buffer).resize({ height: 240, withoutEnlargement: true }).png().toFile(destination);
+    return this.venuesService.setLogo(requireVenueId(user), `/uploads/venues/${filename}`);
   }
 
   /** Impostazioni del modulo Prenotazioni (§5.7): soglia conferma automatica, durata slot, orizzonte. */

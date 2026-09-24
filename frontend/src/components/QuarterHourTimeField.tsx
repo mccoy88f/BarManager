@@ -14,6 +14,9 @@ interface QuarterHourTimeFieldProps {
   fullWidth?: boolean;
   size?: 'small' | 'medium';
   helperText?: string;
+  /** Elenco di opzioni ristretto (es. solo gli orari apertura di un giorno specifico); se assente usa tutti i 96 quarti d'ora. */
+  options?: string[];
+  disabled?: boolean;
 }
 
 /**
@@ -23,7 +26,10 @@ interface QuarterHourTimeFieldProps {
  * selezione è vincolata a un elenco fisso di opzioni: si può digitare per
  * filtrare (es. "20" mostra 20:00/20:15/20:30/20:45), ma si può confermare
  * solo un valore della lista. Usato ovunque un orario di prenotazione va
- * scelto, sia nel widget pubblico sia in amministrazione.
+ * scelto, sia nel widget pubblico sia in amministrazione. Il widget pubblico
+ * passa un `options` già filtrato sugli orari di apertura del giorno scelto
+ * (§5.7 di DEVELOPMENT.md): niente orario chiuso è selezionabile, senza per
+ * questo dover mostrare in pagina l'elenco degli orari di apertura.
  */
 export function QuarterHourTimeField({
   label,
@@ -32,14 +38,17 @@ export function QuarterHourTimeField({
   fullWidth,
   size,
   helperText,
+  options,
+  disabled,
 }: QuarterHourTimeFieldProps) {
   return (
     <Autocomplete
-      options={QUARTER_HOUR_OPTIONS}
+      options={options ?? QUARTER_HOUR_OPTIONS}
       value={value || null}
       onChange={(_e, newValue) => onChange(newValue ?? '')}
       fullWidth={fullWidth}
       size={size}
+      disabled={disabled}
       renderInput={(params) => <TextField {...params} label={label} helperText={helperText} />}
     />
   );

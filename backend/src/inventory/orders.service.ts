@@ -7,12 +7,16 @@ import { CreateOrderDto, OrderLineInput } from './dto/create-order.dto';
 import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
 import { MailService } from '../common/mail/mail.service';
 import { PdfService } from '../reports/pdf.service';
+import { venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
+import { escapeHtml } from '../common/mail/escape-html';
 
 const ORDER_INCLUDE = {
   lines: { include: { product: true } },
   supplier: true,
   createdBy: { select: { email: true } },
-  venue: { select: { name: true, email: true, menuAddress: true } },
+  venue: {
+    select: { slug: true, name: true, email: true, menuAddress: true, city: true, vatNumber: true, logoUrl: true },
+  },
 } as const;
 
 type OrderWithDetails = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
@@ -186,14 +190,29 @@ export class OrdersService {
     const bodyLines = onlyOrdered.map(
       (l) => `- ${l.product.name}: ${l.orderedQty} ${l.product.unit}`,
     );
-    const letterhead = [order.venue.name, order.venue.menuAddress].filter(Boolean).join('\n');
+    // Riga aggiuntiva con città e partita IVA (Impostazioni locale), oltre
+    // a nome e indirizzo già presenti: identificano il locale che ordina
+    // per il fornitore, che spesso li usa per la fattura.
+    const letterheadExtra = [order.venue.city, order.venue.vatNumber ? `P.IVA ${order.venue.vatNumber}` : null]
+      .filter(Boolean)
+      .join(' — ');
+    const letterheadLines = [order.venue.name, order.venue.menuAddress, letterheadExtra].filter(
+      (line): line is string => !!line,
+    );
+    const letterhead = letterheadLines.join('\n');
     const emailResult = await this.mail.send({
       to: order.supplier.email,
       cc,
       subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
       text: `${letterhead}\n\nBuongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
+      html: `<div>${letterheadLines.map((line) => `<p style="margin:0;">${escapeHtml(line)}</p>`).join('')}</div>
+        <p>Buongiorno,</p>
+        <p>si richiede l'invio dei seguenti prodotti:</p>
+        <ul>${onlyOrdered.map((l) => `<li>${escapeHtml(l.product.name)}: ${l.orderedQty} ${escapeHtml(l.product.unit)}</li>`).join('')}</ul>
+        <p>Grazie.</p>`,
       venueName: order.venue.name,
       replyTo: order.venue.email,
+      logoUrl: venueLogoAbsoluteUrl(order.venue),
     });
 
     const updated = await this.prisma.order.update({

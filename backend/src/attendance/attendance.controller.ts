@@ -191,10 +191,11 @@ export class AttendanceController {
   async exportXlsx(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
+    @Query('employeeId') employeeId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
+    const records = await this.attendanceService.listRecords(requireVenueId(user), { employeeId, from, to });
     const summaries = buildAttendanceSummary(records);
 
     const rows: Record<string, unknown>[] = [];
@@ -269,10 +270,11 @@ export class AttendanceController {
   async exportPdf(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
+    @Query('employeeId') employeeId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const records = await this.attendanceService.listRecords(requireVenueId(user), { from, to });
+    const records = await this.attendanceService.listRecords(requireVenueId(user), { employeeId, from, to });
     const summaries = buildAttendanceSummary(records);
 
     const buffer = await this.pdf.buildDocument((doc) => {

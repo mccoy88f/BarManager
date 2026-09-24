@@ -183,7 +183,7 @@ export function AttendanceRecords() {
 
   const download = async (format: 'xlsx' | 'pdf') => {
     const response = await api.get(`/attendance/export/${format}`, {
-      params: { from, to },
+      params: { employeeId: employeeId || undefined, from, to },
       responseType: 'blob',
     });
     const url = URL.createObjectURL(response.data);

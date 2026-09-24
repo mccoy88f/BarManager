@@ -93,12 +93,15 @@ export class VenuesService {
         menuInstagramUrl: true,
         menuFacebookUrl: true,
         menuWebsiteUrl: true,
+        city: true,
+        vatNumber: true,
         reservationsEnabled: true,
         reservationAutoConfirmMaxSeats: true,
         reservationSlotDurationMinutes: true,
         reservationHorizonDays: true,
         reservationOverbookingUnlimited: true,
         reservationOverbookingExtraSeats: true,
+        reservationMinLeadMinutes: true,
       },
     });
     if (!venue) return venue;

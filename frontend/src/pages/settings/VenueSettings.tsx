@@ -67,6 +67,8 @@ interface VenueHours {
   menuInstagramUrl?: string;
   menuFacebookUrl?: string;
   menuWebsiteUrl?: string;
+  city?: string;
+  vatNumber?: string;
 }
 
 /** Lunedì(1)...domenica(0), nell'ordine in cui mostrarli in UI: Date#getDay() usa invece 0=domenica. */
@@ -105,6 +107,8 @@ export function VenueSettings() {
     menuInstagramUrl: '',
     menuFacebookUrl: '',
     menuWebsiteUrl: '',
+    city: '',
+    vatNumber: '',
   });
 
   const venueQuery = useQuery({
@@ -123,6 +127,8 @@ export function VenueSettings() {
         menuInstagramUrl: venueQuery.data.menuInstagramUrl ?? '',
         menuFacebookUrl: venueQuery.data.menuFacebookUrl ?? '',
         menuWebsiteUrl: venueQuery.data.menuWebsiteUrl ?? '',
+        city: venueQuery.data.city ?? '',
+        vatNumber: venueQuery.data.vatNumber ?? '',
       });
     }
   }, [venueQuery.data]);
@@ -436,6 +442,18 @@ export function VenueSettings() {
               value={menuSettings.menuAddress}
               onChange={(e) => setMenuSettings((s) => ({ ...s, menuAddress: e.target.value }))}
               sx={{ gridColumn: '1 / -1' }}
+            />
+            <TextField
+              label="Città"
+              helperText="Usata nell'intestazione delle email di ordine ai fornitori."
+              value={menuSettings.city}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, city: e.target.value }))}
+            />
+            <TextField
+              label="Partita IVA"
+              helperText="Come sopra, per l'intestazione delle email di ordine ai fornitori."
+              value={menuSettings.vatNumber}
+              onChange={(e) => setMenuSettings((s) => ({ ...s, vatNumber: e.target.value }))}
             />
             <TextField
               label="Telefono"

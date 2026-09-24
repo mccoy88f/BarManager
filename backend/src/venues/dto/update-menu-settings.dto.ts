@@ -27,6 +27,18 @@ export class UpdateMenuSettingsDto {
   @IsString()
   menuPhone?: string | null;
 
+  /** Non specifico al menù pubblico: usato anche nell'intestazione delle email di ordine ai fornitori (§11). */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  city?: string | null;
+
+  /** Partita IVA del locale: come sopra, usata nell'intestazione delle email di ordine ai fornitori. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsString()
+  vatNumber?: string | null;
+
   @IsOptional()
   @Transform(emptyToNull)
   @IsUrl()

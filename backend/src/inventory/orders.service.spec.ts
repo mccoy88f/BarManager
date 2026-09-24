@@ -260,6 +260,55 @@ describe('OrdersService.sendOrders', () => {
       expect.objectContaining({ text: expect.stringContaining('Bar Test') }),
     );
   });
+
+  it('include sempre anche un corpo HTML (necessario perché MailService inserisca il logo)', async () => {
+    prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({ html: expect.stringContaining('Bar Test') }),
+    );
+  });
+
+  it('passa l\'URL assoluto del logo del locale, se impostato', async () => {
+    const order = draftOrder('order-1', 'Fornitore A');
+    order.venue = { ...order.venue, slug: 'bar-test', logoUrl: '/uploads/venues/logo.png' } as typeof order.venue;
+    prisma.order.findUnique.mockResolvedValue(order);
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({ logoUrl: expect.stringContaining('/uploads/venues/logo.png') }),
+    );
+  });
+
+  it('non passa alcun logoUrl se il locale non ne ha impostato uno', async () => {
+    prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(mail.send).toHaveBeenCalledWith(expect.objectContaining({ logoUrl: null }));
+  });
+
+  it('include città e partita IVA del locale nell\'intestazione, se impostate', async () => {
+    const order = draftOrder('order-1', 'Fornitore A');
+    order.venue = { ...order.venue, city: 'Roma', vatNumber: '01234567890' } as typeof order.venue;
+    prisma.order.findUnique.mockResolvedValue(order);
+    prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
+
+    await service.sendOrder(adminUser, 'order-1');
+
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('Roma — P.IVA 01234567890'),
+        html: expect.stringContaining('Roma — P.IVA 01234567890'),
+      }),
+    );
+  });
 });
 
 describe('OrdersService.updateLineQty', () => {
