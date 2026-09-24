@@ -63,12 +63,25 @@ export class AuthService {
       expiresIn: process.env.JWT_REFRESH_TTL || '7d',
     });
 
-    const venueName = user.venueId
-      ? (await this.prisma.venue.findUnique({ where: { id: user.venueId }, select: { name: true } }))
-          ?.name ?? null
+    // Nome e colore accento del locale nella risposta di login (non nel JWT
+    // stesso): serve subito al frontend per la barra in alto e il tema senza
+    // una chiamata aggiuntiva, ma va anche bene se resta quello del momento
+    // del login finché non si rientra — l'Admin/Manager lo vede comunque
+    // aggiornato in tempo reale altrove (query "venue-me" già esistente).
+    const venue = user.venueId
+      ? await this.prisma.venue.findUnique({
+          where: { id: user.venueId },
+          select: { name: true, themeAccentColor: true },
+        })
       : null;
 
-    return { accessToken, refreshToken, user: payload, venueName };
+    return {
+      accessToken,
+      refreshToken,
+      user: payload,
+      venueName: venue?.name ?? null,
+      themeAccentColor: venue?.themeAccentColor ?? null,
+    };
   }
 
   async refresh(refreshToken: string) {

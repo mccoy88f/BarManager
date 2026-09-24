@@ -4,6 +4,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 
 interface OrderLineRow {
   id: string;
@@ -11,7 +12,7 @@ interface OrderLineRow {
   product: { name: string; unit: string; costPerUnit?: number };
 }
 
-interface OrderRow {
+export interface OrderRow {
   id: string;
   status: 'DRAFT' | 'SENT' | 'CONFIRMED' | 'CLOSED';
   createdAt: string;
@@ -44,18 +45,18 @@ export function EmailStatusIndicator({
   );
 }
 
-const statusLabels: Record<OrderRow['status'], string> = {
+export const statusLabels: Record<OrderRow['status'], string> = {
   DRAFT: 'Bozza',
   SENT: 'Inviato',
   CONFIRMED: 'Confermato',
   CLOSED: 'Chiuso',
 };
 
-const statusColor: Record<OrderRow['status'], 'default' | 'warning' | 'success'> = {
-  DRAFT: 'default',
-  SENT: 'warning',
-  CONFIRMED: 'success',
-  CLOSED: 'default',
+export const statusColor: Record<OrderRow['status'], 'default' | 'warning' | 'success'> = {
+  DRAFT: NEUTRAL_CHIP_COLOR,
+  SENT: PENDING_CHIP_COLOR,
+  CONFIRMED: SUCCESS_CHIP_COLOR,
+  CLOSED: NEUTRAL_CHIP_COLOR,
 };
 
 function orderTotal(order: OrderRow): number {

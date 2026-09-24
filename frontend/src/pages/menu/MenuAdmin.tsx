@@ -213,7 +213,7 @@ function SortableCategorySection({
                 <IconButton size="small" title="Modifica" onClick={onEdit}>
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" title="Elimina" onClick={onDeleteRequest}>
+                <IconButton size="small" color="error" title="Elimina" onClick={onDeleteRequest}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </>
@@ -699,7 +699,7 @@ export function MenuAdmin() {
                                     <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>
                                       <EditIcon fontSize="small" />
                                     </IconButton>
-                                    <IconButton size="small" title="Elimina" onClick={() => setItemToDelete(item)}>
+                                    <IconButton size="small" color="error" title="Elimina" onClick={() => setItemToDelete(item)}>
                                       <DeleteIcon fontSize="small" />
                                     </IconButton>
                                   </>

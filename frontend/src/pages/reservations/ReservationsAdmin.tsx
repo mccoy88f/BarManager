@@ -32,6 +32,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
+import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 /** "Chiuse" unisce Rifiutate e Annullate nella stessa scheda, senza divisioni (§10). */
@@ -94,10 +95,10 @@ const tabLabels: Record<QueueFilter, string> = {
 };
 
 const statusColors: Record<ReservationStatus, 'warning' | 'success' | 'error' | 'default'> = {
-  PENDING: 'warning',
-  CONFIRMED: 'success',
-  REJECTED: 'error',
-  CANCELLED: 'default',
+  PENDING: PENDING_CHIP_COLOR,
+  CONFIRMED: SUCCESS_CHIP_COLOR,
+  REJECTED: ERROR_CHIP_COLOR,
+  CANCELLED: NEUTRAL_CHIP_COLOR,
 };
 
 function formatWhen(iso: string): string {

@@ -308,7 +308,7 @@ export function CustomersAdmin() {
                   <IconButton size="small" title="Modifica" onClick={() => openEdit(customer)}>
                     <EditIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" title="Elimina" onClick={() => setCustomerToDelete(customer)}>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setCustomerToDelete(customer)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </TableCell>

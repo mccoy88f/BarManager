@@ -281,7 +281,7 @@ export function Catalog() {
                   <EditIcon fontSize="small" />
                 </IconButton>
                 {product.active ? (
-                  <IconButton size="small" title="Elimina" onClick={() => setProductToDelete(product)}>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setProductToDelete(product)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 ) : (

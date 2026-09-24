@@ -21,7 +21,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
-import { EmailStatusIndicator } from './OrderHistory';
+import { EmailStatusIndicator, statusLabels, statusColor, OrderRow as OrderHistoryRow } from './OrderHistory';
 
 interface OrderLineRow {
   id: string;
@@ -29,31 +29,10 @@ interface OrderLineRow {
   product: { name: string; unit: string; costPerUnit?: number };
 }
 
-interface OrderRow {
-  id: string;
-  status: 'DRAFT' | 'SENT' | 'CONFIRMED' | 'CLOSED';
-  createdAt: string;
-  sentAt?: string;
-  emailSent?: boolean | null;
-  emailError?: string | null;
-  supplier: { name: string };
+interface OrderRow extends OrderHistoryRow {
   createdBy: { email: string };
   lines: OrderLineRow[];
 }
-
-const statusLabels: Record<OrderRow['status'], string> = {
-  DRAFT: 'Bozza',
-  SENT: 'Inviato',
-  CONFIRMED: 'Confermato',
-  CLOSED: 'Chiuso',
-};
-
-const statusColor: Record<OrderRow['status'], 'default' | 'warning' | 'success'> = {
-  DRAFT: 'default',
-  SENT: 'warning',
-  CONFIRMED: 'success',
-  CLOSED: 'default',
-};
 
 function orderTotal(order: OrderRow): number {
   return order.lines.reduce((sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty, 0);

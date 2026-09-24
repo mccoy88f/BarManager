@@ -261,10 +261,12 @@ export function Employees() {
                     toggleActiveMutation.mutate({ id: employee.id, active: e.target.checked })
                   }
                 />
-                <IconButton title="Modifica" onClick={() => openEdit(employee)}>
+                <IconButton size="small" title="Modifica" onClick={() => openEdit(employee)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
                 <IconButton
+                  size="small"
+                  color="error"
                   title="Elimina"
                   onClick={() => {
                     setDeleteError(null);

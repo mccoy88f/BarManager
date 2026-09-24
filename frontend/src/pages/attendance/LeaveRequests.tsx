@@ -25,6 +25,7 @@ import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR } from '../../config/statusChip';
 
 interface LeaveRequestRow {
   id: string;
@@ -76,10 +77,16 @@ const typeLabels: Record<string, string> = {
   SICKNESS: 'Malattia',
 };
 
-const statusColor: Record<string, 'default' | 'success' | 'error'> = {
-  PENDING: 'default',
-  APPROVED: 'success',
-  REJECTED: 'error',
+const statusLabels: Record<string, string> = {
+  PENDING: 'In attesa',
+  APPROVED: 'Approvata',
+  REJECTED: 'Rifiutata',
+};
+
+const statusColor: Record<string, 'warning' | 'success' | 'error'> = {
+  PENDING: PENDING_CHIP_COLOR,
+  APPROVED: SUCCESS_CHIP_COLOR,
+  REJECTED: ERROR_CHIP_COLOR,
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -187,7 +194,7 @@ function SelfServiceLeaveRequests() {
                 <OverlapChip show={r.hasOverlap} />
               </Box>
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <Chip label={r.status} color={statusColor[r.status]} size="small" />
+                <Chip label={statusLabels[r.status]} color={statusColor[r.status]} size="small" />
                 {r.status !== 'REJECTED' && (
                   <IconButton
                     size="small"
@@ -523,7 +530,7 @@ function AdminLeaveRequests() {
                 </Stack>
               ) : (
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Chip label={r.status} color={statusColor[r.status]} size="small" />
+                  <Chip label={statusLabels[r.status]} color={statusColor[r.status]} size="small" />
                   {r.status === 'APPROVED' && (
                     <IconButton
                       size="small"

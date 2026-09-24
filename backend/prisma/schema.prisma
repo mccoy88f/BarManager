@@ -76,6 +76,12 @@ model Venue {
   // marchio/logo vero e proprio più adatto a un'intestazione email.
   logoUrl String?
 
+  // Colore di accento scelto dall'admin in Impostazioni (esadecimale, es.
+  // "#1E5F74"): diventa il colore primario del tema (barra in alto, pulsanti,
+  // icone della navigazione laterale) e dello stesso "theme-color" della PWA.
+  // null = non ancora personalizzato, si usa il colore di default del tema.
+  themeAccentColor String?
+
   // Integrazione Loyverse: quando attiva, categorie/voci/prezzi/immagini del
   // menù arrivano da Loyverse (fonte unica per il catalogo) e in BarManager
   // si gestisce solo la visibilità/disponibilità online — niente aggiunte o

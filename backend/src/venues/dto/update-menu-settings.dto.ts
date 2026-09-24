@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsEmail, IsHexColor, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
 import { IsIanaTimezone } from '../../common/timezone/is-iana-timezone.decorator';
 
 /** Una stringa vuota significa "svuota il campo": diventa null (non deve fallire IsUrl). */
@@ -59,4 +59,10 @@ export class UpdateMenuSettingsDto {
   @IsOptional()
   @IsIanaTimezone()
   timezone?: string;
+
+  /** Colore di accento del tema (barra in alto, pulsanti, icone della navigazione, "theme-color" della PWA). Stringa vuota = torna al colore di default. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsHexColor()
+  themeAccentColor?: string | null;
 }

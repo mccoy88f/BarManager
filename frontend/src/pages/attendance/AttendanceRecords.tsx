@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { PENDING_CHIP_COLOR, ERROR_CHIP_COLOR } from '../../config/statusChip';
 
 interface AttendanceRecordRow {
   id: string;
@@ -53,8 +54,8 @@ const sourceLabels: Record<string, string> = {
 
 const approvalStatusChip: Record<string, { label: string; color: 'warning' | 'error' } | null> = {
   CONFIRMED: null,
-  PENDING: { label: 'In attesa', color: 'warning' },
-  REJECTED: { label: 'Rifiutata', color: 'error' },
+  PENDING: { label: 'In attesa', color: PENDING_CHIP_COLOR },
+  REJECTED: { label: 'Rifiutata', color: ERROR_CHIP_COLOR },
 };
 
 function firstDayOfMonth() {
@@ -344,7 +345,7 @@ export function AttendanceRecords() {
                 <IconButton size="small" title="Correggi" onClick={() => openEdit(record)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" title="Elimina" onClick={() => setToDelete(record)}>
+                <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(record)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Stack>

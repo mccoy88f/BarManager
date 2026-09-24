@@ -21,6 +21,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 
 type CommunicationType = 'COMMUNICATION' | 'MARKETING';
 type RecipientStatus = 'QUEUED' | 'SENT' | 'FAILED';
@@ -59,6 +60,12 @@ const RECIPIENT_STATUS_LABELS: Record<RecipientStatus, string> = {
   QUEUED: 'In coda',
   SENT: 'Inviata',
   FAILED: 'Fallita',
+};
+
+const RECIPIENT_STATUS_COLOR: Record<RecipientStatus, 'default' | 'success' | 'error'> = {
+  QUEUED: NEUTRAL_CHIP_COLOR,
+  SENT: SUCCESS_CHIP_COLOR,
+  FAILED: ERROR_CHIP_COLOR,
 };
 
 function formatDateTime(value: string): string {
@@ -160,7 +167,7 @@ export function CommunicationsHistory() {
                 <Chip
                   size="small"
                   label={RECIPIENT_STATUS_LABELS[r.status]}
-                  color={r.status === 'SENT' ? 'success' : r.status === 'FAILED' ? 'error' : 'default'}
+                  color={RECIPIENT_STATUS_COLOR[r.status]}
                 />
               </ListItem>
             ))}

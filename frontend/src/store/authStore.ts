@@ -20,9 +20,19 @@ interface AuthState {
   refreshToken: string | null;
   user: AuthUser | null;
   venueName: string | null;
-  setSession: (accessToken: string, refreshToken: string, user: AuthUser, venueName?: string | null) => void;
+  /** Colore accento del locale (v. Impostazioni > Tema): null = non ancora personalizzato. */
+  themeAccentColor: string | null;
+  setSession: (
+    accessToken: string,
+    refreshToken: string,
+    user: AuthUser,
+    venueName?: string | null,
+    themeAccentColor?: string | null,
+  ) => void;
   setAccessToken: (accessToken: string) => void;
   updateUserEmail: (email: string) => void;
+  /** Aggiorna il colore accento cache col valore live letto da /venues/me (v. AppShell), per chi non ha fatto login di recente. */
+  setThemeAccentColor: (themeAccentColor: string | null) => void;
   logout: () => void;
 }
 
@@ -33,12 +43,15 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       user: null,
       venueName: null,
-      setSession: (accessToken, refreshToken, user, venueName = null) =>
-        set({ accessToken, refreshToken, user, venueName }),
+      themeAccentColor: null,
+      setSession: (accessToken, refreshToken, user, venueName = null, themeAccentColor = null) =>
+        set({ accessToken, refreshToken, user, venueName, themeAccentColor }),
       setAccessToken: (accessToken) => set({ accessToken }),
       updateUserEmail: (email) =>
         set((state) => (state.user ? { user: { ...state.user, email } } : {})),
-      logout: () => set({ accessToken: null, refreshToken: null, user: null, venueName: null }),
+      setThemeAccentColor: (themeAccentColor) => set({ themeAccentColor }),
+      logout: () =>
+        set({ accessToken: null, refreshToken: null, user: null, venueName: null, themeAccentColor: null }),
     }),
     { name: 'barmanager-auth' },
   ),

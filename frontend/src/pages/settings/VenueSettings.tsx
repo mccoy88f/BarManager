@@ -23,10 +23,13 @@ import {
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SyncIcon from '@mui/icons-material/Sync';
 import ArticleIcon from '@mui/icons-material/Article';
+import CheckIcon from '@mui/icons-material/Check';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { useAuthStore } from '../../store/authStore';
+import { ACCENT_COLOR_PRESETS, DEFAULT_ACCENT_COLOR } from '../../config/accentColors';
 
 interface LoyverseSyncSummary {
   categories: number;
@@ -71,6 +74,7 @@ interface VenueHours {
   city?: string;
   vatNumber?: string;
   timezone?: string;
+  themeAccentColor?: string | null;
 }
 
 /** Lunedì(1)...domenica(0), nell'ordine in cui mostrarli in UI: Date#getDay() usa invece 0=domenica. */
@@ -103,7 +107,9 @@ const timezoneOptions: string[] =
 export function VenueSettings() {
   const queryClient = useQueryClient();
   const showToast = useToast();
+  const setCachedThemeAccentColor = useAuthStore((s) => s.setThemeAccentColor);
   const [openingHours, setOpeningHours] = useState<OpeningHoursDay[]>([]);
+  const [themeAccentColor, setThemeAccentColor] = useState(DEFAULT_ACCENT_COLOR);
 
   const [menuSettings, setMenuSettings] = useState({
     name: '',
@@ -138,6 +144,7 @@ export function VenueSettings() {
         vatNumber: venueQuery.data.vatNumber ?? '',
         timezone: venueQuery.data.timezone ?? 'Europe/Rome',
       });
+      setThemeAccentColor(venueQuery.data.themeAccentColor || DEFAULT_ACCENT_COLOR);
     }
   }, [venueQuery.data]);
 
@@ -164,6 +171,20 @@ export function VenueSettings() {
   });
 
   const menuQueryInvalidate = () => queryClient.invalidateQueries({ queryKey: ['venue-me'] });
+
+  const saveThemeMutation = useMutation({
+    mutationFn: async () =>
+      (await api.patch('/venues/me/menu-settings', { themeAccentColor })).data,
+    onSuccess: () => {
+      menuQueryInvalidate();
+      // Applicato subito anche senza aspettare che la query "venue-me" si
+      // aggiorni (che comunque avviene, invalidata sopra): evita un attimo
+      // col colore vecchio prima del refetch.
+      setCachedThemeAccentColor(themeAccentColor);
+      showToast('Tema aggiornato');
+    },
+    onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
+  });
 
   const uploadCoverMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -355,6 +376,95 @@ export function VenueSettings() {
             sx={{ mt: 2 }}
             disabled={saveOpeningHoursMutation.isPending || openingHours.length === 0}
             onClick={() => saveOpeningHoursMutation.mutate()}
+          >
+            Salva
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Tema
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Colore di accento del tema chiaro: usato nella barra in alto, nei pulsanti e nelle
+            icone della navigazione laterale, qui e nell'app installata come PWA sul telefono.
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, mt: 2 }}>
+            {ACCENT_COLOR_PRESETS.map((preset) => (
+              <Box
+                key={preset.value}
+                component="button"
+                type="button"
+                onClick={() => setThemeAccentColor(preset.value)}
+                title={preset.label}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  bgcolor: preset.value,
+                  border: '2px solid',
+                  borderColor:
+                    themeAccentColor.toLowerCase() === preset.value.toLowerCase() ? 'text.primary' : 'transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 0,
+                }}
+              >
+                {themeAccentColor.toLowerCase() === preset.value.toLowerCase() && (
+                  <CheckIcon sx={{ color: '#fff', fontSize: 20 }} />
+                )}
+              </Box>
+            ))}
+            <Box
+              component="label"
+              title="Colore personalizzato"
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                bgcolor: themeAccentColor,
+                border: '2px solid',
+                borderColor: ACCENT_COLOR_PRESETS.some((p) => p.value.toLowerCase() === themeAccentColor.toLowerCase())
+                  ? 'transparent'
+                  : 'text.primary',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                position: 'relative',
+              }}
+            >
+              {!ACCENT_COLOR_PRESETS.some((p) => p.value.toLowerCase() === themeAccentColor.toLowerCase()) && (
+                <CheckIcon sx={{ color: '#fff', fontSize: 20 }} />
+              )}
+              <input
+                type="color"
+                value={themeAccentColor}
+                onChange={(e) => setThemeAccentColor(e.target.value)}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer',
+                }}
+              />
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              Personalizzato
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            disabled={saveThemeMutation.isPending}
+            onClick={() => saveThemeMutation.mutate()}
           >
             Salva
           </Button>

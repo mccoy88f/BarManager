@@ -1,7 +1,10 @@
-import { createTheme, ThemeOptions } from '@mui/material/styles';
+import { createTheme, Theme, ThemeOptions } from '@mui/material/styles';
+import { DEFAULT_ACCENT_COLOR } from '../config/accentColors';
 
-// Tema Material Design condiviso, con varianti chiara/scura.
-// Colori scelti per essere neutri e adatti a un contesto ristorazione.
+// Tema Material Design condiviso. Solo il colore primario (accento) varia
+// da locale a locale (v. Impostazioni > Tema, createAppTheme sotto): il
+// resto — forma, tipografia, le eccezioni sui singoli componenti — resta
+// identico per tutti.
 const shared: ThemeOptions = {
   shape: { borderRadius: 12 },
   typography: {
@@ -31,25 +34,31 @@ const shared: ThemeOptions = {
         root: { paddingTop: '20px !important' },
       },
     },
+    // Le icone della navigazione laterale seguono il colore di accento del
+    // locale (v. Impostazioni > Tema), non il grigio/nero di default delle
+    // icone MUI: è l'unico punto che le imposta, valido per tutta l'app.
+    MuiListItemIcon: {
+      styleOverrides: {
+        root: ({ theme }: { theme: Theme }) => ({ color: theme.palette.primary.main }),
+      },
+    },
   },
 };
 
-export const lightTheme = createTheme({
-  ...shared,
-  palette: {
-    mode: 'light',
-    primary: { main: '#1E5F74' },
-    secondary: { main: '#F2A541' },
-    background: { default: '#F5F7F8', paper: '#FFFFFF' },
-  },
-});
-
-export const darkTheme = createTheme({
-  ...shared,
-  palette: {
-    mode: 'dark',
-    primary: { main: '#4E9CB5' },
-    secondary: { main: '#F2A541' },
-    background: { default: '#101418', paper: '#181D22' },
-  },
-});
+/**
+ * Crea il tema con il colore di accento del locale (barra in alto,
+ * pulsanti, icone della navigazione) — v. Impostazioni > Tema. Nessun
+ * colore personalizzato impostato, o utente non loggato (pagine
+ * pubbliche/login): usa il colore di default.
+ */
+export function createAppTheme(accentColor?: string | null) {
+  return createTheme({
+    ...shared,
+    palette: {
+      mode: 'light',
+      primary: { main: accentColor || DEFAULT_ACCENT_COLOR },
+      secondary: { main: '#F2A541' },
+      background: { default: '#F5F7F8', paper: '#FFFFFF' },
+    },
+  });
+}

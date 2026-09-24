@@ -205,16 +205,17 @@ export function Printers() {
                   }
                 />
                 <IconButton
+                  size="small"
                   title="Test di stampa"
                   disabled={testMutation.isPending}
                   onClick={() => testMutation.mutate(printer)}
                 >
                   <PrintIcon fontSize="small" />
                 </IconButton>
-                <IconButton title="Modifica" onClick={() => openEdit(printer)}>
+                <IconButton size="small" title="Modifica" onClick={() => openEdit(printer)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton title="Elimina" onClick={() => setToDelete(printer)}>
+                <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(printer)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Stack>

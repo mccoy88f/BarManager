@@ -192,21 +192,23 @@ export function TasksAdmin() {
                 </Box>
                 <Stack direction="row" spacing={0.5}>
                   <IconButton
+                    size="small"
                     color="success"
                     title="Segna come completata"
                     onClick={() => completeMutation.mutate(task.id)}
                   >
-                    <CheckCircleIcon />
+                    <CheckCircleIcon fontSize="small" />
                   </IconButton>
-                  <IconButton color="default" title="Modifica" onClick={() => openEdit(task)}>
-                    <EditIcon />
+                  <IconButton size="small" title="Modifica" onClick={() => openEdit(task)}>
+                    <EditIcon fontSize="small" />
                   </IconButton>
                   <IconButton
-                    color="default"
+                    size="small"
+                    color="error"
                     title="Elimina"
                     onClick={() => setTaskToDelete(task)}
                   >
-                    <DeleteIcon />
+                    <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Stack>
               </CardContent>

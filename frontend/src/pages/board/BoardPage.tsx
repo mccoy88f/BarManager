@@ -240,7 +240,7 @@ export function BoardPage() {
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" title="Elimina" onClick={() => setToDelete(msg)}>
+                      <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(msg)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Stack>

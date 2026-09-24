@@ -140,7 +140,7 @@ export function Tables() {
                   <IconButton size="small" title="Modifica" onClick={() => openEdit(table)}>
                     <EditIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" title="Elimina" onClick={() => setTableToDelete(table)}>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setTableToDelete(table)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Stack>

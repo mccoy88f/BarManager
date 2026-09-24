@@ -150,7 +150,7 @@ export function Suppliers() {
                   <IconButton size="small" title="Modifica" onClick={() => openEdit(supplier)}>
                     <EditIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" title="Elimina" onClick={() => setSupplierToDelete(supplier)}>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setSupplierToDelete(supplier)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Stack>

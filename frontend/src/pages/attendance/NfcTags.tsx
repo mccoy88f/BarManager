@@ -135,7 +135,7 @@ export function NfcTags() {
                 <IconButton size="small" title="Modifica" onClick={() => openEdit(tag)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" title="Elimina" onClick={() => setTagToDelete(tag)}>
+                <IconButton size="small" color="error" title="Elimina" onClick={() => setTagToDelete(tag)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Stack>

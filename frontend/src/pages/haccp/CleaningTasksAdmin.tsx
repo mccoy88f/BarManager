@@ -175,7 +175,7 @@ export function CleaningTasksAdmin() {
                 <IconButton size="small" title="Modifica" onClick={() => openEdit(task)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
-                <IconButton size="small" title="Elimina" onClick={() => setTaskToDelete(task)}>
+                <IconButton size="small" color="error" title="Elimina" onClick={() => setTaskToDelete(task)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Stack>

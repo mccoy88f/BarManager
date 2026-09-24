@@ -96,6 +96,7 @@ export class VenuesService {
         city: true,
         vatNumber: true,
         timezone: true,
+        themeAccentColor: true,
         reservationsEnabled: true,
         reservationAutoConfirmMaxSeats: true,
         reservationSlotDurationMinutes: true,

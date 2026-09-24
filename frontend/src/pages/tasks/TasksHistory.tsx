@@ -76,8 +76,8 @@ export function TasksHistory() {
                   />
                 )}
               </Box>
-              <IconButton color="default" title="Elimina" onClick={() => setTaskToDelete(task)}>
-                <DeleteIcon />
+              <IconButton size="small" color="error" title="Elimina" onClick={() => setTaskToDelete(task)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </CardContent>
           </Card>

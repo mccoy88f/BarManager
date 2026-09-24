@@ -57,7 +57,7 @@ function QrTokenCard({
           <IconButton size="small" title="Modifica nome" onClick={onEdit}>
             <EditIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" title="Elimina" onClick={onDelete}>
+          <IconButton size="small" color="error" title="Elimina" onClick={onDelete}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Stack>
