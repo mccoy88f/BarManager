@@ -26,20 +26,41 @@ export class MailService {
     cc: string[];
     subject: string;
     text: string;
-    from?: string | null;
+    venueName: string;
+    replyTo?: string | null;
   }): Promise<{ sent: boolean; error?: string }> {
     try {
-      await this.transporter.sendMail({
-        from: params.from || process.env.SMTP_FROM || 'ordini@barmanager.local',
+      const info = await this.transporter.sendMail({
+        from: this.technicalFrom(params.venueName),
         to: params.to,
         cc: params.cc.length ? params.cc : undefined,
+        replyTo: params.replyTo || undefined,
         subject: params.subject,
         text: params.text,
       });
+      // Un log anche sul successo: senza, un invio "accettato" dal server
+      // SMTP ma mai consegnato (es. mittente non autorizzato dal provider)
+      // è indistinguibile, guardando i soli log, da un invio mai tentato.
+      this.logger.log(`Email ordine "${params.subject}" inviata a ${params.to} (messageId: ${info.messageId})`);
       return { sent: true };
     } catch (err) {
-      this.logger.error(`Invio email ordine fallito: ${(err as Error).message}`);
+      this.logger.error(`Invio email ordine a ${params.to} fallito: ${(err as Error).message}`);
       return { sent: false, error: (err as Error).message };
     }
+  }
+
+  /**
+   * Mittente sempre fisso e autenticato (mai l'email del locale): stesso
+   * principio di reservations-mail.service.ts — molti provider SMTP
+   * rifiutano o scartano silenziosamente un messaggio il cui From non
+   * corrisponde all'account autenticato (`SMTP_USER`). L'email del
+   * locale, se impostata, va invece in Reply-To: il fornitore che
+   * risponde raggiunge comunque il locale, ma l'invio non rischia più di
+   * essere bloccato o droppato.
+   */
+  private technicalFrom(venueName: string): string {
+    const configured = process.env.SMTP_FROM || process.env.SMTP_USER || 'ordini@barmanager.local';
+    const address = configured.match(/<(.+)>/)?.[1] ?? configured;
+    return `${venueName} <${address}>`;
   }
 }

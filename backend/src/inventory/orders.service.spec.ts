@@ -228,7 +228,7 @@ describe('OrdersService.sendOrders', () => {
     );
   });
 
-  it('usa l\'email del locale come mittente, se impostata', async () => {
+  it('usa l\'email del locale come Reply-To, se impostata (mai come mittente)', async () => {
     const order = draftOrder('order-1', 'Fornitore A');
     order.venue = { name: 'Bar Test', email: 'info@bartest.it', menuAddress: null };
     prisma.order.findUnique.mockResolvedValue(order);
@@ -237,17 +237,17 @@ describe('OrdersService.sendOrders', () => {
     await service.sendOrder(adminUser, 'order-1');
 
     expect(mail.sendOrderEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ from: 'Bar Test <info@bartest.it>' }),
+      expect.objectContaining({ venueName: 'Bar Test', replyTo: 'info@bartest.it' }),
     );
   });
 
-  it('lascia decidere a MailService il mittente di riserva se il locale non ha un\'email propria', async () => {
+  it('non passa nessun Reply-To se il locale non ha un\'email propria', async () => {
     prisma.order.findUnique.mockResolvedValue(draftOrder('order-1', 'Fornitore A'));
     prisma.order.update.mockResolvedValue({ supplier: { name: 'Fornitore A' } });
 
     await service.sendOrder(adminUser, 'order-1');
 
-    expect(mail.sendOrderEmail).toHaveBeenCalledWith(expect.objectContaining({ from: undefined }));
+    expect(mail.sendOrderEmail).toHaveBeenCalledWith(expect.objectContaining({ replyTo: null }));
   });
 
   it('include nome e indirizzo del locale in cima al testo della mail', async () => {

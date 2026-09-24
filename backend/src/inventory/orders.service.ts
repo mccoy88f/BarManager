@@ -192,7 +192,8 @@ export class OrdersService {
       cc,
       subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
       text: `${letterhead}\n\nBuongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
-      from: order.venue.email ? `${order.venue.name} <${order.venue.email}>` : undefined,
+      venueName: order.venue.name,
+      replyTo: order.venue.email,
     });
 
     const updated = await this.prisma.order.update({
