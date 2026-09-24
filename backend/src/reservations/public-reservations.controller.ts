@@ -42,6 +42,14 @@ export class PublicReservationsController {
         reservationsEnabled: true,
         reservationHorizonDays: true,
         openingHours: true,
+        // Per l'intestazione in calce al widget, stessa completezza del
+        // footer del menù pubblico (§5.4): indirizzo/città/telefono/social.
+        menuAddress: true,
+        city: true,
+        menuPhone: true,
+        menuInstagramUrl: true,
+        menuFacebookUrl: true,
+        menuWebsiteUrl: true,
       },
     });
     if (!venue || !venue.reservationsEnabled) {

@@ -52,6 +52,7 @@ interface PublicMenuResponse {
     name: string;
     coverUrl?: string;
     address?: string;
+    city?: string;
     phone?: string;
     instagramUrl?: string;
     facebookUrl?: string;
@@ -217,7 +218,7 @@ export function PublicMenu() {
 
   const { venue } = menuQuery.data;
   const hasContacts =
-    venue.address || venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
+    venue.address || venue.city || venue.phone || venue.instagramUrl || venue.facebookUrl || venue.websiteUrl;
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
@@ -354,9 +355,9 @@ export function PublicMenu() {
             <Typography variant="subtitle2" fontWeight={700}>
               {venue.name}
             </Typography>
-            {venue.address && (
+            {(venue.address || venue.city) && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {venue.address}
+                {[venue.address, venue.city].filter(Boolean).join(' — ')}
               </Typography>
             )}
             <Stack direction="row" spacing={1} justifyContent="center">

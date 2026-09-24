@@ -286,6 +286,7 @@ export class MenuService {
         name: venue.name,
         coverUrl: venue.menuCoverUrl,
         address: venue.menuAddress,
+        city: venue.city,
         phone: venue.menuPhone,
         instagramUrl: venue.menuInstagramUrl,
         facebookUrl: venue.menuFacebookUrl,

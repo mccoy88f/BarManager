@@ -354,6 +354,7 @@ export function NewOrder() {
         <TextField
           select
           label="Fornitore"
+          InputLabelProps={{ shrink: true }}
           value={supplierId}
           onChange={(e) => {
             setSupplierId(e.target.value);
@@ -371,6 +372,7 @@ export function NewOrder() {
         <TextField
           select
           label="Categoria"
+          InputLabelProps={{ shrink: true }}
           value={categoryId}
           onChange={(e) => {
             setCategoryId(e.target.value);

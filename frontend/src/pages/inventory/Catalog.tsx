@@ -361,6 +361,7 @@ export function Catalog() {
           <TextField
             select
             label="Categoria"
+            InputLabelProps={{ shrink: true }}
             value={productForm.categoryId}
             onChange={(e) => setProductForm((f) => ({ ...f, categoryId: e.target.value }))}
           >
@@ -373,6 +374,7 @@ export function Catalog() {
           <TextField
             select
             label="Fornitore"
+            InputLabelProps={{ shrink: true }}
             value={productForm.supplierId}
             onChange={(e) => setProductForm((f) => ({ ...f, supplierId: e.target.value }))}
           >

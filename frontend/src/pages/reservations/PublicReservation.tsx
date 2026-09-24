@@ -8,11 +8,16 @@ import {
   CardContent,
   CircularProgress,
   FormControlLabel,
+  IconButton,
   Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
+import PhoneIcon from '@mui/icons-material/Phone';
+import InstagramIcon from '@mui/icons-material/Instagram';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 
@@ -30,6 +35,12 @@ interface ReservationInfo {
   name: string;
   reservationHorizonDays: number;
   openingHours: OpeningHoursDay[];
+  menuAddress?: string;
+  city?: string;
+  menuPhone?: string;
+  menuInstagramUrl?: string;
+  menuFacebookUrl?: string;
+  menuWebsiteUrl?: string;
 }
 
 function toMinutes(hhmm: string): number {
@@ -164,7 +175,19 @@ export function PublicReservation() {
     );
   }
 
-  const { name, reservationHorizonDays, openingHours } = infoQuery.data;
+  const {
+    name,
+    reservationHorizonDays,
+    openingHours,
+    menuAddress,
+    city,
+    menuPhone,
+    menuInstagramUrl,
+    menuFacebookUrl,
+    menuWebsiteUrl,
+  } = infoQuery.data;
+  const hasContacts =
+    menuAddress || city || menuPhone || menuInstagramUrl || menuFacebookUrl || menuWebsiteUrl;
   const today = new Date().toISOString().slice(0, 10);
   const maxDate = new Date(Date.now() + reservationHorizonDays * 24 * 60 * 60 * 1000)
     .toISOString()
@@ -337,6 +360,41 @@ export function PublicReservation() {
           </Button>
         </CardContent>
       </Card>
+
+      {hasContacts && (
+        <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="subtitle2" fontWeight={700}>
+            {name}
+          </Typography>
+          {(menuAddress || city) && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {[menuAddress, city].filter(Boolean).join(' — ')}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={1} justifyContent="center">
+            {menuPhone && (
+              <IconButton component="a" href={`tel:${menuPhone}`} title="Chiama">
+                <PhoneIcon />
+              </IconButton>
+            )}
+            {menuInstagramUrl && (
+              <IconButton component="a" href={menuInstagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram">
+                <InstagramIcon />
+              </IconButton>
+            )}
+            {menuFacebookUrl && (
+              <IconButton component="a" href={menuFacebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook">
+                <FacebookIcon />
+              </IconButton>
+            )}
+            {menuWebsiteUrl && (
+              <IconButton component="a" href={menuWebsiteUrl} target="_blank" rel="noopener noreferrer" title="Sito web">
+                <LanguageIcon />
+              </IconButton>
+            )}
+          </Stack>
+        </Box>
+      )}
     </Box>
   );
 }

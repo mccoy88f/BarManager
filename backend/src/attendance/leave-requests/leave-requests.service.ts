@@ -7,6 +7,9 @@ import {
 import { LeaveStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { MailService } from '../../common/mail/mail.service';
+import { venueLogoAbsoluteUrl } from '../../common/venue-url/venue-url';
+import { escapeHtml } from '../../common/mail/escape-html';
 import {
   AuthenticatedUser,
   requireVenueId,
@@ -14,11 +17,18 @@ import {
 import { CreateLeaveRequestDto } from '../dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from '../dto/review-leave-request.dto';
 
+const typeLabels: Record<string, string> = {
+  VACATION: 'Ferie',
+  PERMIT: 'Permesso',
+  SICKNESS: 'Malattia',
+};
+
 @Injectable()
 export class LeaveRequestsService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private mail: MailService,
   ) {}
 
   private async resolveEmployeeId(userId: string): Promise<string> {
@@ -79,7 +89,59 @@ export class LeaveRequestsService {
       })),
     });
 
+    await this.notifyVenueByEmail(requireVenueId(user), employee, request);
+
     return request;
+  }
+
+  /**
+   * Come per le prenotazioni: l'email del locale (Impostazioni locale, non
+   * quella di login del singolo utente) riceve un avviso su ogni nuova
+   * richiesta di ferie/permesso/malattia, così l'amministratore non deve
+   * tenere l'app aperta per accorgersene. Solo informativa (l'approvazione
+   * resta dall'app): a differenza delle prenotazioni non c'è un token
+   * pubblico da proteggere qui, quindi niente pulsanti Accetta/Rifiuta via
+   * link.
+   */
+  private async notifyVenueByEmail(
+    venueId: string,
+    employee: { firstName: string; lastName: string } | null,
+    request: {
+      type: string;
+      startDate: Date;
+      endDate: Date;
+      note: string | null;
+    },
+  ): Promise<void> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { email: true, name: true, slug: true, logoUrl: true },
+    });
+    if (!venue?.email || !employee) return;
+
+    const when = `${request.startDate.toLocaleDateString('it-IT')} — ${request.endDate.toLocaleDateString('it-IT')}`;
+    const typeLabel = typeLabels[request.type] ?? request.type;
+
+    await this.mail.send({
+      to: venue.email,
+      subject: `Nuova richiesta di ${typeLabel.toLowerCase()} — ${employee.firstName} ${employee.lastName}`,
+      text: [
+        `${employee.firstName} ${employee.lastName} ha inviato una nuova richiesta di ${typeLabel.toLowerCase()}.`,
+        `Periodo: ${when}`,
+        ...(request.note ? [`Note: ${request.note}`] : []),
+        '',
+        'Puoi approvarla o rifiutarla dall\'app, sezione Presenze > Richieste ferie/permessi.',
+      ].join('\n'),
+      html: `<div style="font-family:sans-serif;color:#222;">
+        <h2>Nuova richiesta di ${escapeHtml(typeLabel.toLowerCase())}</h2>
+        <p><strong>${escapeHtml(employee.firstName)} ${escapeHtml(employee.lastName)}</strong></p>
+        <p>Periodo: ${escapeHtml(when)}</p>
+        ${request.note ? `<p>Note: ${escapeHtml(request.note)}</p>` : ''}
+        <p>Puoi approvarla o rifiutarla dall'app, sezione Presenze &gt; Richieste ferie/permessi.</p>
+      </div>`,
+      venueName: venue.name,
+      logoUrl: venueLogoAbsoluteUrl(venue),
+    });
   }
 
   listMine(userId: string) {

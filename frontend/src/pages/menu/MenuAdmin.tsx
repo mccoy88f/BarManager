@@ -768,6 +768,7 @@ export function MenuAdmin() {
           <TextField
             select
             label="Categoria"
+            InputLabelProps={{ shrink: true }}
             value={newItem.categoryId}
             onChange={(e) => setNewItem((v) => ({ ...v, categoryId: e.target.value }))}
           >

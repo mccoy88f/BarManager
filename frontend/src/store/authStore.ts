@@ -22,6 +22,7 @@ interface AuthState {
   venueName: string | null;
   setSession: (accessToken: string, refreshToken: string, user: AuthUser, venueName?: string | null) => void;
   setAccessToken: (accessToken: string) => void;
+  updateUserEmail: (email: string) => void;
   logout: () => void;
 }
 
@@ -35,6 +36,8 @@ export const useAuthStore = create<AuthState>()(
       setSession: (accessToken, refreshToken, user, venueName = null) =>
         set({ accessToken, refreshToken, user, venueName }),
       setAccessToken: (accessToken) => set({ accessToken }),
+      updateUserEmail: (email) =>
+        set((state) => (state.user ? { user: { ...state.user, email } } : {})),
       logout: () => set({ accessToken: null, refreshToken: null, user: null, venueName: null }),
     }),
     { name: 'barmanager-auth' },

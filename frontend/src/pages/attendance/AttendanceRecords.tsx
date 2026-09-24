@@ -271,6 +271,7 @@ export function AttendanceRecords() {
             <TextField
               select
               label="Dipendente"
+              InputLabelProps={{ shrink: true }}
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
             >
@@ -401,6 +402,7 @@ export function AttendanceRecords() {
           <TextField
             select
             label="Dipendente"
+            InputLabelProps={{ shrink: true }}
             value={addForm.employeeId}
             onChange={(e) => setAddForm((f) => ({ ...f, employeeId: e.target.value }))}
           >

@@ -264,6 +264,7 @@ export function TasksAdmin() {
           <TextField
             select
             label="Persona collegata (opzionale)"
+            InputLabelProps={{ shrink: true }}
             value={form.relatedEmployeeId}
             onChange={(e) => setForm((f) => ({ ...f, relatedEmployeeId: e.target.value }))}
           >

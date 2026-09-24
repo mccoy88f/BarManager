@@ -32,7 +32,17 @@ interface LeaveRequestRow {
   startDate: string;
   endDate: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  reviewedAt?: string | null;
   employee?: { firstName: string; lastName: string };
+}
+
+function formatRequestDates(r: LeaveRequestRow): string {
+  const requested = `Richiesta il ${new Date(r.createdAt).toLocaleDateString('it-IT')}`;
+  if (!r.reviewedAt) return requested;
+  const reviewed = new Date(r.reviewedAt).toLocaleDateString('it-IT');
+  const verb = r.status === 'APPROVED' ? 'accettata' : 'rifiutata';
+  return `${requested} — ${verb} il ${reviewed}`;
 }
 
 interface EmployeeOption {
@@ -134,6 +144,9 @@ function SelfServiceLeaveRequests() {
                 <Typography variant="body2" color="text.secondary">
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {formatRequestDates(r)}
                 </Typography>
               </Box>
               <Chip label={r.status} color={statusColor[r.status]} size="small" />
@@ -256,6 +269,9 @@ function ApprovedRequestsManager() {
                 <Typography variant="body2" color="text.secondary">
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {formatRequestDates(r)}
                 </Typography>
               </Box>
               <IconButton
@@ -399,6 +415,9 @@ function AdminLeaveRequests() {
                   {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
                   {new Date(r.endDate).toLocaleDateString('it-IT')}
                 </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {formatRequestDates(r)}
+                </Typography>
               </Box>
               {r.status === 'PENDING' ? (
                 <Stack direction="row" spacing={0.5}>
@@ -452,6 +471,7 @@ function AdminLeaveRequests() {
           <TextField
             select
             label="Dipendente"
+            InputLabelProps={{ shrink: true }}
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
           >

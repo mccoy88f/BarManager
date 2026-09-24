@@ -39,6 +39,7 @@ import { PublicReservationManage } from './pages/reservations/PublicReservationM
 import { PublicReservationSelfManage } from './pages/reservations/PublicReservationSelfManage';
 import { CustomersAdmin } from './pages/customers/CustomersAdmin';
 import { PublicPrivacyManage } from './pages/customers/PublicPrivacyManage';
+import { MyAccount } from './pages/account/MyAccount';
 
 export default function App() {
   return (
@@ -55,6 +56,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/account" element={<MyAccount />} />
           <Route path="/clock/:token" element={<ClockPage />} />
           <Route path="/attendance" element={<AttendanceHome />} />
           <Route path="/attendance/leave-requests" element={<LeaveRequests />} />

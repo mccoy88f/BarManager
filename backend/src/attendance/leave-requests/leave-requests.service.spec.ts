@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { LeaveRequestsService } from './leave-requests.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { MailService } from '../../common/mail/mail.service';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 const admin: AuthenticatedUser = {
@@ -31,7 +32,9 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
     leaveRequest: { create: jest.Mock };
     user: { findMany: jest.Mock };
     notification: { createMany: jest.Mock };
+    venue: { findUnique: jest.Mock };
   };
+  let mail: { send: jest.Mock };
   let service: LeaveRequestsService;
 
   const dto = {
@@ -51,10 +54,13 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
       },
       user: { findMany: jest.fn().mockResolvedValue([]) },
       notification: { createMany: jest.fn() },
+      venue: { findUnique: jest.fn().mockResolvedValue(null) },
     };
+    mail = { send: jest.fn() };
     service = new LeaveRequestsService(
       prisma as unknown as PrismaService,
       { log: jest.fn() } as unknown as AuditService,
+      mail as unknown as MailService,
     );
   });
 
@@ -80,6 +86,38 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
       where: { userId: employeeUser.userId },
     });
     expect(request.employeeId).toBe('own-employee-id');
+  });
+
+  it("invia un'email all'indirizzo del locale (Impostazioni), se configurato", async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-2',
+      venueId: 'venue-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    prisma.venue.findUnique.mockResolvedValue({
+      email: 'locale@venue1.test',
+      name: 'Bar Test',
+      slug: 'bar-test',
+      logoUrl: null,
+    });
+    await service.create(admin, { ...dto, employeeId: 'employee-2' });
+    expect(mail.send).toHaveBeenCalledTimes(1);
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'locale@venue1.test', venueName: 'Bar Test' }),
+    );
+  });
+
+  it("non invia nessuna email se il locale non ha un'email configurata", async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-2',
+      venueId: 'venue-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    prisma.venue.findUnique.mockResolvedValue({ email: null, name: 'Bar Test', slug: 'bar-test', logoUrl: null });
+    await service.create(admin, { ...dto, employeeId: 'employee-2' });
+    expect(mail.send).not.toHaveBeenCalled();
   });
 });
 
@@ -110,6 +148,7 @@ describe('LeaveRequestsService.remove — cancellazione richieste approvate', ()
     service = new LeaveRequestsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
+      { send: jest.fn() } as unknown as MailService,
     );
   });
 

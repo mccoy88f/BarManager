@@ -14,10 +14,15 @@ import {
   Collapse,
   Breadcrumbs,
   Link as MuiLink,
+  Menu,
+  MenuItem,
+  Divider,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
 import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -53,6 +58,7 @@ export function AppShell() {
   const displayVenueName = venueQuery.data?.name ?? venueName;
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(
     navigation.find((item) => location.pathname.startsWith(item.path))?.key ?? null,
   );
@@ -165,18 +171,50 @@ export function AppShell() {
           </Typography>
           {user && (
             <>
-              <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
-                {user.email}
-              </Typography>
               <IconButton
                 color="inherit"
-                onClick={() => {
-                  logout();
-                  navigate('/login');
-                }}
+                onClick={(e) => setUserMenuAnchor(e.currentTarget)}
+                aria-label="Account"
               >
-                <LogoutIcon />
+                <AccountCircleIcon />
               </IconButton>
+              <Menu
+                anchorEl={userMenuAnchor}
+                open={!!userMenuAnchor}
+                onClose={() => setUserMenuAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItem disabled sx={{ opacity: 1 }}>
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {user.email}
+                  </Typography>
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    setUserMenuAnchor(null);
+                    navigate('/account');
+                  }}
+                >
+                  <ListItemIcon>
+                    <PersonIcon fontSize="small" />
+                  </ListItemIcon>
+                  Il mio profilo
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setUserMenuAnchor(null);
+                    logout();
+                    navigate('/login');
+                  }}
+                >
+                  <ListItemIcon>
+                    <LogoutIcon fontSize="small" />
+                  </ListItemIcon>
+                  Esci
+                </MenuItem>
+              </Menu>
             </>
           )}
         </Toolbar>
