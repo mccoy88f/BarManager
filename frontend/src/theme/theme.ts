@@ -15,6 +15,22 @@ const shared: ThemeOptions = {
     MuiCard: {
       styleOverrides: { root: { borderRadius: 16 } },
     },
+    // MUI azzera in automatico il padding-top di DialogContent quando segue
+    // subito un DialogTitle (regola interna ".MuiDialogTitle-root +
+    // .MuiDialogContent-root", più specifica di qualunque sx locale come
+    // "pt: 4" — motivo per cui quel workaround, sparso in ~18 pagine, non
+    // ha mai davvero funzionato). Coi campi che occupano la prima riga
+    // (select, date, ecc.), l'etichetta "shrink" sporge ~9px sopra il
+    // proprio bordo: senza margine sopra viene tagliata dal contenitore,
+    // che è scrollabile (overflow-y: auto). Ripristinato qui, una volta
+    // per tutti i modali, lo stesso padding-top che DialogContent
+    // avrebbe SENZA un DialogTitle prima (20px, il default MUI), con
+    // "!important" per vincere la specificità di quella regola interna.
+    MuiDialogContent: {
+      styleOverrides: {
+        root: { paddingTop: '20px !important' },
+      },
+    },
   },
 };
 

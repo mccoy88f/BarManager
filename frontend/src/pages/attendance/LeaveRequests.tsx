@@ -34,7 +34,26 @@ interface LeaveRequestRow {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
   reviewedAt?: string | null;
+  /** Si sovrappone (anche solo in parte) con un'altra richiesta attiva dello stesso dipendente. */
+  hasOverlap?: boolean;
   employee?: { firstName: string; lastName: string };
+}
+
+interface CreateLeaveRequestResponse extends LeaveRequestRow {
+  overlapWarning?: string | null;
+}
+
+function OverlapChip({ show }: { show?: boolean }) {
+  if (!show) return null;
+  return (
+    <Chip
+      label="Si sovrappone con un'altra richiesta"
+      color="warning"
+      size="small"
+      variant="outlined"
+      sx={{ mt: 0.5 }}
+    />
+  );
 }
 
 function formatRequestDates(r: LeaveRequestRow): string {
@@ -92,6 +111,8 @@ function SelfServiceLeaveRequests() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [note, setNote] = useState('');
+  const [toCancel, setToCancel] = useState<LeaveRequestRow | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['leave-requests-mine'],
@@ -100,15 +121,30 @@ function SelfServiceLeaveRequests() {
 
   const createMutation = useMutation({
     mutationFn: async () =>
-      (await api.post('/leave-requests', { type, startDate, endDate, note })).data,
-    onSuccess: () => {
+      (await api.post<CreateLeaveRequestResponse>('/leave-requests', { type, startDate, endDate, note })).data,
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['leave-requests-mine'] });
-      showToast('Richiesta inviata');
+      if (data.overlapWarning) {
+        showToast({ message: data.overlapWarning, severity: 'warning' });
+      } else {
+        showToast('Richiesta inviata');
+      }
       setNote('');
       setStartDate('');
       setEndDate('');
       setOpen(false);
     },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/leave-requests/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leave-requests-mine'] });
+      setToCancel(null);
+      setCancelError(null);
+      showToast('Richiesta annullata');
+    },
+    onError: (err) => setCancelError(extractErrorMessage(err)),
   });
 
   const openCreate = () => {
@@ -148,8 +184,23 @@ function SelfServiceLeaveRequests() {
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}
                 </Typography>
+                <OverlapChip show={r.hasOverlap} />
               </Box>
-              <Chip label={r.status} color={statusColor[r.status]} size="small" />
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Chip label={r.status} color={statusColor[r.status]} size="small" />
+                {r.status !== 'REJECTED' && (
+                  <IconButton
+                    size="small"
+                    title="Annulla richiesta"
+                    onClick={() => {
+                      setCancelError(null);
+                      setToCancel(r);
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
             </CardContent>
           </Card>
         ))}
@@ -159,6 +210,24 @@ function SelfServiceLeaveRequests() {
           </Typography>
         )}
       </Stack>
+
+      <ConfirmDialog
+        open={!!toCancel}
+        title="Annullare la richiesta?"
+        message={
+          toCancel
+            ? `La richiesta di ${typeLabels[toCancel.type].toLowerCase()} per il periodo ${new Date(toCancel.startDate).toLocaleDateString('it-IT')} — ${new Date(toCancel.endDate).toLocaleDateString('it-IT')} verrà annullata${toCancel.status === 'APPROVED' ? ' (era già approvata)' : ''}. L\'amministratore ne sarà avvisato via email.${
+                cancelError ? `\n\n${cancelError}` : ''
+              }`
+            : ''
+        }
+        loading={cancelMutation.isPending}
+        onCancel={() => {
+          setToCancel(null);
+          setCancelError(null);
+        }}
+        onConfirm={() => toCancel && cancelMutation.mutate(toCancel.id)}
+      />
 
       {isManager && <ApprovedRequestsManager />}
 
@@ -273,6 +342,7 @@ function ApprovedRequestsManager() {
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}
                 </Typography>
+                <OverlapChip show={r.hasOverlap} />
               </Box>
               <IconButton
                 size="small"
@@ -342,10 +412,22 @@ function AdminLeaveRequests() {
 
   const createMutation = useMutation({
     mutationFn: async () =>
-      (await api.post('/leave-requests', { employeeId, type, startDate, endDate, note })).data,
-    onSuccess: () => {
+      (
+        await api.post<CreateLeaveRequestResponse>('/leave-requests', {
+          employeeId,
+          type,
+          startDate,
+          endDate,
+          note,
+        })
+      ).data,
+    onSuccess: (data) => {
       invalidate();
-      showToast('Richiesta creata');
+      if (data.overlapWarning) {
+        showToast({ message: data.overlapWarning, severity: 'warning' });
+      } else {
+        showToast('Richiesta creata');
+      }
       setEmployeeId('');
       setStartDate('');
       setEndDate('');
@@ -418,6 +500,7 @@ function AdminLeaveRequests() {
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}
                 </Typography>
+                <OverlapChip show={r.hasOverlap} />
               </Box>
               {r.status === 'PENDING' ? (
                 <Stack direction="row" spacing={0.5}>

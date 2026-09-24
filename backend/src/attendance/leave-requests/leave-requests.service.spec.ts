@@ -29,7 +29,7 @@ const managerUser: AuthenticatedUser = {
 describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'admin', () => {
   let prisma: {
     employee: { findUnique: jest.Mock; findMany: jest.Mock };
-    leaveRequest: { create: jest.Mock };
+    leaveRequest: { create: jest.Mock; findMany: jest.Mock };
     user: { findMany: jest.Mock };
     notification: { createMany: jest.Mock };
     venue: { findUnique: jest.Mock };
@@ -51,6 +51,7 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
       },
       leaveRequest: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'lr-1', ...data })),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       user: { findMany: jest.fn().mockResolvedValue([]) },
       notification: { createMany: jest.fn() },
@@ -118,6 +119,43 @@ describe('LeaveRequestsService.create — scelta del dipendente da parte dell\'a
     prisma.venue.findUnique.mockResolvedValue({ email: null, name: 'Bar Test', slug: 'bar-test', logoUrl: null });
     await service.create(admin, { ...dto, employeeId: 'employee-2' });
     expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  it('segnala la sovrapposizione con un\'altra richiesta attiva dello stesso dipendente', async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-2',
+      venueId: 'venue-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    // findOverlapping esclude già la richiesta appena creata via `id: { not: excludeId }`
+    // nella query reale: qui simuliamo il risultato con la sola altra richiesta attiva.
+    prisma.leaveRequest.findMany.mockResolvedValue([
+      { id: 'lr-existing', employeeId: 'employee-2', status: 'PENDING' },
+    ]);
+    prisma.user.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+    const result = await service.create(admin, { ...dto, employeeId: 'employee-2' });
+    expect(result.overlapWarning).toContain('si sovrappone');
+    // Anche i responsabili/admin vengono avvisati nel messaggio della notifica in-app.
+    expect(prisma.notification.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ message: expect.stringContaining('sovrappone') }),
+        ]),
+      }),
+    );
+  });
+
+  it('nessun avviso di sovrapposizione se non ci sono altre richieste attive nello stesso periodo', async () => {
+    prisma.employee.findUnique.mockResolvedValue({
+      id: 'employee-2',
+      venueId: 'venue-1',
+      firstName: 'Mario',
+      lastName: 'Rossi',
+    });
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    const result = await service.create(admin, { ...dto, employeeId: 'employee-2' });
+    expect(result.overlapWarning).toBeNull();
   });
 });
 
@@ -199,12 +237,14 @@ describe('LeaveRequestsService.review — email al dipendente su approvazione/ri
   });
 });
 
-describe('LeaveRequestsService.remove — cancellazione richieste approvate', () => {
+describe('LeaveRequestsService.remove — cancellazione richieste approvate (admin/responsabile)', () => {
   let prisma: {
     employee: { findUnique: jest.Mock };
     leaveRequest: { findUnique: jest.Mock; delete: jest.Mock };
+    venue: { findUnique: jest.Mock };
   };
   let audit: { log: jest.Mock };
+  let mail: { send: jest.Mock };
   let service: LeaveRequestsService;
 
   const approvedRequest = {
@@ -221,12 +261,14 @@ describe('LeaveRequestsService.remove — cancellazione richieste approvate', ()
         findUnique: jest.fn().mockResolvedValue(approvedRequest),
         delete: jest.fn().mockResolvedValue(approvedRequest),
       },
+      venue: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     audit = { log: jest.fn() };
+    mail = { send: jest.fn() };
     service = new LeaveRequestsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
-      { send: jest.fn() } as unknown as MailService,
+      mail as unknown as MailService,
     );
   });
 
@@ -243,13 +285,13 @@ describe('LeaveRequestsService.remove — cancellazione richieste approvate', ()
     expect(prisma.leaveRequest.delete).toHaveBeenCalledWith({ where: { id: 'lr-1' } });
   });
 
-  it('un dipendente non responsabile non può eliminare la richiesta', async () => {
+  it('un dipendente non responsabile non può eliminare la richiesta di un altro', async () => {
     prisma.employee.findUnique.mockResolvedValue({ isManager: false });
     await expect(service.remove(employeeUser, 'lr-1')).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.leaveRequest.delete).not.toHaveBeenCalled();
   });
 
-  it('una richiesta non ancora approvata non può essere eliminata', async () => {
+  it("una richiesta di un altro dipendente non ancora approvata non può essere eliminata dall'admin", async () => {
     prisma.leaveRequest.findUnique.mockResolvedValue({ ...approvedRequest, status: 'PENDING' });
     await expect(service.remove(admin, 'lr-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.leaveRequest.delete).not.toHaveBeenCalled();
@@ -261,5 +303,85 @@ describe('LeaveRequestsService.remove — cancellazione richieste approvate', ()
       employee: { id: 'employee-2', venueId: 'venue-2' },
     });
     await expect(service.remove(admin, 'lr-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("admin/responsabile che elimina la richiesta di un altro dipendente non genera l'email di annullamento", async () => {
+    prisma.venue.findUnique.mockResolvedValue({ email: 'locale@venue1.test', name: 'Bar Test', slug: 'bar-test', logoUrl: null });
+    await service.remove(admin, 'lr-1');
+    expect(mail.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("LeaveRequestsService.remove — il dipendente annulla una PROPRIA richiesta", () => {
+  let prisma: {
+    employee: { findUnique: jest.Mock };
+    leaveRequest: { findUnique: jest.Mock; delete: jest.Mock };
+    venue: { findUnique: jest.Mock };
+  };
+  let audit: { log: jest.Mock };
+  let mail: { send: jest.Mock };
+  let service: LeaveRequestsService;
+
+  const ownRequest = (status: 'PENDING' | 'APPROVED' | 'REJECTED') => ({
+    id: 'lr-1',
+    type: 'VACATION',
+    status,
+    startDate: new Date('2026-10-01'),
+    endDate: new Date('2026-10-05'),
+    employeeId: 'employee-1',
+    employee: { id: 'employee-1', venueId: 'venue-1', userId: employeeUser.userId, firstName: 'Mario', lastName: 'Rossi' },
+  });
+
+  beforeEach(() => {
+    prisma = {
+      employee: { findUnique: jest.fn() },
+      leaveRequest: {
+        findUnique: jest.fn().mockResolvedValue(ownRequest('PENDING')),
+        delete: jest.fn().mockImplementation(() => Promise.resolve(ownRequest('PENDING'))),
+      },
+      venue: {
+        findUnique: jest.fn().mockResolvedValue({ email: 'locale@venue1.test', name: 'Bar Test', slug: 'bar-test', logoUrl: null }),
+      },
+    };
+    audit = { log: jest.fn() };
+    mail = { send: jest.fn() };
+    service = new LeaveRequestsService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      mail as unknown as MailService,
+    );
+  });
+
+  it('annulla una propria richiesta ancora PENDING, senza dover essere responsabile', async () => {
+    const result = await service.remove(employeeUser, 'lr-1');
+    expect(result).toEqual({ success: true });
+    expect(prisma.leaveRequest.delete).toHaveBeenCalledWith({ where: { id: 'lr-1' } });
+    // Non deve nemmeno controllare isManager: è la propria richiesta.
+    expect(prisma.employee.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('annulla anche una propria richiesta già APPROVED (i piani possono cambiare)', async () => {
+    prisma.leaveRequest.findUnique.mockResolvedValue(ownRequest('APPROVED'));
+    const result = await service.remove(employeeUser, 'lr-1');
+    expect(result).toEqual({ success: true });
+  });
+
+  it('non può annullare una propria richiesta già REJECTED', async () => {
+    prisma.leaveRequest.findUnique.mockResolvedValue(ownRequest('REJECTED'));
+    await expect(service.remove(employeeUser, 'lr-1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.leaveRequest.delete).not.toHaveBeenCalled();
+  });
+
+  it("invia un'email all'indirizzo del locale quando il dipendente annulla da sé", async () => {
+    await service.remove(employeeUser, 'lr-1');
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'locale@venue1.test', subject: expect.stringContaining('annullata') }),
+    );
+  });
+
+  it("non invia nessuna email se il locale non ha un'email configurata", async () => {
+    prisma.venue.findUnique.mockResolvedValue({ email: null, name: 'Bar Test', slug: 'bar-test', logoUrl: null });
+    await service.remove(employeeUser, 'lr-1');
+    expect(mail.send).not.toHaveBeenCalled();
   });
 });

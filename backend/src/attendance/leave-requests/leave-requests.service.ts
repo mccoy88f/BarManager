@@ -73,6 +73,17 @@ export class LeaveRequestsService {
       },
     });
 
+    const overlapping = await this.findOverlapping(
+      employeeId,
+      request.startDate,
+      request.endDate,
+      request.id,
+    );
+    const overlapWarning =
+      overlapping.length > 0
+        ? `Attenzione: questa richiesta si sovrappone con ${overlapping.length === 1 ? "un'altra richiesta" : `altre ${overlapping.length} richieste`} già presente${overlapping.length === 1 ? '' : 'i'} per lo stesso dipendente.`
+        : null;
+
     // Notifica ai responsabili del reparto / admin
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
     const reviewers = await this.prisma.user.findMany({
@@ -85,13 +96,57 @@ export class LeaveRequestsService {
       data: reviewers.map((r) => ({
         userId: r.id,
         type: 'LEAVE_REQUEST_PENDING',
-        message: `Nuova richiesta di assenza da ${employee?.firstName} ${employee?.lastName}`,
+        message: `Nuova richiesta di assenza da ${employee?.firstName} ${employee?.lastName}${overlapWarning ? ' — attenzione: si sovrappone con un\'altra richiesta dello stesso dipendente' : ''}`,
       })),
     });
 
-    await this.notifyVenueByEmail(requireVenueId(user), employee, request);
+    await this.notifyVenueByEmail(requireVenueId(user), employee, request, overlapWarning);
 
-    return request;
+    return { ...request, overlapWarning };
+  }
+
+  /**
+   * Richieste attive (PENDING/APPROVED, non REJECTED — una rifiutata non è
+   * più un impegno reale) dello stesso dipendente il cui periodo si
+   * sovrappone anche solo in parte a quello indicato. Usata sia per
+   * segnalare l'incongruenza al momento dell'inserimento (sotto) sia per
+   * marcarla nelle liste (vedi `annotateOverlaps`).
+   */
+  private findOverlapping(employeeId: string, startDate: Date, endDate: Date, excludeId?: string) {
+    return this.prisma.leaveRequest.findMany({
+      where: {
+        employeeId,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        status: { in: ['PENDING', 'APPROVED'] },
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+    });
+  }
+
+  /**
+   * Marca ogni richiesta con `hasOverlap: true` se si sovrappone (anche solo
+   * in parte) con un'altra richiesta attiva dello stesso dipendente presente
+   * nella stessa lista — calcolato sui dati già scaricati, senza nuove query,
+   * così il segnale resta visibile anche dopo il momento dell'inserimento
+   * (in coda, nello storico "le mie richieste"), non solo nel messaggio
+   * mostrato subito a chi la crea.
+   */
+  private annotateOverlaps<
+    T extends { id: string; employeeId: string; startDate: Date; endDate: Date; status: LeaveStatus },
+  >(requests: T[]): (T & { hasOverlap: boolean })[] {
+    return requests.map((r) => ({
+      ...r,
+      hasOverlap: requests.some(
+        (other) =>
+          other.id !== r.id &&
+          other.employeeId === r.employeeId &&
+          other.status !== 'REJECTED' &&
+          r.status !== 'REJECTED' &&
+          other.startDate <= r.endDate &&
+          other.endDate >= r.startDate,
+      ),
+    }));
   }
 
   /**
@@ -112,6 +167,7 @@ export class LeaveRequestsService {
       endDate: Date;
       note: string | null;
     },
+    overlapWarning?: string | null,
   ): Promise<void> {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
@@ -129,6 +185,7 @@ export class LeaveRequestsService {
         `${employee.firstName} ${employee.lastName} ha inviato una nuova richiesta di ${typeLabel.toLowerCase()}.`,
         `Periodo: ${when}`,
         ...(request.note ? [`Note: ${request.note}`] : []),
+        ...(overlapWarning ? ['', overlapWarning] : []),
         '',
         'Puoi approvarla o rifiutarla dall\'app, sezione Presenze > Richieste ferie/permessi.',
       ].join('\n'),
@@ -137,6 +194,7 @@ export class LeaveRequestsService {
         <p><strong>${escapeHtml(employee.firstName)} ${escapeHtml(employee.lastName)}</strong></p>
         <p>Periodo: ${escapeHtml(when)}</p>
         ${request.note ? `<p>Note: ${escapeHtml(request.note)}</p>` : ''}
+        ${overlapWarning ? `<p style="color:#c62828;"><strong>${escapeHtml(overlapWarning)}</strong></p>` : ''}
         <p>Puoi approvarla o rifiutarla dall'app, sezione Presenze &gt; Richieste ferie/permessi.</p>
       </div>`,
       venueName: venue.name,
@@ -144,21 +202,22 @@ export class LeaveRequestsService {
     });
   }
 
-  listMine(userId: string) {
-    return this.resolveEmployeeId(userId).then((employeeId) =>
-      this.prisma.leaveRequest.findMany({
-        where: { employeeId },
-        orderBy: { createdAt: 'desc' },
-      }),
-    );
+  async listMine(userId: string) {
+    const employeeId = await this.resolveEmployeeId(userId);
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: { employeeId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return this.annotateOverlaps(requests);
   }
 
-  listForVenue(venueId: string, status?: LeaveStatus) {
-    return this.prisma.leaveRequest.findMany({
+  async listForVenue(venueId: string, status?: LeaveStatus) {
+    const requests = await this.prisma.leaveRequest.findMany({
       where: { employee: { venueId }, status },
       include: { employee: true },
       orderBy: { createdAt: 'desc' },
     });
+    return this.annotateOverlaps(requests);
   }
 
   async review(reviewer: AuthenticatedUser, requestId: string, dto: ReviewLeaveRequestDto) {
@@ -255,10 +314,15 @@ export class LeaveRequestsService {
   }
 
   /**
-   * Una richiesta approvata può sempre essere cancellata dall'admin o da un
-   * responsabile (Employee.isManager), ad es. per correggere un errore o un
-   * cambio di programma. Le richieste non ancora approvate si gestiscono con
-   * review() (approva/rifiuta), non con la cancellazione.
+   * Due casi distinti sotto lo stesso endpoint: (1) il dipendente annulla da
+   * sé una **propria** richiesta — a qualunque stato tranne REJECTED (già
+   * decisa, non c'è nulla da annullare), inclusa una già approvata (i piani
+   * possono cambiare) — e in tal caso l'email del locale ne viene informata
+   * (sotto); (2) admin/responsabile cancellano una richiesta **approvata**
+   * di un altro dipendente, come già prima di questo cambiamento (es. per
+   * correggere un errore). Le richieste non ancora approvate di un altro
+   * dipendente si gestiscono con review() (approva/rifiuta), non con la
+   * cancellazione.
    */
   async remove(user: AuthenticatedUser, requestId: string) {
     const request = await this.prisma.leaveRequest.findUnique({
@@ -268,10 +332,19 @@ export class LeaveRequestsService {
     if (!request || request.employee.venueId !== requireVenueId(user)) {
       throw new NotFoundException('Richiesta non trovata');
     }
-    if (request.status !== 'APPROVED') {
-      throw new BadRequestException('Solo le richieste approvate possono essere eliminate.');
+
+    const isOwnRequest = request.employee.userId === user.userId;
+
+    if (isOwnRequest) {
+      if (request.status === 'REJECTED') {
+        throw new BadRequestException('Una richiesta già rifiutata non può essere annullata.');
+      }
+    } else {
+      if (request.status !== 'APPROVED') {
+        throw new BadRequestException('Solo le richieste approvate possono essere eliminate.');
+      }
+      await this.assertCanManage(user);
     }
-    await this.assertCanManage(user);
 
     await this.prisma.leaveRequest.delete({ where: { id: requestId } });
 
@@ -284,17 +357,61 @@ export class LeaveRequestsService {
       before: request,
     });
 
+    if (isOwnRequest) {
+      await this.notifyVenueOfCancellation(requireVenueId(user), request);
+    }
+
     return { success: true };
+  }
+
+  /**
+   * Simmetrica a `notifyVenueByEmail` (nuova richiesta): quando è il
+   * dipendente stesso ad annullare, l'email del locale (non quella di login
+   * del singolo utente, v. §5.9) ne viene informata, così l'amministratore
+   * non scopre la cancellazione solo aprendo l'app.
+   */
+  private async notifyVenueOfCancellation(
+    venueId: string,
+    request: {
+      type: string;
+      status: string;
+      startDate: Date;
+      endDate: Date;
+      employee: { firstName: string; lastName: string };
+    },
+  ): Promise<void> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { email: true, name: true, slug: true, logoUrl: true },
+    });
+    if (!venue?.email) return;
+
+    const typeLabel = typeLabels[request.type] ?? request.type;
+    const when = `${request.startDate.toLocaleDateString('it-IT')} — ${request.endDate.toLocaleDateString('it-IT')}`;
+    const wasApprovedNote = request.status === 'APPROVED' ? ' (era già approvata)' : '';
+
+    await this.mail.send({
+      to: venue.email,
+      subject: `Richiesta di ${typeLabel.toLowerCase()} annullata — ${request.employee.firstName} ${request.employee.lastName}`,
+      text: `${request.employee.firstName} ${request.employee.lastName} ha annullato la propria richiesta di ${typeLabel.toLowerCase()} per il periodo ${when}${wasApprovedNote}.`,
+      html: `<div style="font-family:sans-serif;color:#222;">
+        <h2>Richiesta annullata dal dipendente</h2>
+        <p><strong>${escapeHtml(request.employee.firstName)} ${escapeHtml(request.employee.lastName)}</strong> ha annullato la propria richiesta di ${escapeHtml(typeLabel.toLowerCase())} per il periodo ${escapeHtml(when)}${escapeHtml(wasApprovedNote)}.</p>
+      </div>`,
+      venueName: venue.name,
+      logoUrl: venueLogoAbsoluteUrl(venue),
+    });
   }
 
   /** Richieste approvate del locale, per chi può eliminarle (admin o responsabile). */
   async listApprovedForManager(user: AuthenticatedUser) {
     await this.assertCanManage(user);
-    return this.prisma.leaveRequest.findMany({
+    const requests = await this.prisma.leaveRequest.findMany({
       where: { employee: { venueId: requireVenueId(user) }, status: 'APPROVED' },
       include: { employee: true },
       orderBy: { startDate: 'desc' },
     });
+    return this.annotateOverlaps(requests);
   }
 
   private async assertCanManage(user: AuthenticatedUser): Promise<void> {
