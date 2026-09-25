@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -32,6 +32,9 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import { api } from '../../api/client';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useCheckoutContactStore } from '../../store/checkoutContactStore';
+import { mountSumUpCard, unmountSumUpCard, type SumUpCardResponse } from '../../payments/sumupCardWidget';
+
+const SUMUP_CARD_ELEMENT_ID = 'sumup-card';
 
 const LocationPicker = lazy(() =>
   import('../../components/LocationPicker').then((m) => ({ default: m.LocationPicker })),
@@ -284,6 +287,79 @@ function AddToCartDialog({
 }
 
 /**
+ * Passo di pagamento con carta (§5.10 di DEVELOPMENT.md): monta il Web
+ * Payment Widget di SumUp per il `checkoutId` già creato lato server
+ * (importo, valuta e descrizione decisi dal backend, mai dal client) e
+ * attende l'esito dal widget stesso prima di procedere — i dati di carta
+ * non passano mai per BarManager. "Annulla" chiude senza completare
+ * l'ordine: il carrello resta intatto, un nuovo tentativo crea un nuovo
+ * checkout.
+ */
+function SumUpCardDialog({
+  checkoutId,
+  total,
+  onSuccess,
+  onCancel,
+}: {
+  checkoutId: string;
+  total: number;
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    mountSumUpCard(SUMUP_CARD_ELEMENT_ID, checkoutId, (resultCode, data: SumUpCardResponse) => {
+      if (!active) return;
+      if (resultCode === 'success') {
+        onSuccess();
+        return;
+      }
+      setError(data?.message || 'Pagamento non riuscito: verifica i dati della carta e riprova.');
+    })
+      .then(() => {
+        if (active) setLoading(false);
+      })
+      .catch(() => {
+        if (active) {
+          setLoading(false);
+          setError('Impossibile caricare il modulo di pagamento. Riprova più tardi o scegli un altro metodo.');
+        }
+      });
+    return () => {
+      active = false;
+      unmountSumUpCard(SUMUP_CARD_ELEMENT_ID);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutId]);
+
+  return (
+    <Dialog open onClose={onCancel} maxWidth="sm" fullWidth>
+      <DialogTitle>Pagamento con carta</DialogTitle>
+      <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
+        <Typography variant="body2" color="text.secondary">
+          Importo da pagare: € {total.toFixed(2)}
+        </Typography>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={24} />
+          </Box>
+        )}
+        {error && <Alert severity="error">{error}</Alert>}
+        <div id={SUMUP_CARD_ELEMENT_ID} />
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 3 }}>
+        <Button onClick={onCancel}>Annulla</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/**
  * Checkout pubblico /ordina (§5.10 di DEVELOPMENT.md), nessun login:
  * pagina "gemella" di /menu ma con carrello, scelta ritiro/consegna e
  * pagamento. In sviluppo locale si può forzare il locale con
@@ -311,6 +387,7 @@ export function PublicOnlineOrder() {
   const [marketingConsent, setMarketingConsent] = useState(true);
   const [privacyPolicyConsent, setPrivacyPolicyConsent] = useState(true);
   const [orderResult, setOrderResult] = useState<{ id: string; manageToken: string } | null>(null);
+  const [sumupCheckout, setSumupCheckout] = useState<{ checkoutId: string; total: number } | null>(null);
 
   const infoQuery = useQuery({
     queryKey: ['public-online-orders-info', venueSlug],
@@ -352,38 +429,41 @@ export function PublicOnlineOrder() {
     },
   });
 
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      const requestedAt = new Date(`${date}T${time}:00`).toISOString();
-      const lines = cart.map((line) => ({
-        menuItemId: line.menuItemId,
-        variantId: line.variantId,
-        quantity: line.quantity,
-        modifierOptionIds: line.modifiers.map((m) => m.id),
-        note: line.note || undefined,
-      }));
+  /** Righe carrello nel formato richiesto dall'API, condivise fra checkout SumUp e creazione ordine finale. */
+  const buildLines = () =>
+    cart.map((line) => ({
+      menuItemId: line.menuItemId,
+      variantId: line.variantId,
+      quantity: line.quantity,
+      modifierOptionIds: line.modifiers.map((m) => m.id),
+      note: line.note || undefined,
+    }));
 
-      let sumupCheckoutId: string | undefined;
-      if (fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE') {
-        const { data: checkout } = await api.post<{ checkoutId: string }>(
+  const requestedAtIso = () => new Date(`${date}T${time}:00`).toISOString();
+
+  /** Crea il checkout SumUp per l'importo del carrello e apre il dialog col widget di pagamento (§5.10). */
+  const createSumupCheckoutMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{ checkoutId: string; total: number }>(
           '/public/online-orders/sumup-checkout',
-          { cart: { lines }, requestedAt, deliveryAddress: address, deliveryLat: lat, deliveryLng: lng },
+          { cart: { lines: buildLines() }, requestedAt: requestedAtIso(), deliveryAddress: address, deliveryLat: lat, deliveryLng: lng },
           { params: venueSlug ? { venueSlug } : undefined },
-        );
-        // NOTA: qui andrebbe montato il widget di pagamento SumUp (SDK
-        // caricato a runtime) e attesa la conferma del cliente prima di
-        // procedere — integrazione da verificare in sandbox SumUp reale
-        // prima del rilascio (v. §5.10 di DEVELOPMENT.md).
-        sumupCheckoutId = checkout.checkoutId;
-      }
+        )
+      ).data,
+    onSuccess: (data) => setSumupCheckout(data),
+  });
 
-      return (
+  /** Crea l'ordine vero e proprio: `sumupCheckoutId` solo dopo che il widget SumUp ha già raccolto ed elaborato il pagamento. */
+  const finalizeOrderMutation = useMutation({
+    mutationFn: async (sumupCheckoutId?: string) =>
+      (
         await api.post<{ id: string; manageToken: string }>(
           '/public/online-orders',
           {
-            lines,
+            lines: buildLines(),
             fulfillment,
-            requestedAt,
+            requestedAt: requestedAtIso(),
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: email.trim(),
@@ -398,8 +478,7 @@ export function PublicOnlineOrder() {
           },
           { params: venueSlug ? { venueSlug } : undefined },
         )
-      ).data;
-    },
+      ).data,
     onSuccess: (data) => {
       contactCache.setContact({
         firstName,
@@ -410,10 +489,20 @@ export function PublicOnlineOrder() {
         deliveryLat: fulfillment === 'DELIVERY' ? lat : undefined,
         deliveryLng: fulfillment === 'DELIVERY' ? lng : undefined,
       });
+      setSumupCheckout(null);
       setOrderResult(data);
       setCart([]);
     },
   });
+
+  /** Punto di ingresso del pulsante "Conferma ordine": per la carta online passa prima dal widget di pagamento, per gli altri casi crea l'ordine direttamente. */
+  const startCheckout = () => {
+    if (fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE') {
+      createSumupCheckoutMutation.mutate();
+    } else {
+      finalizeOrderMutation.mutate(undefined);
+    }
+  };
 
   const info = infoQuery.data;
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + lineTotal(line), 0), [cart]);
@@ -752,18 +841,44 @@ export function PublicOnlineOrder() {
               <Alert severity="warning">Devi autorizzare il trattamento dei dati personali per ordinare.</Alert>
             )}
 
-            {submitMutation.isError && <Alert severity="error">{extractErrorMessage(submitMutation.error)}</Alert>}
+            {finalizeOrderMutation.isError && (
+              <Alert severity="error">{extractErrorMessage(finalizeOrderMutation.error)}</Alert>
+            )}
+            {createSumupCheckoutMutation.isError && (
+              <Alert severity="error">{extractErrorMessage(createSumupCheckoutMutation.error)}</Alert>
+            )}
 
             <Button
               variant="contained"
               size="large"
-              disabled={!canSubmit || submitMutation.isPending}
-              onClick={() => submitMutation.mutate()}
+              disabled={!canSubmit || finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending}
+              onClick={startCheckout}
             >
-              {submitMutation.isPending ? 'Invio in corso…' : `Conferma ordine — € ${total.toFixed(2)}`}
+              {finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending
+                ? 'Invio in corso…'
+                : fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE'
+                  ? `Paga e conferma ordine — € ${total.toFixed(2)}`
+                  : `Conferma ordine — € ${total.toFixed(2)}`}
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {sumupCheckout && (
+        <SumUpCardDialog
+          checkoutId={sumupCheckout.checkoutId}
+          total={sumupCheckout.total}
+          onSuccess={() => {
+            // Chiude subito il dialog di pagamento: il widget ha già dato
+            // esito positivo, da qui in avanti un eventuale errore
+            // riguarda solo la creazione dell'ordine (mostrato dall'Alert
+            // sotto il pulsante principale), non il pagamento in sé.
+            const checkoutId = sumupCheckout.checkoutId;
+            setSumupCheckout(null);
+            finalizeOrderMutation.mutate(checkoutId);
+          }}
+          onCancel={() => setSumupCheckout(null)}
+        />
       )}
 
       {info.menuPhone && (
