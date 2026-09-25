@@ -224,4 +224,14 @@ export class MenuController {
   removeModifierGroup(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.menuService.removeModifierGroup(requireVenueId(user), id);
   }
+
+  /** Disponibile anche con Loyverse attivo (a differenza degli altri endpoint qui sopra): v. setModifierGroupActive. */
+  @Patch('modifier-groups/:id/active')
+  setModifierGroupActive(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('active') active: boolean,
+  ) {
+    return this.menuService.setModifierGroupActive(requireVenueId(user), id, active);
+  }
 }

@@ -699,4 +699,16 @@ export class MenuService {
     await this.prisma.menuModifierGroup.delete({ where: { id: groupId } });
     return { success: true };
   }
+
+  /**
+   * Attiva/disattiva un gruppo per gli ordini online (§5.10): a differenza
+   * di create/update/remove, non richiede assertNotLoyverseManaged — un
+   * gruppo sincronizzato da Loyverse resta aggiornato (nome/opzioni) dal
+   * sync, ma l'admin può comunque decidere di non offrirlo online, come
+   * "visible" per categorie/voci di menù.
+   */
+  async setModifierGroupActive(venueId: string, groupId: string, active: boolean) {
+    await this.assertModifierGroupOwnership(venueId, groupId);
+    return this.prisma.menuModifierGroup.update({ where: { id: groupId }, data: { active } });
+  }
 }

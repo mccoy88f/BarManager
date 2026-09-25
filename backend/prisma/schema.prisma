@@ -861,6 +861,11 @@ model MenuModifierGroup {
   maxSelections Int?
   sortOrder     Int                       @default(0)
 
+  // Se disattivato, il gruppo resta sincronizzato/aggiornato da Loyverse
+  // (nome, opzioni) ma non compare più negli ordini online: mai toccato
+  // dal sync, esattamente come Venue Category/MenuItem.visible.
+  active Boolean @default(true)
+
   // Popolata solo dal sync Loyverse, mai impostata a mano.
   loyverseModifierId String?
 

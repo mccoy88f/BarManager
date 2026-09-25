@@ -78,6 +78,7 @@ export class PublicOnlineOrdersController {
           include: {
             variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } },
             modifierGroups: {
+              where: { modifierGroup: { active: true } },
               include: { modifierGroup: { include: { options: { orderBy: { sortOrder: 'asc' } } } } },
             },
           },

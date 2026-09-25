@@ -418,7 +418,7 @@ describe('OnlineOrdersService', () => {
           name: 'Formaggio extra',
           price: 1.5,
           loyverseModifierOptionId: null,
-          group: { venueId: 'venue-1', items: [{ menuItemId: 'item-1' }] },
+          group: { venueId: 'venue-1', active: true, items: [{ menuItemId: 'item-1' }] },
         },
       ]);
       await service.createPublicOrder('venue-1', baseOrderDto({ lines: cartDto({ modifierOptionIds: ['mod-1'] }).lines }));
@@ -434,7 +434,22 @@ describe('OnlineOrdersService', () => {
           name: 'Formaggio extra',
           price: 1.5,
           loyverseModifierOptionId: null,
-          group: { venueId: 'venue-1', items: [{ menuItemId: 'other-item' }] },
+          group: { venueId: 'venue-1', active: true, items: [{ menuItemId: 'other-item' }] },
+        },
+      ]);
+      await expect(
+        service.createPublicOrder('venue-1', baseOrderDto({ lines: cartDto({ modifierOptionIds: ['mod-1'] }).lines })),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rifiuta un modificatore il cui gruppo è stato disattivato dall\'admin, anche se applicabile a quella voce', async () => {
+      prisma.menuModifierOption.findMany.mockResolvedValue([
+        {
+          id: 'mod-1',
+          name: 'Formaggio extra',
+          price: 1.5,
+          loyverseModifierOptionId: null,
+          group: { venueId: 'venue-1', active: false, items: [{ menuItemId: 'item-1' }] },
         },
       ]);
       await expect(

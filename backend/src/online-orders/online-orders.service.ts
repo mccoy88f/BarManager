@@ -392,6 +392,7 @@ export class OnlineOrdersService {
         if (
           !option ||
           option.group.venueId !== venueId ||
+          !option.group.active ||
           !option.group.items.some((i) => i.menuItemId === line.menuItemId)
         ) {
           throw new BadRequestException('Un modificatore scelto non è valido per questa voce');

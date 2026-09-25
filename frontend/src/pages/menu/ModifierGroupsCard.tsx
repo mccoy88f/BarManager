@@ -12,6 +12,7 @@ import {
   IconButton,
   MenuItem as MuiMenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -34,6 +35,7 @@ interface ModifierGroup {
   selectionType: 'SINGLE' | 'MULTIPLE';
   minSelections: number;
   maxSelections: number | null;
+  active: boolean;
   options: ModifierOption[];
 }
 interface OptionForm {
@@ -106,6 +108,15 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
+      (await api.patch(`/menu/modifier-groups/${id}/active`, { active })).data,
+    onSuccess: (_data, { active }) => {
+      invalidate();
+      showToast(active ? 'Gruppo attivato per gli ordini online' : 'Gruppo disattivato per gli ordini online');
+    },
+  });
+
   const openCreate = () => {
     setEditing(null);
     setName('');
@@ -148,8 +159,8 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
             <Typography variant="h6">Modificatori</Typography>
             <Typography variant="body2" color="text.secondary">
               {locked
-                ? 'Sincronizzati da Loyverse: nome e opzioni non modificabili qui (§5.10).'
-                : 'Gruppi come "Estras", riusabili su più voci di menù (§5.10)'}
+                ? 'Sincronizzati da Loyverse: nome e opzioni non modificabili qui, ma puoi comunque disattivarne uno per gli ordini online (§5.10).'
+                : 'Gruppi come "Estras", riusabili su più voci di menù — l\'interruttore decide se il gruppo è offerto negli ordini online (§5.10)'}
             </Typography>
           </Box>
           {!locked && (
@@ -163,7 +174,15 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
           {groupsQuery.data?.map((group) => (
             <Box
               key={group.id}
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderRadius: 1, bgcolor: 'action.hover' }}
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                p: 1,
+                borderRadius: 1,
+                bgcolor: 'action.hover',
+                opacity: group.active ? 1 : 0.6,
+              }}
             >
               <Box>
                 <Typography variant="body2" fontWeight={600}>
@@ -173,16 +192,24 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
                   {group.options.map((o) => o.name).join(', ')}
                 </Typography>
               </Box>
-              {!locked && (
-                <Box>
-                  <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              )}
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Switch
+                  size="small"
+                  checked={group.active}
+                  title={group.active ? 'Attivo per gli ordini online' : 'Disattivato per gli ordini online'}
+                  onChange={(e) => toggleActiveMutation.mutate({ id: group.id, active: e.target.checked })}
+                />
+                {!locked && (
+                  <>
+                    <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </>
+                )}
+              </Box>
             </Box>
           ))}
           {groupsQuery.data?.length === 0 && (

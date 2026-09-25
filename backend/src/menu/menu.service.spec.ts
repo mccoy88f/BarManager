@@ -594,3 +594,42 @@ describe('MenuService.importXlsx / exportXlsx', () => {
     expect(result.errors[0]).toContain('allergene "Marziano" non valido');
   });
 });
+
+describe('MenuService.setModifierGroupActive (§5.10)', () => {
+  let prisma: {
+    menuModifierGroup: { findUnique: jest.Mock; update: jest.Mock };
+  };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = {
+      menuModifierGroup: { findUnique: jest.fn(), update: jest.fn() },
+    };
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
+  });
+
+  it('disattiva un gruppo, anche se sincronizzato da Loyverse (nessun assertNotLoyverseManaged)', async () => {
+    prisma.menuModifierGroup.findUnique.mockResolvedValue({
+      id: 'group-1',
+      venueId: 'venue-1',
+      loyverseModifierId: 'mod-ext-1',
+    });
+    prisma.menuModifierGroup.update.mockResolvedValue({ id: 'group-1', active: false });
+
+    await service.setModifierGroupActive('venue-1', 'group-1', false);
+
+    expect(prisma.menuModifierGroup.update).toHaveBeenCalledWith({
+      where: { id: 'group-1' },
+      data: { active: false },
+    });
+  });
+
+  it('rifiuta se il gruppo non è di questo locale', async () => {
+    prisma.menuModifierGroup.findUnique.mockResolvedValue({ id: 'group-1', venueId: 'altro-venue' });
+
+    await expect(service.setModifierGroupActive('venue-1', 'group-1', false)).rejects.toThrow(
+      'Gruppo di modificatori non trovato',
+    );
+    expect(prisma.menuModifierGroup.update).not.toHaveBeenCalled();
+  });
+});
