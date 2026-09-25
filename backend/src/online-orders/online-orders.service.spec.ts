@@ -82,7 +82,6 @@ const baseVenue = {
   sumupEnabled: false,
   sumupApiKeyEnc: null as string | null,
   loyverseIntegrationEnabled: false,
-  loyverseSyncOnlineOrders: false,
   loyverseAccessTokenEnc: null as string | null,
   loyverseStoreId: null as string | null,
   loyversePaymentTypeIdCash: null as string | null,
@@ -652,7 +651,6 @@ describe('OnlineOrdersService', () => {
     const loyverseVenue = {
       ...baseVenue,
       loyverseIntegrationEnabled: true,
-      loyverseSyncOnlineOrders: true,
       loyverseAccessTokenEnc: encryptSecret('loyverse-token'),
       loyverseStoreId: 'store-1',
       loyversePaymentTypeIdCash: 'ptype-cash',
@@ -708,8 +706,8 @@ describe('OnlineOrdersService', () => {
       expect((updated as unknown as { loyverseSyncError: string }).loyverseSyncError).toMatch(/Pizza/);
     });
 
-    it('non tenta nulla se loyverseSyncOnlineOrders è disattivato pur avendo l\'integrazione generale attiva', async () => {
-      prisma.venue.findUnique.mockResolvedValue({ ...loyverseVenue, loyverseSyncOnlineOrders: false });
+    it('non tenta nulla se loyverseIntegrationEnabled è disattivato, anche con un token già salvato (nessun interruttore proprio)', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...loyverseVenue, loyverseIntegrationEnabled: false });
       prisma.onlineOrder.findFirst.mockResolvedValue(completedOrderFixture());
       await service.complete(admin, 'venue-1', 'order-1', {});
       expect(loyverseClient.createReceipt).not.toHaveBeenCalled();

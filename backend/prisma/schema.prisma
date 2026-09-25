@@ -189,13 +189,13 @@ model Venue {
   // ["card", "bancomat_pay"]) — non tutti quelli che SumUp offrirebbe.
   sumupEnabledPaymentMethods String[] @default([])
 
-  // Sincronizzazione Loyverse degli ordini online: opt-in separato da
-  // loyverseIntegrationEnabled sopra (un locale può avere Loyverse attivo
-  // per il menù ma non volerlo per gli ordini online). Mappatura dei 3
-  // metodi di pagamento di BarManager sul payment_type_id configurato dal
-  // locale nel proprio Back Office Loyverse (GET /payment-types) — non
-  // correlata a sumupEnabledPaymentMethods sopra, un asse indipendente.
-  loyverseSyncOnlineOrders         Boolean @default(false)
+  // Sincronizzazione Loyverse degli ordini online: nessun interruttore
+  // proprio — segue sempre loyverseIntegrationEnabled sopra (su richiesta
+  // esplicita dell'utente, §5.10: un secondo interruttore era ridondante).
+  // Mappatura dei 3 metodi di pagamento di BarManager sul payment_type_id
+  // configurato dal locale nel proprio Back Office Loyverse (GET
+  // /payment_types) — non correlata a sumupEnabledPaymentMethods sopra,
+  // un asse indipendente.
   loyversePaymentTypeIdCash        String?
   loyversePaymentTypeIdCardOnline  String?
   loyversePaymentTypeIdCardInStore String?
@@ -1325,7 +1325,7 @@ model OnlineOrder {
   // login — stesso pattern di Reservation.manageToken.
   manageToken     String  @unique
 
-  // Esito della sincronizzazione Loyverse (solo se Venue.loyverseSyncOnlineOrders
+  // Esito della sincronizzazione Loyverse (solo se Venue.loyverseIntegrationEnabled
   // è attivo): id ricevuta creata, o errore se la mappatura payment_type_id
   // non è configurata — non blocca mai l'ordine reale, v. §5.10.
   loyverseReceiptId String?

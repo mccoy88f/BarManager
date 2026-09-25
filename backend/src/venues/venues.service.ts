@@ -124,21 +124,27 @@ export class VenuesService {
         deliveryFee: true,
         deliveryFreeAboveAmount: true,
         sumupEnabled: true,
+        sumupApiKeyEnc: true,
         sumupEnabledPaymentMethods: true,
-        loyverseSyncOnlineOrders: true,
+        loyverseIntegrationEnabled: true,
         loyversePaymentTypeIdCash: true,
         loyversePaymentTypeIdCardOnline: true,
         loyversePaymentTypeIdCardInStore: true,
       },
     });
     if (!venue) return venue;
+    // sumupApiKeyEnc va selezionato per sapere se una chiave è già
+    // impostata, ma è una credenziale cifrata: non deve mai lasciare il
+    // backend, nemmeno cifrata — va escluso dallo spread, non solo
+    // "letto" per il booleano sumupHasApiKey qui sotto.
+    const { sumupApiKeyEnc, ...venueWithoutSecrets } = venue;
     return {
-      ...venue,
+      ...venueWithoutSecrets,
       openingHours: resolveOpeningHours(venue.openingHours),
       onlineOrdersOpeningHours: venue.onlineOrdersOpeningHours
         ? resolveOpeningHours(venue.onlineOrdersOpeningHours)
         : null,
-      sumupHasApiKey: !!(venue as { sumupApiKeyEnc?: string | null }).sumupApiKeyEnc,
+      sumupHasApiKey: !!sumupApiKeyEnc,
     };
   }
 

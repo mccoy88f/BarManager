@@ -207,7 +207,7 @@ export const loyverseClient = {
    * universale come in BarManager — l'admin li accoppia a mano.
    */
   async listPaymentTypes(accessToken: string): Promise<LoyversePaymentType[]> {
-    return fetchAllPages<LoyversePaymentType>(accessToken, '/payment-types', 'payment_types');
+    return fetchAllPages<LoyversePaymentType>(accessToken, '/payment_types', 'payment_types');
   },
 
   /** Gruppi di modificatori (es. "Estras") con le rispettive opzioni. */

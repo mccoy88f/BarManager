@@ -62,10 +62,6 @@ export class UpdateOnlineOrdersSettingsDto {
   deliveryFreeAboveAmount?: number | null;
 
   @IsOptional()
-  @IsBoolean()
-  loyverseSyncOnlineOrders?: boolean;
-
-  @IsOptional()
   @IsString()
   loyversePaymentTypeIdCash?: string | null;
 

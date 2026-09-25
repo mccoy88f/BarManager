@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   Checkbox,
+  Chip,
   CircularProgress,
   FormControlLabel,
   MenuItem,
@@ -18,6 +19,7 @@ import SyncIcon from '@mui/icons-material/Sync';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
+import { SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 
 interface OpeningHoursDay {
   dayOfWeek: number;
@@ -48,8 +50,7 @@ interface VenueOnlineOrdersSettings {
   sumupEnabled: boolean;
   sumupHasApiKey: boolean;
   sumupEnabledPaymentMethods: string[];
-  loyverseIntegrationEnabled?: boolean;
-  loyverseSyncOnlineOrders: boolean;
+  loyverseIntegrationEnabled: boolean;
   loyversePaymentTypeIdCash: string | null;
   loyversePaymentTypeIdCardOnline: string | null;
   loyversePaymentTypeIdCardInStore: string | null;
@@ -117,7 +118,6 @@ export function OnlineOrdersSettings() {
   const [sumupApiKey, setSumupApiKey] = useState('');
   const [availableMethods, setAvailableMethods] = useState<SumUpPaymentMethod[] | null>(null);
   const [enabledMethods, setEnabledMethods] = useState<string[]>([]);
-  const [loyverseSync, setLoyverseSync] = useState(false);
   const [loyversePaymentTypes, setLoyversePaymentTypes] = useState<LoyversePaymentType[] | null>(null);
   const [loyverseMapping, setLoyverseMapping] = useState({ cash: '', cardOnline: '', cardInStore: '' });
 
@@ -145,7 +145,6 @@ export function OnlineOrdersSettings() {
     });
     setSumupEnabled(v.sumupEnabled);
     setEnabledMethods(v.sumupEnabledPaymentMethods);
-    setLoyverseSync(v.loyverseSyncOnlineOrders);
     setLoyverseMapping({
       cash: v.loyversePaymentTypeIdCash ?? '',
       cardOnline: v.loyversePaymentTypeIdCardOnline ?? '',
@@ -210,7 +209,10 @@ export function OnlineOrdersSettings() {
 
   const verifyMethodsMutation = useMutation({
     mutationFn: async () => (await api.post<SumUpPaymentMethod[]>('/venues/me/sumup-verify-payment-methods')).data,
-    onSuccess: (methods) => setAvailableMethods(methods),
+    onSuccess: (methods) => {
+      setAvailableMethods(methods);
+      showToast(methods.length ? `${methods.length} metodi disponibili trovati` : 'Nessun metodo disponibile per questo account SumUp');
+    },
   });
 
   const saveMethodsMutation = useMutation({
@@ -220,14 +222,16 @@ export function OnlineOrdersSettings() {
 
   const fetchLoyversePaymentTypesMutation = useMutation({
     mutationFn: async () => (await api.get<LoyversePaymentType[]>('/venues/me/loyverse-payment-types')).data,
-    onSuccess: (types) => setLoyversePaymentTypes(types),
+    onSuccess: (types) => {
+      setLoyversePaymentTypes(types);
+      showToast(types.length ? `${types.length} metodi Loyverse letti` : 'Nessun metodo di pagamento configurato su Loyverse');
+    },
   });
 
   const saveLoyverseMappingMutation = useMutation({
     mutationFn: async () =>
       (
         await api.patch('/venues/me/online-orders-settings', {
-          loyverseSyncOnlineOrders: loyverseSync,
           loyversePaymentTypeIdCash: loyverseMapping.cash || null,
           loyversePaymentTypeIdCardOnline: loyverseMapping.cardOnline || null,
           loyversePaymentTypeIdCardInStore: loyverseMapping.cardInStore || null,
@@ -602,17 +606,19 @@ export function OnlineOrdersSettings() {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Loyverse — sincronizzazione ordini online
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="h6">Loyverse — sincronizzazione ordini online</Typography>
+            <Chip
+              size="small"
+              color={venueQuery.data?.loyverseIntegrationEnabled ? SUCCESS_CHIP_COLOR : NEUTRAL_CHIP_COLOR}
+              label={venueQuery.data?.loyverseIntegrationEnabled ? 'Integrazione Loyverse attiva' : 'Integrazione Loyverse non attiva'}
+            />
+          </Box>
+          <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mt: 1 }}>
+            Alla chiusura effettiva dell'ordine, se l'integrazione Loyverse è attiva (Impostazioni
+            locale), crea automaticamente una ricevuta su Loyverse — nessun interruttore separato
+            qui: segue sempre lo stato dell'integrazione generale.
           </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Alla chiusura effettiva dell'ordine, se attiva, crea una ricevuta su Loyverse. Richiede
-            che l'integrazione Loyverse (Impostazioni locale) sia già configurata.
-          </Typography>
-          <FormControlLabel
-            control={<Switch checked={loyverseSync} onChange={(e) => setLoyverseSync(e.target.checked)} />}
-            label="Sincronizza gli ordini online su Loyverse"
-          />
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
@@ -625,10 +631,16 @@ export function OnlineOrdersSettings() {
             <Button
               variant="outlined"
               startIcon={fetchLoyversePaymentTypesMutation.isPending ? <CircularProgress size={16} /> : <SyncIcon />}
+              disabled={!venueQuery.data?.loyverseIntegrationEnabled || fetchLoyversePaymentTypesMutation.isPending}
               onClick={() => fetchLoyversePaymentTypesMutation.mutate()}
             >
               Leggi metodi Loyverse
             </Button>
+            {!venueQuery.data?.loyverseIntegrationEnabled && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                Attiva prima l'integrazione Loyverse in Impostazioni locale.
+              </Typography>
+            )}
             {fetchLoyversePaymentTypesMutation.isError && (
               <Alert severity="error" sx={{ mt: 2 }}>{extractErrorMessage(fetchLoyversePaymentTypesMutation.error)}</Alert>
             )}

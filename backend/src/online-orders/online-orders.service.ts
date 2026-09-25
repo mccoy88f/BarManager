@@ -63,7 +63,6 @@ const VENUE_SELECT = {
   sumupEnabled: true,
   sumupApiKeyEnc: true,
   loyverseIntegrationEnabled: true,
-  loyverseSyncOnlineOrders: true,
   loyverseAccessTokenEnc: true,
   loyverseStoreId: true,
   loyversePaymentTypeIdCash: true,
@@ -97,7 +96,6 @@ type OnlineOrdersVenueSettings = {
   sumupEnabled: boolean;
   sumupApiKeyEnc: string | null;
   loyverseIntegrationEnabled: boolean;
-  loyverseSyncOnlineOrders: boolean;
   loyverseAccessTokenEnc: string | null;
   loyverseStoreId: string | null;
   loyversePaymentTypeIdCash: string | null;
@@ -706,8 +704,11 @@ export class OnlineOrdersService {
       await this.customers.recordOnlineOrderCompleted(updated.customerId, updated.total);
     }
 
+    // Nessun interruttore proprio (§5.10, su richiesta esplicita
+    // dell'utente): la sincronizzazione segue sempre l'integrazione
+    // Loyverse generale del locale, mai un secondo opt-in ridondante.
     const venue = await this.getVenueSettings(venueId);
-    if (venue.loyverseIntegrationEnabled && venue.loyverseSyncOnlineOrders && venue.loyverseAccessTokenEnc) {
+    if (venue.loyverseIntegrationEnabled && venue.loyverseAccessTokenEnc) {
       return this.syncLoyverseReceipt(venue, updated);
     }
 
