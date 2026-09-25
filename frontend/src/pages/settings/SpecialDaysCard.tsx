@@ -141,9 +141,10 @@ function formatDate(dateIso: string): string {
 
 /**
  * Aperture speciali (§5.10 di DEVELOPMENT.md): sovrascrivono per una
- * singola data l'orario reale del locale e/o le fasce pranzo/cena del
- * menù, indipendentemente l'uno dall'altro (es. "chiuso il 25 dicembre",
- * o "aperto più tardi la Vigilia" senza toccare il menù).
+ * singola data l'orario reale del locale (usato da Prenotazioni e dal
+ * gating ordini online) e/o le fasce pranzo/cena del menù,
+ * indipendentemente l'uno dall'altro (es. "chiuso il 25 dicembre", o
+ * "aperto più tardi la Vigilia" senza toccare il menù).
  */
 export function SpecialDaysCard() {
   const queryClient = useQueryClient();
@@ -217,8 +218,9 @@ export function SpecialDaysCard() {
           <Box>
             <Typography variant="h6">Aperture speciali</Typography>
             <Typography variant="body2" color="text.secondary">
-              Sovrascrivono, solo per una data specifica, l'orario reale e/o le fasce pranzo/cena
-              del menù (es. chiusura o orari diversi per una festività).
+              Sovrascrivono, solo per una data specifica, l'orario reale (Prenotazioni e ordini
+              online) e/o le fasce pranzo/cena del menù (es. chiusura o orari diversi per una
+              festività).
             </Typography>
           </Box>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddDialog}>

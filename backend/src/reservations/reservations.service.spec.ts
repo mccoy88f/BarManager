@@ -72,6 +72,7 @@ describe('ReservationsService', () => {
     };
     user: { findMany: jest.Mock };
     notification: { createMany: jest.Mock };
+    venueSpecialDay: { findUnique: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let mail: {
@@ -99,6 +100,7 @@ describe('ReservationsService', () => {
       },
       user: { findMany: jest.fn().mockResolvedValue([]) },
       notification: { createMany: jest.fn() },
+      venueSpecialDay: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     audit = { log: jest.fn() };
     mail = {
@@ -187,6 +189,27 @@ describe('ReservationsService', () => {
       await expect(service.getAvailability('venue-1', tooFar.toISOString())).rejects.toBeInstanceOf(
         BadRequestException,
       );
+    });
+
+    it('un\'apertura speciale (§5.10) può chiudere un giorno normalmente aperto, anche per le prenotazioni', async () => {
+      const reservedAt = nextDinnerSlot(); // normalmente valido (fascia cena 19-23 di default)
+      prisma.venueSpecialDay.findUnique.mockResolvedValue({
+        realHoursOverride: { closed: true, slot1Start: null, slot1End: null, slot2Start: null, slot2End: null },
+        menuHoursOverride: null,
+      });
+      await expect(service.getAvailability('venue-1', reservedAt.toISOString())).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('un\'apertura speciale (§5.10) può aprire un giorno normalmente chiuso, anche per le prenotazioni', async () => {
+      const badTime = nextDinnerSlot();
+      badTime.setHours(17, 0, 0, 0); // fuori pranzo/cena di default
+      prisma.venueSpecialDay.findUnique.mockResolvedValue({
+        realHoursOverride: { closed: false, slot1Start: '16:00', slot1End: '18:00', slot2Start: null, slot2End: null },
+        menuHoursOverride: null,
+      });
+      await expect(service.getAvailability('venue-1', badTime.toISOString())).resolves.toBeDefined();
     });
   });
 

@@ -4,8 +4,14 @@ import { Reservation, ReservationStatus, Table } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
-import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
+import {
+  applyDayOverride,
+  DayOverride,
+  findOpenSlot,
+  resolveOpeningHours,
+  specialDayKey,
+} from '../common/opening-hours/opening-hours';
+import { dateOnlyInZone, jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
 import { venueLogoAbsoluteUrl, venuePublicUrl } from '../common/venue-url/venue-url';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CustomersService } from '../customers/customers.service';
@@ -118,11 +124,11 @@ export class ReservationsService {
    * calcolo disponibilità (che altrimenti smetterebbero di funzionare per
    * un orario ormai troppo vicino, anche se non si sta creando nulla).
    */
-  private validateRequestedTime(
+  private async validateRequestedTime(
     venue: ReservationVenueSettings,
     reservedAtIso: string,
     enforceMinLead = false,
-  ): Date {
+  ): Promise<Date> {
     const reservedAt = new Date(reservedAtIso);
     if (Number.isNaN(reservedAt.getTime())) {
       throw new BadRequestException('Data/ora non valida');
@@ -152,7 +158,16 @@ export class ReservationsService {
       );
     }
     const schedule = resolveOpeningHours(venue.openingHours);
-    const day = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(reservedAt, venue.timezone))!;
+    const scheduledDay = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(reservedAt, venue.timezone))!;
+    // Un'apertura speciale (§5.10 di DEVELOPMENT.md) per questa data
+    // specifica sovrascrive per intero il giorno altrimenti risolto dallo
+    // schedule settimanale — stessa logica già applicata agli ordini online.
+    const special = await this.prisma.venueSpecialDay.findUnique({
+      where: {
+        venueId_date: { venueId: venue.id, date: specialDayKey(dateOnlyInZone(reservedAt, venue.timezone)) },
+      },
+    });
+    const day = applyDayOverride(scheduledDay, special?.realHoursOverride as DayOverride | null | undefined);
     if (findOpenSlot(day, minutesOfDay) === null) {
       throw new BadRequestException(
         day.closed
@@ -209,7 +224,7 @@ export class ReservationsService {
   /** Posti totali (tavoli attivi) e posti già occupati da prenotazioni sovrapposte. */
   async getAvailability(venueId: string, reservedAtIso: string, excludeReservationId?: string) {
     const venue = await this.getVenueSettings(venueId);
-    const reservedAt = this.validateRequestedTime(venue, reservedAtIso);
+    const reservedAt = await this.validateRequestedTime(venue, reservedAtIso);
     const tables = await this.prisma.table.findMany({ where: { venueId, active: true } });
     const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0);
     const overlapping = await this.findOverlapping(
@@ -364,7 +379,7 @@ export class ReservationsService {
         'Devi autorizzare il trattamento dei dati personali per completare la prenotazione.',
       );
     }
-    const reservedAt = this.validateRequestedTime(venue, dto.reservedAt, true);
+    const reservedAt = await this.validateRequestedTime(venue, dto.reservedAt, true);
 
     const tables = await this.prisma.table.findMany({ where: { venueId, active: true } });
     const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0);
