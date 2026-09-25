@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useDeferredValue, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
@@ -35,6 +35,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import QrCodeIcon from '@mui/icons-material/QrCode';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 import {
   DndContext,
   closestCenter,
@@ -255,6 +257,8 @@ export function MenuAdmin() {
   const [variantForms, setVariantForms] = useState<VariantForm[]>([emptyVariant]);
   const [itemSearch, setItemSearch] = useState('');
   const [openCategory, setOpenCategory] = useState<string | false>(false);
+  const [importErrors, setImportErrors] = useState<string[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ['menu-categories'],
@@ -273,6 +277,43 @@ export function MenuAdmin() {
   const locked = loyverseStatusQuery.data?.enabled === true;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['menu-items'] });
+
+  const exportMutation = useMutation({
+    mutationFn: async () => (await api.get('/menu/items/export/xlsx', { responseType: 'blob' })).data,
+    onSuccess: (blob: Blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'menu.xlsx';
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    onError: () => showToast('Esportazione non riuscita'),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append('file', file);
+      return (await api.post<{ created: number; updated: number; errors: string[] }>(
+        '/menu/items/import/xlsx',
+        body,
+      )).data;
+    },
+    onSuccess: (result) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      setImportErrors(result.errors.length ? result.errors : null);
+      showToast(`Importazione completata: ${result.created} creati, ${result.updated} aggiornati`);
+    },
+    onError: () => showToast('Importazione non riuscita: controlla il formato del file'),
+  });
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) importMutation.mutate(file);
+  };
 
   const saveCategoryMutation = useMutation({
     mutationFn: async () =>
@@ -513,7 +554,32 @@ export function MenuAdmin() {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6">Menù</Typography>
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={() => exportMutation.mutate()}
+                disabled={exportMutation.isPending}
+              >
+                Esporta
+              </Button>
+              {!locked && (
+                <Button
+                  variant="outlined"
+                  startIcon={<FileUploadIcon />}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importMutation.isPending}
+                >
+                  Importa
+                </Button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                hidden
+                onChange={handleImportFileChange}
+              />
               {!locked && (
                 <Button variant="outlined" startIcon={<AddIcon />} onClick={openCategoryDialog}>
                   Aggiungi categoria
@@ -526,6 +592,16 @@ export function MenuAdmin() {
               )}
             </Stack>
           </Box>
+          {importErrors && (
+            <Alert severity="warning" onClose={() => setImportErrors(null)} sx={{ mt: 1 }}>
+              Alcune righe non sono state importate:
+              <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                {importErrors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
           <Typography variant="caption" color="text.secondary">
             Trascina l'intestazione di una categoria per riordinarla come compare nel menù pubblico.
           </Typography>

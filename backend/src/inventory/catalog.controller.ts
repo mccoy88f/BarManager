@@ -1,5 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Role } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -17,6 +34,8 @@ import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+
+const XLSX_MIME_PATTERN = /spreadsheetml|ms-excel/;
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
@@ -103,6 +122,34 @@ export class CatalogController {
   getProductTrends(@CurrentUser() user: AuthenticatedUser, @Query('ids') ids: string) {
     const productIds = (ids ?? '').split(',').filter(Boolean);
     return this.catalog.getProductTrends(requireVenueId(user), productIds);
+  }
+
+  /** Esporta il catalogo prodotti in xlsx: stesso formato accettato da import/xlsx. */
+  @Get('products/export/xlsx')
+  async exportProductsXlsx(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
+    const buffer = await this.catalog.exportXlsx(requireVenueId(user));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="prodotti.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  /** Importa/aggiorna prodotti da xlsx (v. CatalogService.importXlsx per la logica di confronto). */
+  @Post('products/import/xlsx')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (_req, file, cb) => {
+        cb(null, XLSX_MIME_PATTERN.test(file.mimetype) || file.originalname.toLowerCase().endsWith('.xlsx'));
+      },
+    }),
+  )
+  importProductsXlsx(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File xlsx mancante');
+    return this.catalog.importXlsx(requireVenueId(user), file.buffer);
   }
 
   @Patch('products/:id')

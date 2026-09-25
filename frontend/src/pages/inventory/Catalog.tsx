@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -20,6 +20,8 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -49,6 +51,12 @@ interface ProductRow {
   active: boolean;
   category: { name: string };
   supplier: { name: string };
+}
+
+interface ImportResult {
+  created: number;
+  updated: number;
+  errors: string[];
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -86,6 +94,8 @@ export function Catalog() {
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [productError, setProductError] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<ProductRow | null>(null);
+  const [importErrors, setImportErrors] = useState<string[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ['inventory-categories'],
@@ -171,6 +181,41 @@ export function Catalog() {
     },
   });
 
+  const exportMutation = useMutation({
+    mutationFn: async () =>
+      (await api.get('/inventory/products/export/xlsx', { responseType: 'blob' })).data,
+    onSuccess: (blob: Blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'prodotti.xlsx';
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    onError: () => showToast('Esportazione non riuscita'),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append('file', file);
+      return (await api.post<ImportResult>('/inventory/products/import/xlsx', body)).data;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-categories'] });
+      setImportErrors(result.errors.length ? result.errors : null);
+      showToast(`Importazione completata: ${result.created} creati, ${result.updated} aggiornati`);
+    },
+    onError: () => showToast('Importazione non riuscita: controlla il formato del file'),
+  });
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) importMutation.mutate(file);
+  };
+
   const canSubmitProduct =
     productForm.name.trim() !== '' &&
     productForm.unit.trim() !== '' &&
@@ -246,10 +291,45 @@ export function Catalog() {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h6">Prodotti</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openProductDialog}>
-          Aggiungi prodotto
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={() => exportMutation.mutate()}
+            disabled={exportMutation.isPending}
+          >
+            Esporta
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FileUploadIcon />}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importMutation.isPending}
+          >
+            Importa
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx"
+            hidden
+            onChange={handleImportFileChange}
+          />
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openProductDialog}>
+            Aggiungi prodotto
+          </Button>
+        </Box>
       </Box>
+      {importErrors && (
+        <Alert severity="warning" onClose={() => setImportErrors(null)}>
+          Alcune righe non sono state importate:
+          <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+            {importErrors.map((err, i) => (
+              <li key={i}>{err}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
       <Stack spacing={1}>
         {productsQuery.data?.map((product) => (
           <Card key={product.id} variant="outlined">

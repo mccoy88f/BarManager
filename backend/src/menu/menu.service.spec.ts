@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { MenuService } from './menu.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { XlsxService } from '../reports/xlsx.service';
 
 describe('MenuService varianti', () => {
   let prisma: {
@@ -23,7 +24,7 @@ describe('MenuService varianti', () => {
       venue: { findUnique: jest.fn().mockResolvedValue({ loyverseIntegrationEnabled: false }) },
       $transaction: jest.fn((cb) => cb(prisma)),
     };
-    service = new MenuService(prisma as unknown as PrismaService);
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
 
   it('crea una voce con più varianti, assegnando sortOrder in ordine', async () => {
@@ -169,7 +170,7 @@ describe('MenuService categorie', () => {
       menuCategory: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn((ops) => Promise.all(ops)),
     };
-    service = new MenuService(prisma as unknown as PrismaService);
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
 
   it('riordina le categorie assegnando sortOrder secondo l\'elenco ricevuto', async () => {
@@ -212,7 +213,7 @@ describe('MenuService.setFeatured', () => {
 
   beforeEach(() => {
     prisma = { menuItem: { findUnique: jest.fn(), update: jest.fn() } };
-    service = new MenuService(prisma as unknown as PrismaService);
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
 
   it('metta in evidenza una voce, permesso anche con integrazione Loyverse attiva', async () => {
@@ -247,7 +248,7 @@ describe('MenuService.setVisibility', () => {
       menuItem: { findUnique: jest.fn(), update: jest.fn() },
       menuCategory: { update: jest.fn() },
     };
-    service = new MenuService(prisma as unknown as PrismaService);
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
 
   it('abilitando una voce la cui categoria è nascosta, riabilita anche la categoria', async () => {
@@ -329,7 +330,7 @@ describe('MenuService.getPublicMenu', () => {
       venue: { findUnique: jest.fn().mockResolvedValue(baseVenue) },
       menuCategory: { findMany: jest.fn() },
     };
-    service = new MenuService(prisma as unknown as PrismaService);
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
 
   it('include una voce importata da Loyverse dopo che admin l\'ha resa visibile (categoria e voce)', async () => {
@@ -389,5 +390,135 @@ describe('MenuService.getPublicMenu', () => {
     const result = await service.getPublicMenu('venue-1');
 
     expect(result.categories).toEqual([]);
+  });
+});
+
+describe('MenuService.importXlsx / exportXlsx', () => {
+  let prisma: {
+    menuItem: {
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    menuItemVariant: { deleteMany: jest.Mock };
+    menuCategory: { findMany: jest.Mock };
+    venue: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let xlsx: { buildSheet: jest.Mock; readSheet: jest.Mock };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = {
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      menuItemVariant: { deleteMany: jest.fn() },
+      menuCategory: { findMany: jest.fn().mockResolvedValue([{ id: 'cat-1', name: 'Panini', venueId: 'venue-1' }]) },
+      venue: { findUnique: jest.fn().mockResolvedValue({ loyverseIntegrationEnabled: false }) },
+      $transaction: jest.fn((cb) => cb(prisma)),
+    };
+    xlsx = {
+      buildSheet: jest.fn().mockResolvedValue(Buffer.from('fake-xlsx')),
+      readSheet: jest.fn().mockResolvedValue([]),
+    };
+    service = new MenuService(prisma as unknown as PrismaService, xlsx as unknown as XlsxService);
+  });
+
+  it('rifiuta l\'importazione quando Loyverse è attivo', async () => {
+    prisma.venue.findUnique.mockResolvedValue({ loyverseIntegrationEnabled: true });
+
+    await expect(service.importXlsx('venue-1', Buffer.from('x'))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.menuItem.create).not.toHaveBeenCalled();
+  });
+
+  it('esporta una riga per variante, ripetendo le colonne della voce', async () => {
+    prisma.menuItem.findMany.mockResolvedValue([
+      {
+        id: 'item-1',
+        name: 'Panino',
+        description: null,
+        availability: 'ALL_DAY',
+        allergens: ['GLUTEN'],
+        featured: false,
+        visible: true,
+        category: { name: 'Panini' },
+        variants: [
+          { name: 'Piccolo', price: 4, active: true },
+          { name: 'Grande', price: 6, active: true },
+        ],
+      },
+    ]);
+
+    await service.exportXlsx('venue-1');
+
+    const rows = xlsx.buildSheet.mock.calls[0][2];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ name: 'Panino', variantName: 'Piccolo', price: 4, allergens: 'Glutine' });
+    expect(rows[1]).toMatchObject({ name: 'Panino', variantName: 'Grande', price: 6 });
+  });
+
+  it('crea una voce con più varianti raggruppando le righe per categoria+nome', async () => {
+    xlsx.readSheet.mockResolvedValue([
+      { Categoria: 'Panini', Nome: 'Panino', Variante: 'Piccolo', Prezzo: 4 },
+      { Categoria: 'Panini', Nome: 'Panino', Variante: 'Grande', Prezzo: 6 },
+    ]);
+
+    const result = await service.importXlsx('venue-1', Buffer.from('x'));
+
+    expect(result).toEqual({ created: 1, updated: 0, errors: [] });
+    const data = prisma.menuItem.create.mock.calls[0][0].data;
+    expect(data.categoryId).toBe('cat-1');
+    expect(data.variants.create).toEqual([
+      { name: 'Piccolo', price: 4, active: true, sortOrder: 0 },
+      { name: 'Grande', price: 6, active: true, sortOrder: 1 },
+    ]);
+  });
+
+  it('aggiorna una voce esistente (trovata per categoria+nome) sostituendo tutte le varianti', async () => {
+    prisma.menuItem.findFirst.mockResolvedValue({ id: 'item-1' });
+    xlsx.readSheet.mockResolvedValue([
+      { Categoria: 'Panini', Nome: 'Panino', Variante: 'Unica', Prezzo: 5 },
+    ]);
+
+    const result = await service.importXlsx('venue-1', Buffer.from('x'));
+
+    expect(result).toEqual({ created: 0, updated: 1, errors: [] });
+    expect(prisma.menuItemVariant.deleteMany).toHaveBeenCalledWith({ where: { menuItemId: 'item-1' } });
+    expect(prisma.menuItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'item-1' } }),
+    );
+  });
+
+  it('segnala un errore per riga se la categoria non esiste, senza bloccare le altre righe', async () => {
+    xlsx.readSheet.mockResolvedValue([
+      { Categoria: 'Inesistente', Nome: 'Fantasma', Variante: '', Prezzo: 1 },
+      { Categoria: 'Panini', Nome: 'Panino', Variante: 'Unica', Prezzo: 5 },
+    ]);
+
+    const result = await service.importXlsx('venue-1', Buffer.from('x'));
+
+    expect(result.created).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('categoria "Inesistente" non trovata');
+  });
+
+  it('segnala un errore per riga se l\'allergene indicato non è valido', async () => {
+    xlsx.readSheet.mockResolvedValue([
+      { Categoria: 'Panini', Nome: 'Panino', Allergeni: 'Glutine, Marziano', Variante: '', Prezzo: 5 },
+    ]);
+
+    const result = await service.importXlsx('venue-1', Buffer.from('x'));
+
+    expect(result.created).toBe(0);
+    expect(result.errors[0]).toContain('allergene "Marziano" non valido');
   });
 });

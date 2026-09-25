@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,12 +8,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
+import { Response } from 'express';
 import { safeExtension } from '../common/upload/safe-extension';
 import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -31,6 +34,8 @@ import { ReorderMenuCategoriesDto } from './dto/reorder-menu-categories.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { SetUnavailableDto } from './dto/set-unavailable.dto';
+
+const XLSX_MIME_PATTERN = /spreadsheetml|ms-excel/;
 
 // Niente @Roles(ADMIN, MANAGER): l'accesso al modulo Menù è governato da
 // ModuleAccessGuard, concedibile per singolo dipendente dall'Admin.
@@ -88,6 +93,33 @@ export class MenuController {
   @Get('items')
   listItems(@CurrentUser() user: AuthenticatedUser, @Query('categoryId') categoryId?: string) {
     return this.menuService.listItems(requireVenueId(user), categoryId);
+  }
+
+  /** Esporta le voci di menù in xlsx: sempre disponibile, anche con Loyverse attivo. */
+  @Get('items/export/xlsx')
+  async exportItemsXlsx(@CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
+    const buffer = await this.menuService.exportXlsx(requireVenueId(user));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="menu.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  /** Importa/aggiorna voci di menù da xlsx: bloccato con Loyverse attivo (v. MenuService.importXlsx). */
+  @Post('items/import/xlsx')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (_req, file, cb) => {
+        cb(null, XLSX_MIME_PATTERN.test(file.mimetype) || file.originalname.toLowerCase().endsWith('.xlsx'));
+      },
+    }),
+  )
+  importItemsXlsx(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File xlsx mancante');
+    return this.menuService.importXlsx(requireVenueId(user), file.buffer);
   }
 
   @Patch('items/:id')

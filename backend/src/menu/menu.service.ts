@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException, Injectable } from '@nestjs/common';
-import { MenuAvailability } from '@prisma/client';
+import { Allergen, MenuAvailability } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { XlsxService } from '../reports/xlsx.service';
 import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
@@ -8,9 +9,75 @@ import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 
+// Stesse etichette italiane mostrate in MenuAdmin.tsx (availabilityLabels/
+// allergenLabels): usate qui per esportare/importare in xlsx con lo stesso
+// vocabolario visto in pagina, invece dei valori enum grezzi in inglese.
+const AVAILABILITY_LABELS: Record<MenuAvailability, string> = {
+  LUNCH: 'Solo pranzo',
+  DINNER: 'Solo cena',
+  ALL_DAY: 'Tutto il giorno',
+};
+const AVAILABILITY_BY_LABEL = new Map(
+  Object.entries(AVAILABILITY_LABELS).map(([value, label]) => [label.toLowerCase(), value as MenuAvailability]),
+);
+
+const ALLERGEN_LABELS: Record<Allergen, string> = {
+  GLUTEN: 'Glutine',
+  CRUSTACEANS: 'Crostacei',
+  EGGS: 'Uova',
+  FISH: 'Pesce',
+  PEANUTS: 'Arachidi',
+  SOYBEANS: 'Soia',
+  MILK: 'Latte',
+  NUTS: 'Frutta a guscio',
+  CELERY: 'Sedano',
+  MUSTARD: 'Senape',
+  SESAME: 'Sesamo',
+  SULPHITES: 'Solfiti',
+  LUPIN: 'Lupini',
+  MOLLUSCS: 'Molluschi',
+};
+const ALLERGEN_BY_LABEL = new Map(
+  Object.entries(ALLERGEN_LABELS).map(([value, label]) => [label.toLowerCase(), value as Allergen]),
+);
+
+const IMPORT_COLUMNS = {
+  itemId: 'ID voce',
+  category: 'Categoria',
+  name: 'Nome',
+  description: 'Descrizione',
+  availability: 'Disponibilità',
+  allergens: 'Allergeni',
+  featured: 'In evidenza',
+  visible: 'Visibile',
+  variantName: 'Variante',
+  price: 'Prezzo',
+  variantActive: 'Variante attiva',
+} as const;
+
+function cellToString(value: unknown): string {
+  return value == null ? '' : String(value).trim();
+}
+
+function cellToNumber(value: unknown): number | undefined {
+  const str = cellToString(value);
+  if (!str) return undefined;
+  const num = Number(str);
+  return Number.isNaN(num) ? undefined : num;
+}
+
+function cellToBoolean(value: unknown, defaultValue: boolean): boolean {
+  const str = cellToString(value);
+  if (!str) return defaultValue;
+  return str.toUpperCase() === 'SI' || str.toUpperCase() === 'SÌ' || str.toUpperCase() === 'YES';
+}
+
 @Injectable()
 export class MenuService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private xlsx: XlsxService,
+  ) {}
 
   /**
    * Con l'integrazione Loyverse attiva il catalogo (categorie, voci,
@@ -235,6 +302,214 @@ export class MenuService {
       throw new NotFoundException('Voce di menù non trovata');
     }
     return item;
+  }
+
+  // ---- Import/export xlsx ------------------------------------------------
+
+  /**
+   * Esporta le voci di menù in xlsx, stesso formato accettato da
+   * importXlsx: una riga per ogni variante (quasi sempre una sola per
+   * voce), con le colonne della voce (categoria, nome, descrizione, ecc.)
+   * ripetute su ogni riga — permette di rappresentare in un foglio piatto
+   * anche le voci con più varianti (es. "Piccola"/"Grande"). Disponibile
+   * sempre, anche con l'integrazione Loyverse attiva (a differenza
+   * dell'importazione): utile anche solo per avere un elenco leggibile.
+   */
+  async exportXlsx(venueId: string): Promise<Buffer> {
+    const items = await this.prisma.menuItem.findMany({
+      where: { venueId },
+      orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: { category: true, variants: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    const rows = items.flatMap((item) =>
+      item.variants.map((variant) => ({
+        itemId: item.id,
+        category: item.category.name,
+        name: item.name,
+        description: item.description ?? '',
+        availability: AVAILABILITY_LABELS[item.availability],
+        allergens: item.allergens.map((a) => ALLERGEN_LABELS[a]).join(', '),
+        featured: item.featured ? 'SI' : 'NO',
+        visible: item.visible ? 'SI' : 'NO',
+        variantName: variant.name,
+        price: variant.price ?? '',
+        variantActive: variant.active ? 'SI' : 'NO',
+      })),
+    );
+
+    return this.xlsx.buildSheet(
+      'Menù',
+      [
+        { header: IMPORT_COLUMNS.itemId, key: 'itemId', width: 28 },
+        { header: IMPORT_COLUMNS.category, key: 'category', width: 20 },
+        { header: IMPORT_COLUMNS.name, key: 'name', width: 24 },
+        { header: IMPORT_COLUMNS.description, key: 'description', width: 40 },
+        { header: IMPORT_COLUMNS.availability, key: 'availability', width: 16 },
+        { header: IMPORT_COLUMNS.allergens, key: 'allergens', width: 30 },
+        { header: IMPORT_COLUMNS.featured, key: 'featured', width: 12 },
+        { header: IMPORT_COLUMNS.visible, key: 'visible', width: 12 },
+        { header: IMPORT_COLUMNS.variantName, key: 'variantName', width: 18 },
+        { header: IMPORT_COLUMNS.price, key: 'price', width: 12 },
+        { header: IMPORT_COLUMNS.variantActive, key: 'variantActive', width: 14 },
+      ],
+      rows,
+    );
+  }
+
+  /**
+   * Importa/aggiorna voci di menù da xlsx (stesso formato di exportXlsx):
+   * le righe vengono raggruppate per voce (per "ID voce" quando presente,
+   * altrimenti per categoria+nome) e le varianti di ogni gruppo
+   * sostituiscono sempre tutte insieme quelle esistenti, come già fa
+   * updateItem da UI. Mai permessa con l'integrazione Loyverse attiva
+   * (v. assertNotLoyverseManaged): qui il contenuto arriva solo da lì.
+   * La categoria deve già esistere (per nome, case-insensitive): non ne
+   * viene creata una nuova al volo, per evitare duplicati per un typo.
+   */
+  async importXlsx(
+    venueId: string,
+    buffer: Buffer,
+  ): Promise<{ created: number; updated: number; errors: string[] }> {
+    await this.assertNotLoyverseManaged(venueId);
+    const rows = await this.xlsx.readSheet(buffer);
+    const errors: string[] = [];
+
+    const categories = await this.prisma.menuCategory.findMany({ where: { venueId } });
+    const findCategory = (name: string) =>
+      categories.find((c) => c.name.toLowerCase() === name.toLowerCase());
+
+    interface GroupRow {
+      rowNumber: number;
+      raw: Record<string, unknown>;
+    }
+    const groups = new Map<string, GroupRow[]>();
+    const groupOrder: string[] = [];
+    rows.forEach((raw, index) => {
+      const rowNumber = index + 2; // riga 1 = intestazioni
+      const itemId = cellToString(raw[IMPORT_COLUMNS.itemId]);
+      const key = itemId || `${cellToString(raw[IMPORT_COLUMNS.category])}::${cellToString(raw[IMPORT_COLUMNS.name])}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        groupOrder.push(key);
+      }
+      groups.get(key)!.push({ rowNumber, raw });
+    });
+
+    let created = 0;
+    let updated = 0;
+
+    for (const key of groupOrder) {
+      const groupRows = groups.get(key)!;
+      const first = groupRows[0].raw;
+      const rowNumbers = groupRows.map((r) => r.rowNumber).join(', ');
+      try {
+        const name = cellToString(first[IMPORT_COLUMNS.name]);
+        const categoryName = cellToString(first[IMPORT_COLUMNS.category]);
+        if (!name || !categoryName) {
+          errors.push(`Riga ${rowNumbers}: categoria e nome sono obbligatori`);
+          continue;
+        }
+        const category = findCategory(categoryName);
+        if (!category) {
+          errors.push(`Riga ${rowNumbers}: categoria "${categoryName}" non trovata`);
+          continue;
+        }
+
+        const availabilityLabel = cellToString(first[IMPORT_COLUMNS.availability]).toLowerCase();
+        const availability = availabilityLabel
+          ? AVAILABILITY_BY_LABEL.get(availabilityLabel)
+          : MenuAvailability.ALL_DAY;
+        if (!availability) {
+          errors.push(`Riga ${rowNumbers}: disponibilità "${cellToString(first[IMPORT_COLUMNS.availability])}" non valida`);
+          continue;
+        }
+
+        const allergenLabels = cellToString(first[IMPORT_COLUMNS.allergens])
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const allergens: Allergen[] = [];
+        let invalidAllergen: string | null = null;
+        for (const label of allergenLabels) {
+          const allergen = ALLERGEN_BY_LABEL.get(label.toLowerCase());
+          if (!allergen) {
+            invalidAllergen = label;
+            break;
+          }
+          allergens.push(allergen);
+        }
+        if (invalidAllergen) {
+          errors.push(`Riga ${rowNumbers}: allergene "${invalidAllergen}" non valido`);
+          continue;
+        }
+
+        const variants = groupRows.map((r) => ({
+          name: cellToString(r.raw[IMPORT_COLUMNS.variantName]),
+          price: cellToNumber(r.raw[IMPORT_COLUMNS.price]) ?? null,
+          active: cellToBoolean(r.raw[IMPORT_COLUMNS.variantActive], true),
+        }));
+
+        const sharedData = {
+          name,
+          categoryId: category.id,
+          description: cellToString(first[IMPORT_COLUMNS.description]) || null,
+          availability,
+          allergens,
+          featured: cellToBoolean(first[IMPORT_COLUMNS.featured], false),
+          visible: cellToBoolean(first[IMPORT_COLUMNS.visible], true),
+        };
+
+        const itemId = cellToString(first[IMPORT_COLUMNS.itemId]) || undefined;
+        let existing = itemId
+          ? await this.prisma.menuItem.findUnique({ where: { id: itemId } })
+          : null;
+        if (existing && existing.venueId !== venueId) {
+          errors.push(`Riga ${rowNumbers}: ID voce "${itemId}" appartiene a un altro locale`);
+          continue;
+        }
+        if (!existing) {
+          existing = await this.prisma.menuItem.findFirst({
+            where: { venueId, categoryId: category.id, name: { equals: name, mode: 'insensitive' } },
+          });
+        }
+
+        if (existing) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.menuItemVariant.deleteMany({ where: { menuItemId: existing!.id } });
+            await tx.menuItem.update({
+              where: { id: existing!.id },
+              data: {
+                ...sharedData,
+                variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
+              },
+            });
+          });
+          updated++;
+        } else {
+          let sortOrder = 0;
+          const last = await this.prisma.menuItem.findFirst({
+            where: { venueId, categoryId: category.id },
+            orderBy: { sortOrder: 'desc' },
+          });
+          sortOrder = (last?.sortOrder ?? -1) + 1;
+          await this.prisma.menuItem.create({
+            data: {
+              ...(itemId ? { id: itemId } : {}),
+              ...sharedData,
+              venueId,
+              sortOrder,
+              variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
+            },
+          });
+          created++;
+        }
+      } catch (err) {
+        errors.push(`Riga ${rowNumbers}: ${err instanceof Error ? err.message : 'errore sconosciuto'}`);
+      }
+    }
+
+    return { created, updated, errors };
   }
 
   // ---- Menù pubblico (nessun login) --------------------------------------
