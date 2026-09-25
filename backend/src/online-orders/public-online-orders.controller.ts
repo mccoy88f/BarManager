@@ -47,7 +47,6 @@ export class PublicOnlineOrdersController {
         deliveryFee: true,
         deliveryFreeAboveAmount: true,
         sumupEnabled: true,
-        sumupEnabledPaymentMethods: true,
         menuAddress: true,
         city: true,
         menuPhone: true,

@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   CircularProgress,
   FormControlLabel,
@@ -41,16 +40,10 @@ interface VenueOnlineOrdersSettings {
   deliveryFreeAboveAmount: number | null;
   sumupEnabled: boolean;
   sumupHasApiKey: boolean;
-  sumupEnabledPaymentMethods: string[];
   loyverseIntegrationEnabled: boolean;
   loyversePaymentTypeIdCash: string | null;
   loyversePaymentTypeIdCardOnline: string | null;
   loyversePaymentTypeIdCardInStore: string | null;
-}
-
-interface SumUpPaymentMethod {
-  id: string;
-  logo?: string;
 }
 
 interface LoyversePaymentType {
@@ -97,8 +90,6 @@ export function OnlineOrdersSettings() {
   });
   const [sumupEnabled, setSumupEnabled] = useState(false);
   const [sumupApiKey, setSumupApiKey] = useState('');
-  const [availableMethods, setAvailableMethods] = useState<SumUpPaymentMethod[] | null>(null);
-  const [enabledMethods, setEnabledMethods] = useState<string[]>([]);
   const [loyversePaymentTypes, setLoyversePaymentTypes] = useState<LoyversePaymentType[] | null>(null);
   const [loyverseMapping, setLoyverseMapping] = useState({ cash: '', cardOnline: '', cardInStore: '' });
 
@@ -125,7 +116,6 @@ export function OnlineOrdersSettings() {
       onlineOrdersAutoAcceptPerSlotDelivery: String(v.onlineOrdersAutoAcceptPerSlotDelivery),
     });
     setSumupEnabled(v.sumupEnabled);
-    setEnabledMethods(v.sumupEnabledPaymentMethods);
     setLoyverseMapping({
       cash: v.loyversePaymentTypeIdCash ?? '',
       cardOnline: v.loyversePaymentTypeIdCardOnline ?? '',
@@ -188,17 +178,9 @@ export function OnlineOrdersSettings() {
     onSuccess: () => { invalidateVenue(); setSumupApiKey(''); showToast('Credenziali SumUp salvate'); },
   });
 
-  const verifyMethodsMutation = useMutation({
-    mutationFn: async () => (await api.post<SumUpPaymentMethod[]>('/venues/me/sumup-verify-payment-methods')).data,
-    onSuccess: (methods) => {
-      setAvailableMethods(methods);
-      showToast(methods.length ? `${methods.length} metodi disponibili trovati` : 'Nessun metodo disponibile per questo account SumUp');
-    },
-  });
-
-  const saveMethodsMutation = useMutation({
-    mutationFn: async () => (await api.patch('/venues/me/sumup-payment-methods', { methods: enabledMethods })).data,
-    onSuccess: () => { invalidateVenue(); showToast('Metodi di pagamento salvati'); },
+  const verifyApiKeyMutation = useMutation({
+    mutationFn: async () => (await api.post('/venues/me/sumup-verify-key')).data,
+    onSuccess: () => showToast('API key SumUp valida: funziona correttamente'),
   });
 
   const fetchLoyversePaymentTypesMutation = useMutation({
@@ -462,48 +444,16 @@ export function OnlineOrdersSettings() {
           )}
 
           <Box sx={{ mt: 3 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Metodi di pagamento offerti al cliente
-            </Typography>
             <Button
               variant="contained"
-              startIcon={verifyMethodsMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
-              disabled={!venueQuery.data?.sumupHasApiKey || verifyMethodsMutation.isPending}
-              onClick={() => verifyMethodsMutation.mutate()}
+              startIcon={verifyApiKeyMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+              disabled={!venueQuery.data?.sumupHasApiKey || verifyApiKeyMutation.isPending}
+              onClick={() => verifyApiKeyMutation.mutate()}
             >
-              Verifica metodi disponibili
+              Verifica API key
             </Button>
-            {verifyMethodsMutation.isError && (
-              <Alert severity="error" sx={{ mt: 2 }}>{extractErrorMessage(verifyMethodsMutation.error)}</Alert>
-            )}
-            {availableMethods && (
-              <Box sx={{ mt: 2 }}>
-                {availableMethods.map((method) => (
-                  <FormControlLabel
-                    key={method.id}
-                    control={
-                      <Checkbox
-                        checked={enabledMethods.includes(method.id)}
-                        onChange={(e) =>
-                          setEnabledMethods((prev) =>
-                            e.target.checked ? [...prev, method.id] : prev.filter((m) => m !== method.id),
-                          )
-                        }
-                      />
-                    }
-                    label={method.id}
-                  />
-                ))}
-                <Box>
-                  <Button
-                    variant="contained"
-                    disabled={saveMethodsMutation.isPending}
-                    onClick={() => saveMethodsMutation.mutate()}
-                  >
-                    Salva metodi abilitati
-                  </Button>
-                </Box>
-              </Box>
+            {verifyApiKeyMutation.isError && (
+              <Alert severity="error" sx={{ mt: 2 }}>{extractErrorMessage(verifyApiKeyMutation.error)}</Alert>
             )}
           </Box>
         </CardContent>

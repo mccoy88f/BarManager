@@ -15,7 +15,6 @@ import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-hist
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
-import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
 import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
 import { specialDayKey } from '../common/opening-hours/opening-hours';
 
@@ -128,7 +127,6 @@ export class VenuesService {
         deliveryFreeAboveAmount: true,
         sumupEnabled: true,
         sumupApiKeyEnc: true,
-        sumupEnabledPaymentMethods: true,
         loyverseIntegrationEnabled: true,
         loyversePaymentTypeIdCash: true,
         loyversePaymentTypeIdCardOnline: true,
@@ -227,12 +225,11 @@ export class VenuesService {
   }
 
   /**
-   * Crea un checkout SumUp minimo usa e getta solo per interrogare i
-   * metodi di pagamento davvero disponibili per l'account (§5.10): non
-   * viene mai pagato né mostrato al cliente, serve solo a leggere
-   * l'elenco che l'admin poi filtra in "abilitati".
+   * Verifica solo che la API key SumUp funzioni (nessun checkout creato,
+   * §5.10): non serviva sapere quali metodi di pagamento sono disponibili,
+   * dato che il checkout reale non li filtra comunque per metodo.
    */
-  async verifySumUpPaymentMethods(venueId: string) {
+  async verifySumUpApiKey(venueId: string) {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue?.sumupApiKeyEnc) {
       throw new BadRequestException('Imposta prima una API key SumUp valida.');
@@ -243,24 +240,12 @@ export class VenuesService {
     // Internal Server Error generico invece di un 400 con un messaggio
     // leggibile per l'admin.
     try {
-      const checkout = await sumupClient.createCheckout(apiKey, {
-        checkoutReference: `verify-${venueId}-${Date.now()}`,
-        amount: 1,
-        currency: 'EUR',
-        description: 'Verifica metodi di pagamento disponibili',
-      });
-      return await sumupClient.getAvailablePaymentMethods(apiKey, checkout.id);
+      await sumupClient.verifyApiKey(apiKey);
+      return { valid: true };
     } catch (err) {
       if (err instanceof SumUpApiError) throw new BadRequestException(err.message);
       throw err;
     }
-  }
-
-  updateSumUpPaymentMethods(venueId: string, dto: UpdateSumUpPaymentMethodsDto) {
-    return this.prisma.venue.update({
-      where: { id: venueId },
-      data: { sumupEnabledPaymentMethods: dto.methods },
-    });
   }
 
   /**

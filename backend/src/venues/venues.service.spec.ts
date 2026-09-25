@@ -9,7 +9,7 @@ jest.mock('../common/payments/sumup-client', () => ({
   sumupClient: {
     createCheckout: jest.fn(),
     getCheckout: jest.fn(),
-    getAvailablePaymentMethods: jest.fn(),
+    verifyApiKey: jest.fn(),
     refund: jest.fn(),
   },
 }));
@@ -103,7 +103,7 @@ describe('VenuesService', () => {
     });
   });
 
-  describe('verifySumUpPaymentMethods', () => {
+  describe('verifySumUpApiKey', () => {
     /**
      * Bug riportato: un SumUpApiError (es. API key non valida, 401) non
      * tradotto risaliva come 500 Internal Server Error generico invece di
@@ -111,28 +111,35 @@ describe('VenuesService', () => {
      */
     it('traduce un SumUpApiError in BadRequestException con il messaggio originale, invece di un 500 generico', async () => {
       prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: encryptSecret('sumup-key') });
-      (sumupClient.createCheckout as jest.Mock).mockRejectedValue(
+      (sumupClient.verifyApiKey as jest.Mock).mockRejectedValue(
         new SumUpApiError('API key SumUp non valida o senza i permessi necessari.', 401),
       );
 
-      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(BadRequestException);
-      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(
+      await expect(service.verifySumUpApiKey('venue-1')).rejects.toThrow(BadRequestException);
+      await expect(service.verifySumUpApiKey('venue-1')).rejects.toThrow(
         'API key SumUp non valida o senza i permessi necessari.',
       );
     });
 
     it('rilancia un errore non-SumUpApiError inalterato', async () => {
       prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: encryptSecret('sumup-key') });
-      (sumupClient.createCheckout as jest.Mock).mockRejectedValue(new Error('errore imprevisto'));
+      (sumupClient.verifyApiKey as jest.Mock).mockRejectedValue(new Error('errore imprevisto'));
 
-      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow('errore imprevisto');
+      await expect(service.verifySumUpApiKey('venue-1')).rejects.toThrow('errore imprevisto');
     });
 
     it('rifiuta con BadRequestException se nessuna API key è impostata', async () => {
       prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: null });
 
-      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(BadRequestException);
-      expect(sumupClient.createCheckout).not.toHaveBeenCalled();
+      await expect(service.verifySumUpApiKey('venue-1')).rejects.toThrow(BadRequestException);
+      expect(sumupClient.verifyApiKey).not.toHaveBeenCalled();
+    });
+
+    it('risolve con { valid: true } quando la chiave funziona', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: encryptSecret('sumup-key') });
+      (sumupClient.verifyApiKey as jest.Mock).mockResolvedValue(undefined);
+
+      await expect(service.verifySumUpApiKey('venue-1')).resolves.toEqual({ valid: true });
     });
   });
 

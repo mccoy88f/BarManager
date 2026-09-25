@@ -15,7 +15,7 @@ jest.mock('../common/payments/sumup-client', () => ({
   sumupClient: {
     createCheckout: jest.fn(),
     getCheckout: jest.fn(),
-    getAvailablePaymentMethods: jest.fn(),
+    verifyApiKey: jest.fn(),
     refund: jest.fn(),
   },
 }));

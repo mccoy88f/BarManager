@@ -30,11 +30,6 @@ export interface SumUpCheckout {
   transactions?: { id: string; status: string }[];
 }
 
-export interface SumUpPaymentMethod {
-  id: string; // es. "card", "bancomat_pay", "satispay", "apple_pay", "google_pay", "paypal"
-  logo?: string;
-}
-
 async function callSumUp<T>(apiKey: string, path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -81,16 +76,12 @@ export const sumupClient = {
   },
 
   /**
-   * Metodi di pagamento davvero disponibili per questo checkout (può
-   * variare per importo/valuta): da intersecare con quelli scelti
-   * dall'admin (Venue.sumupEnabledPaymentMethods), mai mostrati ciecamente.
+   * Verifica solo che la API key sia valida (nessun checkout creato,
+   * nessun effetto collaterale): legge il profilo del merchant, che
+   * richiede solo un token con permessi minimi ma valido.
    */
-  async getAvailablePaymentMethods(apiKey: string, checkoutId: string): Promise<SumUpPaymentMethod[]> {
-    const body = await callSumUp<{ available_payment_methods: SumUpPaymentMethod[] }>(
-      apiKey,
-      `/checkouts/${checkoutId}/payment-methods`,
-    );
-    return body.available_payment_methods ?? [];
+  async verifyApiKey(apiKey: string): Promise<void> {
+    await callSumUp<unknown>(apiKey, '/me');
   },
 
   /** Rimborso pieno di una transazione — usato se un ordine pagato viene poi rifiutato. */

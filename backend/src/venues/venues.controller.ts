@@ -34,7 +34,6 @@ import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-hist
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
-import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
 import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
@@ -205,21 +204,11 @@ export class VenuesController {
     return this.venuesService.updateSumUpSettings(requireVenueId(user), dto);
   }
 
-  /** Interroga i metodi di pagamento davvero disponibili per l'account SumUp collegato (§5.10). */
-  @Post('me/sumup-verify-payment-methods')
+  /** Verifica che la API key SumUp collegata funzioni davvero (§5.10). */
+  @Post('me/sumup-verify-key')
   @Roles(Role.ADMIN)
-  verifySumUpPaymentMethods(@CurrentUser() user: AuthenticatedUser) {
-    return this.venuesService.verifySumUpPaymentMethods(requireVenueId(user));
-  }
-
-  /** Metodi di pagamento SumUp scelti dall'admin tra quelli disponibili. */
-  @Patch('me/sumup-payment-methods')
-  @Roles(Role.ADMIN)
-  updateOwnSumUpPaymentMethods(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdateSumUpPaymentMethodsDto,
-  ) {
-    return this.venuesService.updateSumUpPaymentMethods(requireVenueId(user), dto);
+  verifySumUpApiKey(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.verifySumUpApiKey(requireVenueId(user));
   }
 
   /** Aperture speciali (§5.10): sovrascrivono per una data l'orario reale e/o gli orari pranzo/cena del menù. */

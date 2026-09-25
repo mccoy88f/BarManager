@@ -79,7 +79,6 @@ interface OnlineOrdersInfo {
   deliveryFee: number;
   deliveryFreeAboveAmount: number | null;
   sumupEnabled: boolean;
-  sumupEnabledPaymentMethods: string[];
   menuAddress?: string;
   city?: string;
   menuPhone?: string;
@@ -1094,7 +1093,7 @@ export function PublicOnlineOrder() {
                     onChange={(e) => setPaymentMethod(e.target.value as 'CASH' | 'CARD_ONLINE')}
                   >
                     <FormControlLabel value="CASH" control={<Radio />} label="Contanti alla consegna" />
-                    {info.sumupEnabled && info.sumupEnabledPaymentMethods.length > 0 && (
+                    {info.sumupEnabled && (
                       <FormControlLabel value="CARD_ONLINE" control={<Radio />} label="Carta online" />
                     )}
                   </RadioGroup>

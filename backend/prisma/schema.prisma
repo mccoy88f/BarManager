@@ -194,14 +194,15 @@ model Venue {
   deliveryFee             Float  @default(0)
   deliveryFreeAboveAmount Float?
 
-  // Integrazione SumUp (Online Payments API, §5.10): credenziali e metodi
-  // di pagamento abilitati dall'admin per la consegna, cifrate come il
-  // token Loyverse sopra.
-  sumupEnabled               Boolean  @default(false)
-  sumupApiKeyEnc             String?
-  // Sottoinsieme scelto dall'admin tra i metodi davvero disponibili per il
-  // proprio account (interrogati con "Verifica metodi disponibili", es.
-  // ["card", "bancomat_pay"]) — non tutti quelli che SumUp offrirebbe.
+  // Integrazione SumUp (Online Payments API, §5.10): credenziali cifrate
+  // come il token Loyverse sopra. Il checkout reale non filtra per singolo
+  // metodo di pagamento (SumUp li mostra tutti quelli validi per l'account
+  // nel proprio widget): l'unico controllo lato admin è sumupEnabled.
+  sumupEnabled   Boolean @default(false)
+  sumupApiKeyEnc String?
+  // Campo storico, non più scritto né letto da alcun codice: rimosso da
+  // qui richiederebbe una migrazione, lasciato inerte in attesa di uno
+  // sweep schema dedicato.
   sumupEnabledPaymentMethods String[] @default([])
 
   // Sincronizzazione Loyverse degli ordini online: nessun interruttore
