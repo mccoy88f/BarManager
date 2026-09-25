@@ -300,7 +300,7 @@ export function OnlineOrdersSettings() {
           <Typography variant="h6" gutterBottom>
             Zona e costo di consegna
           </Typography>
-          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <TextField
               label="Raggio massimo (metri, vuoto = nessun limite)"
               type="number"
@@ -308,6 +308,7 @@ export function OnlineOrdersSettings() {
               inputProps={{ min: 1 }}
               value={delivery.deliveryRadiusMeters}
               onChange={(e) => setDelivery((f) => ({ ...f, deliveryRadiusMeters: e.target.value }))}
+              sx={{ flex: '1 1 220px' }}
             />
             <TextField
               label="Costo di consegna (€)"
@@ -316,6 +317,7 @@ export function OnlineOrdersSettings() {
               inputProps={{ min: 0, step: 0.5 }}
               value={delivery.deliveryFee}
               onChange={(e) => setDelivery((f) => ({ ...f, deliveryFee: e.target.value }))}
+              sx={{ flex: '1 1 220px' }}
             />
             <TextField
               label="Consegna gratuita sopra (€, vuoto = mai gratuita)"
@@ -324,8 +326,9 @@ export function OnlineOrdersSettings() {
               inputProps={{ min: 0 }}
               value={delivery.deliveryFreeAboveAmount}
               onChange={(e) => setDelivery((f) => ({ ...f, deliveryFreeAboveAmount: e.target.value }))}
+              sx={{ flex: '1 1 220px' }}
             />
-          </Stack>
+          </Box>
           <Button
             variant="contained"
             sx={{ mt: 2 }}
