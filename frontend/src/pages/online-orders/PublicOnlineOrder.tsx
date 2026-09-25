@@ -780,13 +780,13 @@ export function PublicOnlineOrder() {
               textAlign="center"
               sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
             >
-              Ordina online — {info.name}
+              {info.name}
             </Typography>
           </Box>
         </Box>
       ) : (
         <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
-          Ordina online — {info.name}
+          {info.name}
         </Typography>
       )}
 
