@@ -1,6 +1,23 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VenuesService } from './venues.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { encryptSecret } from '../common/crypto/secret-crypto';
+import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
+
+jest.mock('../common/payments/sumup-client', () => ({
+  ...jest.requireActual('../common/payments/sumup-client'),
+  sumupClient: {
+    createCheckout: jest.fn(),
+    getCheckout: jest.fn(),
+    getAvailablePaymentMethods: jest.fn(),
+    refund: jest.fn(),
+  },
+}));
+
+// Va impostata subito, prima che eventuali fixture valutate in fase di
+// collection dei test chiamino encryptSecret — altrimenti cifrano con una
+// chiave diversa da quella con cui i test poi decifrano.
+process.env.SECRET_ENCRYPTION_KEY = 'test-key';
 
 describe('VenuesService', () => {
   let prisma: {
@@ -10,6 +27,7 @@ describe('VenuesService', () => {
   let service: VenuesService;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     prisma = {
       venue: { findUnique: jest.fn(), update: jest.fn() },
       venueSpecialDay: {
@@ -58,6 +76,39 @@ describe('VenuesService', () => {
       const result = await service.getOwn('venue-1');
 
       expect((result as unknown as { sumupHasApiKey: boolean }).sumupHasApiKey).toBe(false);
+    });
+  });
+
+  describe('verifySumUpPaymentMethods', () => {
+    /**
+     * Bug riportato: un SumUpApiError (es. API key non valida, 401) non
+     * tradotto risaliva come 500 Internal Server Error generico invece di
+     * un 400 con un messaggio leggibile per l'admin.
+     */
+    it('traduce un SumUpApiError in BadRequestException con il messaggio originale, invece di un 500 generico', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: encryptSecret('sumup-key') });
+      (sumupClient.createCheckout as jest.Mock).mockRejectedValue(
+        new SumUpApiError('API key SumUp non valida o senza i permessi necessari.', 401),
+      );
+
+      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(BadRequestException);
+      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(
+        'API key SumUp non valida o senza i permessi necessari.',
+      );
+    });
+
+    it('rilancia un errore non-SumUpApiError inalterato', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: encryptSecret('sumup-key') });
+      (sumupClient.createCheckout as jest.Mock).mockRejectedValue(new Error('errore imprevisto'));
+
+      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow('errore imprevisto');
+    });
+
+    it('rifiuta con BadRequestException se nessuna API key è impostata', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: null });
+
+      await expect(service.verifySumUpPaymentMethods('venue-1')).rejects.toThrow(BadRequestException);
+      expect(sumupClient.createCheckout).not.toHaveBeenCalled();
     });
   });
 

@@ -36,7 +36,7 @@ import {
 } from '../common/timezone/timezone';
 import { distanceMeters } from '../common/geo/geo';
 import { locationIqClient } from '../common/geo/locationiq-client';
-import { sumupClient } from '../common/payments/sumup-client';
+import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
 import { decryptSecret } from '../common/crypto/secret-crypto';
 import { venuePublicUrl, venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
 import { loyverseClient } from '../loyverse/loyverse-client';
@@ -476,12 +476,23 @@ export class OnlineOrdersService {
     if (!pricing.venue.sumupEnabled || !pricing.venue.sumupApiKeyEnc) {
       throw new BadRequestException('Il pagamento con carta online non è disponibile per questo locale');
     }
-    const checkout = await sumupClient.createCheckout(decryptSecret(pricing.venue.sumupApiKeyEnc), {
-      checkoutReference: randomUUID(),
-      amount: pricing.total,
-      currency: 'EUR',
-      description: `Ordine online — ${pricing.venue.name}`,
-    });
+    // SumUpApiError non è una HttpException: senza tradurla qui un errore
+    // SumUp (es. API key del locale non più valida) risalirebbe al cliente
+    // pubblico come 500 generico invece di un 400 con un messaggio sensato.
+    let checkout;
+    try {
+      checkout = await sumupClient.createCheckout(decryptSecret(pricing.venue.sumupApiKeyEnc), {
+        checkoutReference: randomUUID(),
+        amount: pricing.total,
+        currency: 'EUR',
+        description: `Ordine online — ${pricing.venue.name}`,
+      });
+    } catch (err) {
+      if (err instanceof SumUpApiError) {
+        throw new BadRequestException('Il pagamento con carta online non è al momento disponibile: riprova più tardi o scegli un altro metodo.');
+      }
+      throw err;
+    }
     return { checkoutId: checkout.id, total: pricing.total };
   }
 
@@ -513,10 +524,18 @@ export class OnlineOrdersService {
         if (!pricing.venue.sumupEnabled || !pricing.venue.sumupApiKeyEnc || !dto.sumupCheckoutId) {
           throw new BadRequestException('Pagamento con carta online non disponibile o non completato');
         }
-        const checkout = await sumupClient.getCheckout(
-          decryptSecret(pricing.venue.sumupApiKeyEnc),
-          dto.sumupCheckoutId,
-        );
+        let checkout;
+        try {
+          checkout = await sumupClient.getCheckout(
+            decryptSecret(pricing.venue.sumupApiKeyEnc),
+            dto.sumupCheckoutId,
+          );
+        } catch (err) {
+          if (err instanceof SumUpApiError) {
+            throw new BadRequestException('Non è stato possibile verificare il pagamento: riprova più tardi.');
+          }
+          throw err;
+        }
         if (checkout.status !== 'PAID') {
           throw new BadRequestException('Il pagamento non risulta ancora completato');
         }

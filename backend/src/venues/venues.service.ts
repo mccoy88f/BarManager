@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { encryptSecret, decryptSecret } from '../common/crypto/secret-crypto';
-import { sumupClient } from '../common/payments/sumup-client';
+import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
 import { loyverseClient } from '../loyverse/loyverse-client';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
@@ -231,13 +231,22 @@ export class VenuesService {
       throw new BadRequestException('Imposta prima una API key SumUp valida.');
     }
     const apiKey = decryptSecret(venue.sumupApiKeyEnc);
-    const checkout = await sumupClient.createCheckout(apiKey, {
-      checkoutReference: `verify-${venueId}-${Date.now()}`,
-      amount: 1,
-      currency: 'EUR',
-      description: 'Verifica metodi di pagamento disponibili',
-    });
-    return sumupClient.getAvailablePaymentMethods(apiKey, checkout.id);
+    // SumUpApiError non è una HttpException di NestJS: senza tradurla qui,
+    // un errore SumUp (es. API key non valida, 401) risalirebbe come 500
+    // Internal Server Error generico invece di un 400 con un messaggio
+    // leggibile per l'admin.
+    try {
+      const checkout = await sumupClient.createCheckout(apiKey, {
+        checkoutReference: `verify-${venueId}-${Date.now()}`,
+        amount: 1,
+        currency: 'EUR',
+        description: 'Verifica metodi di pagamento disponibili',
+      });
+      return await sumupClient.getAvailablePaymentMethods(apiKey, checkout.id);
+    } catch (err) {
+      if (err instanceof SumUpApiError) throw new BadRequestException(err.message);
+      throw err;
+    }
   }
 
   updateSumUpPaymentMethods(venueId: string, dto: UpdateSumUpPaymentMethodsDto) {
