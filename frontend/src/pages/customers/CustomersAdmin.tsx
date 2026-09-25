@@ -42,6 +42,8 @@ interface Customer {
   firstReservationAt: string | null;
   lastReservationAt: string | null;
   reservationsCount: number;
+  ordersCount: number;
+  totalOrdersSpent: number;
 }
 
 interface ImportResult {
@@ -278,6 +280,8 @@ export function CustomersAdmin() {
               <TableCell>Telefono</TableCell>
               <TableCell align="center">Marketing</TableCell>
               <TableCell align="center">Prenotazioni</TableCell>
+              <TableCell align="center">Ordini online</TableCell>
+              <TableCell align="right">Spesa totale</TableCell>
               <TableCell>Registrato il</TableCell>
               <TableCell>Ultima prenotazione</TableCell>
               <TableCell align="right">Azioni</TableCell>
@@ -302,6 +306,10 @@ export function CustomersAdmin() {
                 <TableCell align="center">
                   <Chip size="small" label={customer.reservationsCount} />
                 </TableCell>
+                <TableCell align="center">
+                  <Chip size="small" label={customer.ordersCount} />
+                </TableCell>
+                <TableCell align="right">€ {customer.totalOrdersSpent.toFixed(2)}</TableCell>
                 <TableCell>{formatDate(customer.firstReservationAt)}</TableCell>
                 <TableCell>{formatDate(customer.lastReservationAt)}</TableCell>
                 <TableCell align="right">

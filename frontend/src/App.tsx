@@ -43,6 +43,11 @@ import { Marketing } from './pages/customers/Marketing';
 import { CommunicationsHistory } from './pages/customers/CommunicationsHistory';
 import { PublicPrivacyManage } from './pages/customers/PublicPrivacyManage';
 import { MyAccount } from './pages/account/MyAccount';
+import { PublicOnlineOrder } from './pages/online-orders/PublicOnlineOrder';
+import { PublicOnlineOrderTrack } from './pages/online-orders/PublicOnlineOrderTrack';
+import { OnlineOrdersAdmin } from './pages/online-orders/OnlineOrdersAdmin';
+import { OnlineOrdersHistory } from './pages/online-orders/OnlineOrdersHistory';
+import { OnlineOrdersSettings } from './pages/online-orders/OnlineOrdersSettings';
 
 export default function App() {
   return (
@@ -55,6 +60,8 @@ export default function App() {
       <Route path="/prenota/gestisci/:id" element={<PublicReservationManage />} />
       <Route path="/prenota/modifica/:id" element={<PublicReservationSelfManage />} />
       <Route path="/privacy" element={<PublicPrivacyManage />} />
+      <Route path="/ordina" element={<PublicOnlineOrder />} />
+      <Route path="/ordina/traccia/:id" element={<PublicOnlineOrderTrack />} />
 
       <Route path="/login" element={<Login />} />
 
@@ -120,6 +127,13 @@ export default function App() {
             <Route path="/customers" element={<CustomersAdmin />} />
             <Route path="/customers/marketing" element={<Marketing />} />
             <Route path="/customers/communications" element={<CommunicationsHistory />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="onlineOrders" />}>
+            <Route path="/online-orders" element={<OnlineOrdersAdmin />} />
+            <Route path="/online-orders/history" element={<OnlineOrdersHistory />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="onlineOrders" allow={['ADMIN']} />}>
+            <Route path="/online-orders/settings" element={<OnlineOrdersSettings />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>

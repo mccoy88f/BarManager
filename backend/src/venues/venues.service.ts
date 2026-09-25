@@ -3,6 +3,9 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
+import { encryptSecret, decryptSecret } from '../common/crypto/secret-crypto';
+import { sumupClient } from '../common/payments/sumup-client';
+import { loyverseClient } from '../loyverse/loyverse-client';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateOpeningHoursDto } from './dto/update-opening-hours.dto';
@@ -10,6 +13,9 @@ import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
+import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
+import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
+import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -104,10 +110,36 @@ export class VenuesService {
         reservationOverbookingUnlimited: true,
         reservationOverbookingExtraSeats: true,
         reservationMinLeadMinutes: true,
+        onlineOrdersEnabled: true,
+        onlineOrdersPickupEnabled: true,
+        onlineOrdersDeliveryEnabled: true,
+        onlineOrdersOpeningHours: true,
+        onlineOrdersMinLeadMinutes: true,
+        onlineOrdersAutoAcceptEnabled: true,
+        onlineOrdersAutoAcceptSlotMode: true,
+        onlineOrdersAutoAcceptPerSlot: true,
+        onlineOrdersAutoAcceptPerSlotPickup: true,
+        onlineOrdersAutoAcceptPerSlotDelivery: true,
+        deliveryRadiusMeters: true,
+        deliveryFee: true,
+        deliveryFreeAboveAmount: true,
+        sumupEnabled: true,
+        sumupEnabledPaymentMethods: true,
+        loyverseSyncOnlineOrders: true,
+        loyversePaymentTypeIdCash: true,
+        loyversePaymentTypeIdCardOnline: true,
+        loyversePaymentTypeIdCardInStore: true,
       },
     });
     if (!venue) return venue;
-    return { ...venue, openingHours: resolveOpeningHours(venue.openingHours) };
+    return {
+      ...venue,
+      openingHours: resolveOpeningHours(venue.openingHours),
+      onlineOrdersOpeningHours: venue.onlineOrdersOpeningHours
+        ? resolveOpeningHours(venue.onlineOrdersOpeningHours)
+        : null,
+      sumupHasApiKey: !!(venue as { sumupApiKeyEnc?: string | null }).sumupApiKeyEnc,
+    };
   }
 
   updateOpeningHours(venueId: string, dto: UpdateOpeningHoursDto) {
@@ -136,5 +168,73 @@ export class VenuesService {
 
   updateReservationSettings(venueId: string, dto: UpdateReservationSettingsDto) {
     return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  }
+
+  updateOnlineOrdersSettings(venueId: string, dto: UpdateOnlineOrdersSettingsDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  }
+
+  async updateOnlineOrdersOpeningHours(venueId: string, dto: UpdateOpeningHoursDto) {
+    await this.prisma.venue.update({
+      where: { id: venueId },
+      data: { onlineOrdersOpeningHours: dto.days as object },
+    });
+    return { onlineOrdersOpeningHours: dto.days };
+  }
+
+  async updateSumUpSettings(venueId: string, dto: UpdateSumUpSettingsDto) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+
+    const data: { sumupApiKeyEnc?: string | null; sumupEnabled?: boolean } = {};
+    if (dto.apiKey !== undefined) {
+      data.sumupApiKeyEnc = dto.apiKey ? encryptSecret(dto.apiKey) : null;
+    }
+    if (dto.enabled !== undefined) {
+      const willHaveKey = dto.apiKey ? true : !!venue.sumupApiKeyEnc;
+      if (dto.enabled && !willHaveKey) {
+        throw new BadRequestException('Imposta prima una API key SumUp valida.');
+      }
+      data.sumupEnabled = dto.enabled;
+    }
+    await this.prisma.venue.update({ where: { id: venueId }, data });
+    return { enabled: data.sumupEnabled ?? venue.sumupEnabled, hasApiKey: !!(data.sumupApiKeyEnc ?? venue.sumupApiKeyEnc) };
+  }
+
+  /**
+   * Crea un checkout SumUp minimo usa e getta solo per interrogare i
+   * metodi di pagamento davvero disponibili per l'account (§5.10): non
+   * viene mai pagato né mostrato al cliente, serve solo a leggere
+   * l'elenco che l'admin poi filtra in "abilitati".
+   */
+  async verifySumUpPaymentMethods(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue?.sumupApiKeyEnc) {
+      throw new BadRequestException('Imposta prima una API key SumUp valida.');
+    }
+    const apiKey = decryptSecret(venue.sumupApiKeyEnc);
+    const checkout = await sumupClient.createCheckout(apiKey, {
+      checkoutReference: `verify-${venueId}-${Date.now()}`,
+      amount: 1,
+      currency: 'EUR',
+      description: 'Verifica metodi di pagamento disponibili',
+    });
+    return sumupClient.getAvailablePaymentMethods(apiKey, checkout.id);
+  }
+
+  updateSumUpPaymentMethods(venueId: string, dto: UpdateSumUpPaymentMethodsDto) {
+    return this.prisma.venue.update({
+      where: { id: venueId },
+      data: { sumupEnabledPaymentMethods: dto.methods },
+    });
+  }
+
+  /** Metodi di pagamento configurati dal locale nel proprio Back Office Loyverse, per la mappatura in Impostazioni (§5.10). */
+  async listLoyversePaymentTypes(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue?.loyverseAccessTokenEnc) {
+      throw new BadRequestException('Integrazione Loyverse non configurata.');
+    }
+    return loyverseClient.listPaymentTypes(decryptSecret(venue.loyverseAccessTokenEnc));
   }
 }

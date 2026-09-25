@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -41,4 +42,15 @@ export class CreateMenuItemDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  /** Canale "ordini online" (§5.10 di DEVELOPMENT.md): flag di presentazione, come visible/featured. */
+  @IsOptional()
+  @IsBoolean()
+  orderableOnline?: boolean;
+
+  /** Gruppi di modificatori applicabili a questa voce, sostituiti sempre tutti insieme come le varianti. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  modifierGroupIds?: string[];
 }

@@ -31,6 +31,9 @@ import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
+import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
+import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
+import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -164,5 +167,56 @@ export class VenuesController {
     @Body() dto: UpdateReservationSettingsDto,
   ) {
     return this.venuesService.updateReservationSettings(requireVenueId(user), dto);
+  }
+
+  /** Impostazioni del modulo Ordini online (§5.10): interruttori, consegna, accettazione automatica, mappatura Loyverse. */
+  @Patch('me/online-orders-settings')
+  @Roles(Role.ADMIN)
+  updateOwnOnlineOrdersSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateOnlineOrdersSettingsDto,
+  ) {
+    return this.venuesService.updateOnlineOrdersSettings(requireVenueId(user), dto);
+  }
+
+  /** Orari specifici per gli ordini online, se diversi da quelli generali del locale. */
+  @Patch('me/online-orders-opening-hours')
+  @Roles(Role.ADMIN)
+  updateOwnOnlineOrdersOpeningHours(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateOpeningHoursDto,
+  ) {
+    return this.venuesService.updateOnlineOrdersOpeningHours(requireVenueId(user), dto);
+  }
+
+  /** Credenziali SumUp del locale (Online Payments API), cifrate come il token Loyverse. */
+  @Patch('me/sumup-settings')
+  @Roles(Role.ADMIN)
+  updateOwnSumUpSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSumUpSettingsDto) {
+    return this.venuesService.updateSumUpSettings(requireVenueId(user), dto);
+  }
+
+  /** Interroga i metodi di pagamento davvero disponibili per l'account SumUp collegato (§5.10). */
+  @Post('me/sumup-verify-payment-methods')
+  @Roles(Role.ADMIN)
+  verifySumUpPaymentMethods(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.verifySumUpPaymentMethods(requireVenueId(user));
+  }
+
+  /** Metodi di pagamento SumUp scelti dall'admin tra quelli disponibili. */
+  @Patch('me/sumup-payment-methods')
+  @Roles(Role.ADMIN)
+  updateOwnSumUpPaymentMethods(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateSumUpPaymentMethodsDto,
+  ) {
+    return this.venuesService.updateSumUpPaymentMethods(requireVenueId(user), dto);
+  }
+
+  /** Metodi di pagamento configurati dal locale nel proprio Back Office Loyverse, per la mappatura in Impostazioni. */
+  @Get('me/loyverse-payment-types')
+  @Roles(Role.ADMIN)
+  listOwnLoyversePaymentTypes(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.listLoyversePaymentTypes(requireVenueId(user));
   }
 }

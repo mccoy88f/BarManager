@@ -12,6 +12,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
 import PeopleIcon from '@mui/icons-material/People';
+import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -209,6 +210,30 @@ export const navigation: NavItem[] = [
         label: 'Impostazioni prenotazioni',
         path: '/reservations/settings',
         icon: EventSeatIcon,
+        roles: ['ADMIN'],
+      },
+    ],
+  },
+  {
+    key: 'onlineOrders',
+    label: 'Ordini online',
+    path: '/online-orders',
+    icon: DeliveryDiningIcon,
+    description: 'Asporto e consegna a domicilio dal menù pubblico',
+    moduleKey: 'onlineOrders',
+    children: [
+      {
+        key: 'online-orders-history',
+        label: 'Storico ordini online',
+        path: '/online-orders/history',
+        icon: DeliveryDiningIcon,
+        description: 'Ordini conclusi, esito sincronizzazione Loyverse',
+      },
+      {
+        key: 'online-orders-settings',
+        label: 'Impostazioni ordini online',
+        path: '/online-orders/settings',
+        icon: DeliveryDiningIcon,
         roles: ['ADMIN'],
       },
     ],

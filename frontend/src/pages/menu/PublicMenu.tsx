@@ -57,6 +57,7 @@ interface PublicMenuResponse {
     instagramUrl?: string;
     facebookUrl?: string;
     websiteUrl?: string;
+    onlineOrdersEnabled?: boolean;
   };
   categories: PublicMenuCategory[];
 }
@@ -383,6 +384,15 @@ export function PublicMenu() {
               )}
             </Stack>
           </Box>
+        )}
+
+        {venue.onlineOrdersEnabled && (
+          <Typography variant="body2" textAlign="center" sx={{ mt: 2 }}>
+            Vuoi fare un ordine online?{' '}
+            <a href={`/ordina${window.location.search}`} style={{ fontWeight: 600 }}>
+              Clicca qui
+            </a>
+          </Typography>
         )}
       </Box>
 

@@ -8,6 +8,8 @@ import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+import { CreateMenuModifierGroupDto } from './dto/create-menu-modifier-group.dto';
+import { UpdateMenuModifierGroupDto } from './dto/update-menu-modifier-group.dto';
 
 // Stesse etichette italiane mostrate in MenuAdmin.tsx (availabilityLabels/
 // allergenLabels): usate qui per esportare/importare in xlsx con lo stesso
@@ -181,7 +183,7 @@ export class MenuService {
 
   async createItem(venueId: string, dto: CreateMenuItemDto) {
     await this.assertNotLoyverseManaged(venueId);
-    const { variants, ...item } = dto;
+    const { variants, modifierGroupIds, ...item } = dto;
     // Senza un sortOrder incrementale (come per le categorie), tutte le
     // voci di una categoria condividerebbero lo stesso valore di default:
     // l'ORDER BY sortOrder non avrebbe un criterio per distinguerle, e un
@@ -202,8 +204,11 @@ export class MenuService {
         sortOrder,
         venueId,
         variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
+        ...(modifierGroupIds && {
+          modifierGroups: { create: modifierGroupIds.map((modifierGroupId) => ({ modifierGroupId })) },
+        }),
       },
-      include: { variants: true },
+      include: { variants: true, modifierGroups: { include: { modifierGroup: { include: { options: true } } } } },
     });
   }
 
@@ -214,24 +219,32 @@ export class MenuService {
       // anche per le voci create prima di questo fix, che condividono
       // tutte sortOrder=0.
       orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-      include: { category: true, variants: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        category: true,
+        variants: { orderBy: { sortOrder: 'asc' } },
+        modifierGroups: { include: { modifierGroup: { include: { options: true } } } },
+      },
     });
   }
 
   /**
-   * Le varianti si sostituiscono sempre tutte insieme quando arrivano nel
-   * corpo della richiesta: il form admin invia l'elenco completo a ogni
-   * salvataggio, non serve una patch riga-per-riga.
+   * Le varianti (e i gruppi di modificatori assegnati) si sostituiscono
+   * sempre tutti insieme quando arrivano nel corpo della richiesta: il
+   * form admin invia l'elenco completo a ogni salvataggio, non serve una
+   * patch riga-per-riga.
    */
   async updateItem(venueId: string, itemId: string, dto: UpdateMenuItemDto) {
     await this.assertOwnership(venueId, itemId);
     if (dto.name !== undefined || dto.categoryId !== undefined || dto.variants !== undefined) {
       await this.assertNotLoyverseManaged(venueId);
     }
-    const { variants, ...item } = dto;
+    const { variants, modifierGroupIds, ...item } = dto;
     return this.prisma.$transaction(async (tx) => {
       if (variants) {
         await tx.menuItemVariant.deleteMany({ where: { menuItemId: itemId } });
+      }
+      if (modifierGroupIds) {
+        await tx.menuItemModifierGroup.deleteMany({ where: { menuItemId: itemId } });
       }
       return tx.menuItem.update({
         where: { id: itemId },
@@ -240,8 +253,11 @@ export class MenuService {
           ...(variants && {
             variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
           }),
+          ...(modifierGroupIds && {
+            modifierGroups: { create: modifierGroupIds.map((modifierGroupId) => ({ modifierGroupId })) },
+          }),
         },
-        include: { variants: true },
+        include: { variants: true, modifierGroups: { include: { modifierGroup: { include: { options: true } } } } },
       });
     });
   }
@@ -566,6 +582,7 @@ export class MenuService {
         instagramUrl: venue.menuInstagramUrl,
         facebookUrl: venue.menuFacebookUrl,
         websiteUrl: venue.menuWebsiteUrl,
+        onlineOrdersEnabled: venue.onlineOrdersEnabled,
       },
       categories: categories
         .filter((c) => c.items.length > 0)
@@ -584,5 +601,56 @@ export class MenuService {
           })),
         })),
     };
+  }
+
+  // ---- Modificatori (§5.10 di DEVELOPMENT.md) ---------------------------
+
+  async createModifierGroup(venueId: string, dto: CreateMenuModifierGroupDto) {
+    await this.assertNotLoyverseManaged(venueId);
+    const { options, ...group } = dto;
+    return this.prisma.menuModifierGroup.create({
+      data: { ...group, venueId, options: { create: options.map((o, i) => ({ ...o, sortOrder: i })) } },
+      include: { options: true },
+    });
+  }
+
+  listModifierGroups(venueId: string) {
+    return this.prisma.menuModifierGroup.findMany({
+      where: { venueId },
+      orderBy: { sortOrder: 'asc' },
+      include: { options: { orderBy: { sortOrder: 'asc' } } },
+    });
+  }
+
+  private async assertModifierGroupOwnership(venueId: string, groupId: string) {
+    const group = await this.prisma.menuModifierGroup.findUnique({ where: { id: groupId } });
+    if (!group || group.venueId !== venueId) throw new NotFoundException('Gruppo di modificatori non trovato');
+  }
+
+  /** Le opzioni si sostituiscono sempre tutte insieme, come le varianti di una voce di menù. */
+  async updateModifierGroup(venueId: string, groupId: string, dto: UpdateMenuModifierGroupDto) {
+    await this.assertNotLoyverseManaged(venueId);
+    await this.assertModifierGroupOwnership(venueId, groupId);
+    const { options, ...group } = dto;
+    return this.prisma.$transaction(async (tx) => {
+      if (options) {
+        await tx.menuModifierOption.deleteMany({ where: { groupId } });
+      }
+      return tx.menuModifierGroup.update({
+        where: { id: groupId },
+        data: {
+          ...group,
+          ...(options && { options: { create: options.map((o, i) => ({ ...o, sortOrder: i })) } }),
+        },
+        include: { options: true },
+      });
+    });
+  }
+
+  async removeModifierGroup(venueId: string, groupId: string) {
+    await this.assertNotLoyverseManaged(venueId);
+    await this.assertModifierGroupOwnership(venueId, groupId);
+    await this.prisma.menuModifierGroup.delete({ where: { id: groupId } });
+    return { success: true };
   }
 }

@@ -6,7 +6,14 @@ import type { Role } from '../store/authStore';
  * backend/src/common/decorators/require-module.decorator.ts — se cambi le
  * chiavi qui, cambiale anche lì.
  */
-export type ModuleKey = 'haccp' | 'inventory' | 'menu' | 'tasks' | 'reservations' | 'customers';
+export type ModuleKey =
+  | 'haccp'
+  | 'inventory'
+  | 'menu'
+  | 'tasks'
+  | 'reservations'
+  | 'customers'
+  | 'onlineOrders';
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   haccp: 'Controlli HACCP',
@@ -15,6 +22,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   tasks: 'Attività e scadenze',
   reservations: 'Prenotazioni',
   customers: 'Clienti',
+  onlineOrders: 'Ordini online',
 };
 
 // Permessi di default quando il dipendente non ha mai avuto un elenco

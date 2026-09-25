@@ -2,6 +2,7 @@ import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, Re
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
+import { locationIqClient } from '../common/geo/locationiq-client';
 import { OnlineOrdersService } from './online-orders.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
@@ -79,6 +80,22 @@ export class PublicOnlineOrdersController {
       },
     });
     return categories;
+  }
+
+  /**
+   * Proxy verso LocationIQ (indirizzo -> coordinate, §5.10): la chiave API
+   * resta lato server, mai esposta al browser. Usato dal pulsante "Cerca"
+   * nel checkout consegna, prima di posizionare il puntatore sulla mappa.
+   */
+  @Get('geocode')
+  geocode(@Query('address') address: string) {
+    return locationIqClient.forwardGeocode(address);
+  }
+
+  /** Coordinate -> indirizzo leggibile, quando il cliente sposta il puntatore a mano sulla mappa. */
+  @Get('reverse-geocode')
+  reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
+    return locationIqClient.reverseGeocode(Number(lat), Number(lng));
   }
 
   @Post('sumup-checkout')

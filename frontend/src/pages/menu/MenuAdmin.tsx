@@ -5,6 +5,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -15,6 +16,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   InputAdornment,
   MenuItem as MuiMenuItem,
   Stack,
@@ -59,6 +61,7 @@ import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
+import { ModifierGroupsCard } from './ModifierGroupsCard';
 
 interface MenuCategory {
   id: string;
@@ -83,6 +86,13 @@ interface MenuItemRow {
   featured: boolean;
   unavailableUntil?: string;
   categoryId: string;
+  orderableOnline: boolean;
+  modifierGroups: { modifierGroup: { id: string; name: string } }[];
+}
+
+interface ModifierGroup {
+  id: string;
+  name: string;
 }
 
 interface VariantForm {
@@ -253,7 +263,9 @@ export function MenuAdmin() {
     categoryId: '',
     description: '',
     availability: 'ALL_DAY',
+    orderableOnline: false,
   });
+  const [itemModifierGroupIds, setItemModifierGroupIds] = useState<string[]>([]);
   const [variantForms, setVariantForms] = useState<VariantForm[]>([emptyVariant]);
   const [itemSearch, setItemSearch] = useState('');
   const [openCategory, setOpenCategory] = useState<string | false>(false);
@@ -268,6 +280,11 @@ export function MenuAdmin() {
   const itemsQuery = useQuery({
     queryKey: ['menu-items'],
     queryFn: async () => (await api.get<MenuItemRow[]>('/menu/items')).data,
+  });
+
+  const modifierGroupsQuery = useQuery({
+    queryKey: ['menu-modifier-groups'],
+    queryFn: async () => (await api.get<ModifierGroup[]>('/menu/modifier-groups')).data,
   });
 
   const loyverseStatusQuery = useQuery({
@@ -376,6 +393,7 @@ export function MenuAdmin() {
           name: v.name.trim(),
           price: v.price.trim() === '' ? null : Number(v.price),
         })),
+        modifierGroupIds: itemModifierGroupIds,
       };
       return editingItem
         ? (await api.patch(`/menu/items/${editingItem.id}`, payload)).data
@@ -384,8 +402,9 @@ export function MenuAdmin() {
     onSuccess: () => {
       invalidate();
       showToast(editingItem ? 'Voce di menù aggiornata' : 'Voce di menù creata');
-      setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+      setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY', orderableOnline: false });
       setVariantForms([emptyVariant]);
+      setItemModifierGroupIds([]);
       setItemDialogOpen(false);
       setEditingItem(null);
     },
@@ -470,8 +489,9 @@ export function MenuAdmin() {
 
   const openItemDialog = () => {
     setEditingItem(null);
-    setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY' });
+    setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY', orderableOnline: false });
     setVariantForms([emptyVariant]);
+    setItemModifierGroupIds([]);
     setItemDialogOpen(true);
   };
 
@@ -482,7 +502,9 @@ export function MenuAdmin() {
       categoryId: item.categoryId,
       description: item.description ?? '',
       availability: item.availability,
+      orderableOnline: item.orderableOnline,
     });
+    setItemModifierGroupIds(item.modifierGroups.map((g) => g.modifierGroup.id));
     setVariantForms(
       item.variants.length > 0
         ? item.variants.map((v) => ({ name: v.name, price: v.price != null ? String(v.price) : '' }))
@@ -549,6 +571,8 @@ export function MenuAdmin() {
           disattivare la sincronizzazione vai in Impostazioni locale.
         </Alert>
       )}
+
+      <ModifierGroupsCard locked={locked} />
 
       <Card>
         <CardContent>
@@ -874,6 +898,30 @@ export function MenuAdmin() {
             value={newItem.description}
             onChange={(e) => setNewItem((v) => ({ ...v, description: e.target.value }))}
             sx={{ gridColumn: '1 / -1' }}
+          />
+
+          {/* Canale ordini online (§5.10 di DEVELOPMENT.md): flag di presentazione, come visibilità/in evidenza — non tocca il menù locale. */}
+          <FormControlLabel
+            sx={{ gridColumn: '1 / -1' }}
+            control={
+              <Switch
+                checked={newItem.orderableOnline}
+                onChange={(e) => setNewItem((v) => ({ ...v, orderableOnline: e.target.checked }))}
+              />
+            }
+            label="Ordinabile online (asporto/consegna)"
+          />
+          <Autocomplete
+            multiple
+            sx={{ gridColumn: '1 / -1' }}
+            options={modifierGroupsQuery.data ?? []}
+            getOptionLabel={(g) => g.name}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            value={(modifierGroupsQuery.data ?? []).filter((g) => itemModifierGroupIds.includes(g.id))}
+            onChange={(_e, value) => setItemModifierGroupIds(value.map((g) => g.id))}
+            renderInput={(params) => (
+              <TextField {...params} label="Modificatori (opzionale)" placeholder="Cerca un gruppo..." />
+            )}
           />
 
           <Box sx={{ gridColumn: '1 / -1' }}>

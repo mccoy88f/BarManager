@@ -34,6 +34,8 @@ import { ReorderMenuCategoriesDto } from './dto/reorder-menu-categories.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { SetUnavailableDto } from './dto/set-unavailable.dto';
+import { CreateMenuModifierGroupDto } from './dto/create-menu-modifier-group.dto';
+import { UpdateMenuModifierGroupDto } from './dto/update-menu-modifier-group.dto';
 
 const XLSX_MIME_PATTERN = /spreadsheetml|ms-excel/;
 
@@ -182,5 +184,29 @@ export class MenuController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.menuService.setPhoto(requireVenueId(user), id, `/uploads/menu/${file.filename}`);
+  }
+
+  @Post('modifier-groups')
+  createModifierGroup(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateMenuModifierGroupDto) {
+    return this.menuService.createModifierGroup(requireVenueId(user), dto);
+  }
+
+  @Get('modifier-groups')
+  listModifierGroups(@CurrentUser() user: AuthenticatedUser) {
+    return this.menuService.listModifierGroups(requireVenueId(user));
+  }
+
+  @Patch('modifier-groups/:id')
+  updateModifierGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateMenuModifierGroupDto,
+  ) {
+    return this.menuService.updateModifierGroup(requireVenueId(user), id, dto);
+  }
+
+  @Delete('modifier-groups/:id')
+  removeModifierGroup(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.menuService.removeModifierGroup(requireVenueId(user), id);
   }
 }
