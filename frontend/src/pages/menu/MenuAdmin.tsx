@@ -626,8 +626,6 @@ export function MenuAdmin() {
         </Alert>
       )}
 
-      <ModifierGroupsCard locked={locked} />
-
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -906,6 +904,8 @@ export function MenuAdmin() {
           </DndContext>
         </CardContent>
       </Card>
+
+      <ModifierGroupsCard locked={locked} />
 
       <Dialog open={categoryDialogOpen} onClose={() => setCategoryDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCategory ? 'Modifica categoria' : 'Nuova categoria'}</DialogTitle>
