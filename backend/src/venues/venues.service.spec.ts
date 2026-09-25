@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VenuesService } from './venues.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { encryptSecret } from '../common/crypto/secret-crypto';
+import { decryptSecret, encryptSecret } from '../common/crypto/secret-crypto';
 import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
 
 jest.mock('../common/payments/sumup-client', () => ({
@@ -76,6 +76,30 @@ describe('VenuesService', () => {
       const result = await service.getOwn('venue-1');
 
       expect((result as unknown as { sumupHasApiKey: boolean }).sumupHasApiKey).toBe(false);
+    });
+  });
+
+  describe('updateSumUpSettings (sanificazione API key)', () => {
+    /**
+     * Il campo è type="password" (valore mascherato in UI) e le pagine
+     * SumUp mostrano la chiave dentro esempi come "Authorization: Bearer
+     * sup_sk_...": uno spazio/a capo incollato per errore o la parola
+     * "Bearer" copiata insieme alla chiave fanno fallire con 401 la
+     * chiamata a SumUp anche con la chiave "giusta" — va tolto prima di
+     * cifrare, non lasciato all'admin da scoprire a occhio.
+     */
+    it('rimuove spazi/a capo attorno alla chiave prima di cifrarla', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: null, sumupEnabled: false });
+      await service.updateSumUpSettings('venue-1', { apiKey: '  sup_sk_test123  \n' });
+      const savedEnc = prisma.venue.update.mock.calls[0][0].data.sumupApiKeyEnc;
+      expect(decryptSecret(savedEnc)).toBe('sup_sk_test123');
+    });
+
+    it('rimuove un prefisso "Bearer " copiato per errore insieme alla chiave', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ id: 'venue-1', sumupApiKeyEnc: null, sumupEnabled: false });
+      await service.updateSumUpSettings('venue-1', { apiKey: 'Bearer sup_sk_test123' });
+      const savedEnc = prisma.venue.update.mock.calls[0][0].data.sumupApiKeyEnc;
+      expect(decryptSecret(savedEnc)).toBe('sup_sk_test123');
     });
   });
 

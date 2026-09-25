@@ -204,12 +204,19 @@ export class VenuesService {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) throw new NotFoundException('Locale non trovato');
 
+    // Sanificazione difensiva: il campo è type="password" (valore mascherato,
+    // l'admin non può accorgersi a occhio di spazi/a capo incollati per
+    // errore) e le pagine SumUp mostrano la chiave dentro esempi come
+    // "Authorization: Bearer sup_sk_...", da cui capita di copiare anche la
+    // parola "Bearer" insieme alla chiave — in entrambi i casi la chiamata a
+    // SumUp fallirebbe con 401 pur avendo la chiave "giusta".
+    const sanitizedApiKey = dto.apiKey?.trim().replace(/^bearer\s+/i, '') || null;
     const data: { sumupApiKeyEnc?: string | null; sumupEnabled?: boolean } = {};
     if (dto.apiKey !== undefined) {
-      data.sumupApiKeyEnc = dto.apiKey ? encryptSecret(dto.apiKey) : null;
+      data.sumupApiKeyEnc = sanitizedApiKey ? encryptSecret(sanitizedApiKey) : null;
     }
     if (dto.enabled !== undefined) {
-      const willHaveKey = dto.apiKey ? true : !!venue.sumupApiKeyEnc;
+      const willHaveKey = sanitizedApiKey ? true : !!venue.sumupApiKeyEnc;
       if (dto.enabled && !willHaveKey) {
         throw new BadRequestException('Imposta prima una API key SumUp valida.');
       }
