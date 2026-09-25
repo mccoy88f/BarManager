@@ -1,0 +1,100 @@
+/**
+ * Client minimale per la SumUp Online Payments API (Hosted Checkout /
+ * Payment Widget, §5.10 di DEVELOPMENT.md — non la Cloud API per lettore
+ * fisico, scartata). Ogni locale ha la propria API key (creata dal
+ * proprio Dashboard SumUp -> Developer Settings), sempre cifrata come il
+ * token Loyverse (v. common/crypto/secret-crypto.ts), mai in chiaro.
+ *
+ * Il webhook di SumUp è volutamente minimale ({event_type, id}): bisogna
+ * sempre rileggere lo stato reale con getCheckout, non fidarsi del solo
+ * arrivo della notifica.
+ */
+
+const BASE_URL = 'https://api.sumup.com/v0.1';
+
+export class SumUpApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+  ) {
+    super(message);
+  }
+}
+
+export interface SumUpCheckout {
+  id: string;
+  status: 'PENDING' | 'PAID' | 'FAILED';
+  checkout_reference: string;
+  amount: number;
+  currency: string;
+  transactions?: { id: string; status: string }[];
+}
+
+export interface SumUpPaymentMethod {
+  id: string; // es. "card", "bancomat_pay", "satispay", "apple_pay", "google_pay", "paypal"
+  logo?: string;
+}
+
+async function callSumUp<T>(apiKey: string, path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new SumUpApiError('API key SumUp non valida o senza i permessi necessari.', res.status);
+  }
+  if (res.status === 429) {
+    throw new SumUpApiError('Limite di richieste SumUp superato: riprova tra qualche minuto.', res.status);
+  }
+  if (!res.ok) {
+    throw new SumUpApiError(`SumUp ha risposto con errore ${res.status}.`, res.status);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+export const sumupClient = {
+  /** Crea un checkout per l'importo totale dell'ordine. */
+  async createCheckout(
+    apiKey: string,
+    input: { checkoutReference: string; amount: number; currency: string; description: string },
+  ): Promise<SumUpCheckout> {
+    return callSumUp<SumUpCheckout>(apiKey, '/checkouts', {
+      method: 'POST',
+      body: JSON.stringify({
+        checkout_reference: input.checkoutReference,
+        amount: input.amount,
+        currency: input.currency,
+        description: input.description,
+      }),
+    });
+  },
+
+  /** Rilegge lo stato reale del checkout — mai fidarsi del solo webhook. */
+  async getCheckout(apiKey: string, checkoutId: string): Promise<SumUpCheckout> {
+    return callSumUp<SumUpCheckout>(apiKey, `/checkouts/${checkoutId}`);
+  },
+
+  /**
+   * Metodi di pagamento davvero disponibili per questo checkout (può
+   * variare per importo/valuta): da intersecare con quelli scelti
+   * dall'admin (Venue.sumupEnabledPaymentMethods), mai mostrati ciecamente.
+   */
+  async getAvailablePaymentMethods(apiKey: string, checkoutId: string): Promise<SumUpPaymentMethod[]> {
+    const body = await callSumUp<{ available_payment_methods: SumUpPaymentMethod[] }>(
+      apiKey,
+      `/checkouts/${checkoutId}/payment-methods`,
+    );
+    return body.available_payment_methods ?? [];
+  },
+
+  /** Rimborso pieno di una transazione — usato se un ordine pagato viene poi rifiutato. */
+  async refund(apiKey: string, transactionId: string): Promise<void> {
+    await callSumUp<void>(apiKey, `/me/refund/${transactionId}`, { method: 'POST' });
+  },
+};

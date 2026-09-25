@@ -62,3 +62,37 @@ export function findOpenSlot(day: OpeningHoursDay, minutesOfDay: number): 1 | 2 
   }
   return null;
 }
+
+/**
+ * Come findOpenSlot, ma per gli ordini online (§5.10 di DEVELOPMENT.md):
+ * il primo orario richiedibile è l'inizio fascia +marginMinutes e l'ultimo
+ * è la fine fascia -marginMinutes (es. cucina 12:00-15:00 con margine 30 =
+ * richiedibile solo 12:30-14:30) — un margine fisso di tempo di
+ * preparazione che le Prenotazioni non hanno. Una fascia troppo corta per
+ * il margine (es. 15 minuti totali con margine 30) risulta semplicemente
+ * sempre chiusa per gli ordini online, senza errori.
+ */
+export function findOpenSlotWithMargin(
+  day: OpeningHoursDay,
+  minutesOfDay: number,
+  marginMinutes: number,
+): 1 | 2 | null {
+  if (day.closed) return null;
+  if (
+    day.slot1Start &&
+    day.slot1End &&
+    minutesOfDay >= toMinutes(day.slot1Start) + marginMinutes &&
+    minutesOfDay <= toMinutes(day.slot1End) - marginMinutes
+  ) {
+    return 1;
+  }
+  if (
+    day.slot2Start &&
+    day.slot2End &&
+    minutesOfDay >= toMinutes(day.slot2Start) + marginMinutes &&
+    minutesOfDay <= toMinutes(day.slot2End) - marginMinutes
+  ) {
+    return 2;
+  }
+  return null;
+}

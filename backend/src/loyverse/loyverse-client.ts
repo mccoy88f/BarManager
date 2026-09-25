@@ -52,6 +52,29 @@ export function variantDisplayName(variant: LoyverseVariant): string {
     .join(', ');
 }
 
+export interface LoyversePaymentType {
+  id: string;
+  name: string;
+  type?: string; // es. "CASH", "CARD", "OTHER" — informativo, non usato per la logica
+}
+
+export interface LoyverseModifierOption {
+  id: string;
+  name: string;
+  price?: number;
+}
+
+/// NOTA: struttura non ancora verificata contro una risposta reale
+/// dell'endpoint (a differenza di LoyverseItem/LoyverseVariant sopra,
+/// verificati contro la documentazione incollata dall'utente) — da
+/// confermare in sandbox prima del rilascio (§5.10 di DEVELOPMENT.md).
+export interface LoyverseModifier {
+  id: string;
+  name: string;
+  modifier_options?: LoyverseModifierOption[];
+  deleted_at?: string | null;
+}
+
 export class LoyverseApiError extends Error {
   constructor(
     message: string,
@@ -110,6 +133,21 @@ export const loyverseClient = {
 
   async listItems(accessToken: string): Promise<LoyverseItem[]> {
     return fetchAllPages<LoyverseItem>(accessToken, '/items', 'items');
+  },
+
+  /**
+   * Metodi di pagamento configurati dal locale nel proprio Back Office
+   * Loyverse (§5.10): dati di riferimento, da mettere in cache invece di
+   * richiedere ad ogni ricevuta. Nessun metodo fisso "CASH"/"CARD"
+   * universale come in BarManager — l'admin li accoppia a mano.
+   */
+  async listPaymentTypes(accessToken: string): Promise<LoyversePaymentType[]> {
+    return fetchAllPages<LoyversePaymentType>(accessToken, '/payment-types', 'payment_types');
+  },
+
+  /** Gruppi di modificatori (es. "Estras") con le rispettive opzioni. */
+  async listModifiers(accessToken: string): Promise<LoyverseModifier[]> {
+    return fetchAllPages<LoyverseModifier>(accessToken, '/modifiers', 'modifiers');
   },
 
   extractImageUrl,

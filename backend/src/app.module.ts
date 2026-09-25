@@ -27,6 +27,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { CustomersModule } from './customers/customers.module';
 import { CommunicationsModule } from './communications/communications.module';
 import { MeModule } from './me/me.module';
+import { OnlineOrdersModule } from './online-orders/online-orders.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { MeModule } from './me/me.module';
     CustomersModule,
     CommunicationsModule,
     MeModule,
+    OnlineOrdersModule,
   ],
   providers: [
     // ThrottlerModule era registrato ma mai applicato: senza questo guard

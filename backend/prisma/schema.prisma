@@ -144,27 +144,90 @@ model Venue {
   // si applica all'aggiunta manuale in backoffice.
   reservationMinLeadMinutes        Int     @default(0)
 
-  users             User[]
-  employees         Employee[]
-  fridges           Fridge[]
-  cleaningTasks     CleaningTask[]
-  printers          Printer[]
-  productCategories ProductCategory[]
-  suppliers         Supplier[]
-  orders            Order[]
-  auditLogs         AuditLog[]
-  qrTokens          QrToken[]
-  nfcTags           NfcTag[]
-  haccpReports      HaccpReport[]
-  menuCategories    MenuCategory[]
-  menuItems         MenuItem[]
-  tasks             Task[]
-  boardMessages     BoardMessage[]
-  kbArticles        KbArticle[]
-  tables            Table[]
-  reservations      Reservation[]
-  customers         Customer[]
-  communications    Communication[]
+  // Ordini online (§5.10 di DEVELOPMENT.md): asporto e consegna a domicilio
+  // dal menù pubblico, modulo opzionale come le prenotazioni.
+  onlineOrdersEnabled         Boolean @default(false)
+  onlineOrdersPickupEnabled   Boolean @default(true)
+  onlineOrdersDeliveryEnabled Boolean @default(true)
+  // Orari specifici per gli ordini online, stessa forma di "openingHours"
+  // sopra: se null si usano gli orari generali del locale. Il primo/ultimo
+  // orario richiedibile è comunque sempre ristretto di 30 minuti su
+  // ciascun lato della fascia (margine fisso, non configurabile — v.
+  // isWithinOnlineOrdersWindow in common/opening-hours/opening-hours.ts).
+  onlineOrdersOpeningHours    Json?
+  // Anticipo minimo richiesto dal checkout pubblico (minuti da adesso),
+  // equivalente a reservationMinLeadMinutes ma un valore proprio: il tempo
+  // di preparazione di un ordine non è quello di un tavolo.
+  onlineOrdersMinLeadMinutes  Int     @default(30)
+
+  // Accettazione automatica per fascia da 15 minuti di "requestedAt": se
+  // attiva, un ordine sotto soglia nasce già CONFIRMED (salta PENDING).
+  // La soglia non blocca mai l'invio dell'ordine, solo se saltare o no la
+  // revisione manuale (v. §5.10). "SlotMode" sceglie se la soglia è un
+  // unico contatore condiviso ritiro+consegna, o due contatori separati.
+  onlineOrdersAutoAcceptEnabled         Boolean              @default(false)
+  onlineOrdersAutoAcceptSlotMode        OnlineOrdersSlotMode @default(COMBINED)
+  onlineOrdersAutoAcceptPerSlot         Int                  @default(0)
+  onlineOrdersAutoAcceptPerSlotPickup   Int                  @default(0)
+  onlineOrdersAutoAcceptPerSlotDelivery Int                  @default(0)
+
+  // Zona e costo di consegna: raggio massimo dal locale (null = nessun
+  // limite, calcolato con la stessa formula haversine della timbratura
+  // GPS a partire da gpsLat/gpsLng sopra), costo fisso e soglia di importo
+  // ordine sopra la quale la consegna è gratuita (null = mai gratuita).
+  deliveryRadiusMeters    Int?
+  deliveryFee             Float  @default(0)
+  deliveryFreeAboveAmount Float?
+
+  // Integrazione SumUp (Online Payments API, §5.10): credenziali e metodi
+  // di pagamento abilitati dall'admin per la consegna, cifrate come il
+  // token Loyverse sopra.
+  sumupEnabled               Boolean  @default(false)
+  sumupApiKeyEnc             String?
+  // Sottoinsieme scelto dall'admin tra i metodi davvero disponibili per il
+  // proprio account (interrogati con "Verifica metodi disponibili", es.
+  // ["card", "bancomat_pay"]) — non tutti quelli che SumUp offrirebbe.
+  sumupEnabledPaymentMethods String[] @default([])
+
+  // Sincronizzazione Loyverse degli ordini online: opt-in separato da
+  // loyverseIntegrationEnabled sopra (un locale può avere Loyverse attivo
+  // per il menù ma non volerlo per gli ordini online). Mappatura dei 3
+  // metodi di pagamento di BarManager sul payment_type_id configurato dal
+  // locale nel proprio Back Office Loyverse (GET /payment-types) — non
+  // correlata a sumupEnabledPaymentMethods sopra, un asse indipendente.
+  loyverseSyncOnlineOrders         Boolean @default(false)
+  loyversePaymentTypeIdCash        String?
+  loyversePaymentTypeIdCardOnline  String?
+  loyversePaymentTypeIdCardInStore String?
+
+  users              User[]
+  employees          Employee[]
+  fridges            Fridge[]
+  cleaningTasks      CleaningTask[]
+  printers           Printer[]
+  productCategories  ProductCategory[]
+  suppliers          Supplier[]
+  orders             Order[]
+  auditLogs          AuditLog[]
+  qrTokens           QrToken[]
+  nfcTags            NfcTag[]
+  haccpReports       HaccpReport[]
+  menuCategories     MenuCategory[]
+  menuItems          MenuItem[]
+  menuModifierGroups MenuModifierGroup[]
+  tasks              Task[]
+  boardMessages      BoardMessage[]
+  kbArticles         KbArticle[]
+  tables             Table[]
+  reservations       Reservation[]
+  customers          Customer[]
+  communications     Communication[]
+  onlineOrders       OnlineOrder[]
+}
+
+enum OnlineOrdersSlotMode {
+  COMBINED
+  SEPARATE
 }
 
 model User {
@@ -662,6 +725,13 @@ model MenuItem {
   // In evidenza in cima al menù pubblico, in aggiunta alla propria categoria.
   featured         Boolean   @default(false)
 
+  // Canale "ordini online" (§5.10 di DEVELOPMENT.md): flag di
+  // presentazione/canale come "visible"/"featured" sopra, quindi sempre
+  // modificabile anche con l'integrazione Loyverse attiva. Il "menù
+  // locale" (pagina /menu) non ne tiene conto: mostra sempre tutte le voci
+  // visibili, indipendentemente da questo flag.
+  orderableOnline Boolean @default(false)
+
   sortOrder Int @default(0)
 
   // Popolata solo dal sync Loyverse: raggruppa le varianti di uno stesso
@@ -674,7 +744,9 @@ model MenuItem {
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
-  variants MenuItemVariant[]
+  variants       MenuItemVariant[]
+  modifierGroups MenuItemModifierGroup[]
+  orderLines     OnlineOrderLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -703,10 +775,76 @@ model MenuItemVariant {
   menuItemId String
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
 
+  orderLines OnlineOrderLine[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([menuItemId, loyverseVariantId])
+}
+
+// ---------------------------------------------------------------------------
+// Modificatori del menù (§5.10 di DEVELOPMENT.md): asse ortogonale alle
+// Varianti sopra (es. "Estras": +Formaggio, -Cipolla, applicabili a più voci
+// diverse), nativi come le Varianti — funzionano anche senza Loyverse, si
+// popolano dal sync (GET /modifiers) solo quando l'integrazione è attiva.
+// ---------------------------------------------------------------------------
+
+enum MenuModifierSelectionType {
+  SINGLE
+  MULTIPLE
+}
+
+model MenuModifierGroup {
+  id            String                    @id @default(cuid())
+  name          String // es. "Estras"
+  selectionType MenuModifierSelectionType @default(SINGLE)
+  minSelections Int                       @default(0)
+  maxSelections Int?
+  sortOrder     Int                       @default(0)
+
+  // Popolata solo dal sync Loyverse, mai impostata a mano.
+  loyverseModifierId String?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  options MenuModifierOption[]
+  items   MenuItemModifierGroup[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([venueId, loyverseModifierId])
+}
+
+model MenuModifierOption {
+  id        String @id @default(cuid())
+  name      String // es. "Formaggio extra"
+  price     Float  @default(0) // può essere 0, es. "Senza cipolla"
+  sortOrder Int    @default(0)
+
+  // Popolata solo dal sync Loyverse.
+  loyverseModifierOptionId String?
+
+  groupId String
+  group   MenuModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  lineModifiers OnlineOrderLineModifier[]
+
+  createdAt DateTime @default(now())
+}
+
+/// Quali gruppi di modificatori si applicano a quale voce di menù (molti-a-
+/// molti): un gruppo "Estras" può essere condiviso da più voci diverse,
+/// esattamente come Item.modifier_ids in Loyverse.
+model MenuItemModifierGroup {
+  menuItemId      String
+  modifierGroupId String
+  menuItem        MenuItem          @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifierGroup   MenuModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@id([menuItemId, modifierGroupId])
+  @@index([modifierGroupId])
 }
 
 // ---------------------------------------------------------------------------
@@ -911,32 +1049,32 @@ enum ReservationStatus {
 /// Richiesta di prenotazione da parte di un cliente (widget pubblico,
 /// nessun login). Isolata per venueId come tutte le altre entità.
 model Reservation {
-  id                  String            @id @default(cuid())
-  firstName           String
-  lastName            String
-  email               String
-  phone               String
-  partySize           Int
-  reservedAt          DateTime // data/ora confermata (quella richiesta, salvo cambio orario concordato)
+  id                   String            @id @default(cuid())
+  firstName            String
+  lastName             String
+  email                String
+  phone                String
+  partySize            Int
+  reservedAt           DateTime // data/ora confermata (quella richiesta, salvo cambio orario concordato)
   // Nuovo orario proposto dal locale (§10 di DEVELOPMENT.md), in attesa di
   // conferma del cliente via email: se presente, "reservedAt" resta quello
   // valido finché il cliente non confema il cambio dal link email.
-  proposedReservedAt  DateTime?
+  proposedReservedAt   DateTime?
   // Durata di occupazione del tavolo per questa prenotazione, in minuti:
   // se null usa il default del locale (Venue.reservationSlotDurationMinutes).
   // L'admin può alzarla/abbassarla per un singolo gruppo (es. un evento
   // che si sa durerà più a lungo) senza toccare il default per tutti.
-  slotDurationMinutes Int?
-  isEvent             Boolean           @default(false)
-  eventNote           String? // es. "Compleanno"
-  allergiesNote       String?
-  notes               String?
+  slotDurationMinutes  Int?
+  isEvent              Boolean           @default(false)
+  eventNote            String? // es. "Compleanno"
+  allergiesNote        String?
+  notes                String?
   // Consenso a ricevere comunicazioni promozionali (email/SMS/WhatsApp),
   // raccolto con una casella dedicata nel widget di prenotazione — non
   // implicito nell'aver semplicemente prenotato (v. nota GDPR §5.8 di
   // DEVELOPMENT.md). Propagato al Customer corrispondente ad ogni
   // prenotazione (l'ultimo valore dichiarato vince).
-  marketingConsent    Boolean           @default(false)
+  marketingConsent     Boolean           @default(false)
   // Autorizzazione al trattamento dei dati personali (GDPR), obbligatoria
   // per completare la prenotazione dal widget pubblico (v. createPublicReservation
   // in reservations.service.ts, che rifiuta la richiesta se non è true) —
@@ -944,14 +1082,14 @@ model Reservation {
   // obbligatoria da qui in avanti; le righe già esistenti prima di questo
   // campo non riflettono un consenso storico verificato, solo la coerenza
   // dello schema.
-  privacyPolicyConsent Boolean          @default(true)
-  status              ReservationStatus @default(PENDING)
+  privacyPolicyConsent Boolean           @default(true)
+  status               ReservationStatus @default(PENDING)
   // Obbligatoria solo se status = REJECTED.
-  rejectionReason     String?
+  rejectionReason      String?
   // Token opaco incluso nel link "Accetta/Rifiuta" mandato all'email del
   // locale: permette di gestire la richiesta senza login (§5.7). Non è
   // derivabile dall'id della prenotazione.
-  manageToken         String            @unique
+  manageToken          String            @unique
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
@@ -986,6 +1124,14 @@ model Customer {
   firstReservationAt DateTime?
   lastReservationAt  DateTime?
   reservationsCount  Int       @default(0)
+  // Equivalenti agli omologhi di prenotazione sopra, ma per gli ordini
+  // online (§5.10 di DEVELOPMENT.md): "totalOrdersSpent" è aggiornato in
+  // incremento ad ogni OnlineOrder.status -> COMPLETED, non una SUM
+  // calcolata al volo ad ogni apertura della pagina Clienti.
+  firstOrderAt       DateTime?
+  lastOrderAt        DateTime?
+  ordersCount        Int       @default(0)
+  totalOrdersSpent   Float     @default(0)
   // Ultimo consenso marketing dichiarato dal cliente (v. Reservation.marketingConsent):
   // aggiornato automaticamente ad ogni prenotazione. Non modificabile
   // dall'admin tramite il CRUD di anagrafica (§5.8): solo di sola lettura
@@ -1007,6 +1153,7 @@ model Customer {
   venue   Venue  @relation(fields: [venueId], references: [id])
 
   communicationRecipients CommunicationRecipient[]
+  onlineOrders            OnlineOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1043,9 +1190,9 @@ enum CommunicationRecipientStatus {
 /// invio, con un CommunicationRecipient per ciascun cliente destinatario.
 /// Isolata per venueId.
 model Communication {
-  id      String             @id @default(cuid())
-  type    CommunicationType
-  subject String
+  id       String              @id @default(cuid())
+  type     CommunicationType
+  subject  String
   // HTML compilato dall'editor ricco (stesso editor di KBpedia), con i
   // placeholder ({nome}, {cognome}, {email}) ancora letterali: sostituiti
   // per ciascun destinatario solo al momento dell'invio del suo singolo
@@ -1070,7 +1217,7 @@ model Communication {
 /// non solo l'esito aggregato dell'invio, per poter capire se una singola
 /// email in particolare non è arrivata (v. nota GDPR/§1-septdecies).
 model CommunicationRecipient {
-  id     String                        @id @default(cuid())
+  id     String                       @id @default(cuid())
   status CommunicationRecipientStatus @default(QUEUED)
   error  String?
   sentAt DateTime?
@@ -1084,4 +1231,154 @@ model CommunicationRecipient {
   createdAt DateTime @default(now())
 
   @@index([communicationId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Ordini online: asporto e consegna a domicilio (§5.10 di DEVELOPMENT.md)
+// ---------------------------------------------------------------------------
+
+enum OnlineOrderFulfillment {
+  PICKUP
+  DELIVERY
+}
+
+enum OnlineOrderStatus {
+  PENDING // appena arrivato, va accettato/rifiutato — o CONFIRMED subito se accettato in automatico
+  CONFIRMED // in preparazione
+  READY // pronto per il ritiro, o uscito in consegna
+  COMPLETED
+  REJECTED // motivo obbligatorio, come Reservation.rejectionReason
+  CANCELLED
+}
+
+enum OnlineOrderPaymentMethod {
+  CASH
+  CARD_ONLINE // pagato in anticipo al checkout via SumUp, solo per la consegna
+  CARD_IN_STORE // deciso dall'operatore al ritiro fisico, non dal cliente online
+}
+
+enum OnlineOrderPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+/// Ordine da asporto o consegna a domicilio dal checkout pubblico /ordina
+/// (nessun login). Isolata per venueId come Reservation, cui si ispira per
+/// molti pattern (manageToken, proposedRequestedAt, upsert su Customer).
+model OnlineOrder {
+  id          String                 @id @default(cuid())
+  fulfillment OnlineOrderFulfillment
+  status      OnlineOrderStatus      @default(PENDING)
+
+  // Orario desiderato di ritiro/consegna, validato ai 15 minuti dentro una
+  // fascia di apertura con margine di 30 minuti (v. isWithinOnlineOrdersWindow
+  // in common/opening-hours/opening-hours.ts) — non "adesso": anche un
+  // ordine "appena possibile" corrisponde comunque a uno slot valido.
+  requestedAt         DateTime
+  // Nuovo orario proposto dallo staff (tipicamente per spostare un ordine
+  // da una fascia satura a una più libera), in attesa di conferma del
+  // cliente dalla pagina di tracciamento — stesso pattern di
+  // Reservation.proposedReservedAt.
+  proposedRequestedAt DateTime?
+
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+
+  // Solo per fulfillment = DELIVERY: indirizzo testuale digitato dal
+  // cliente (mostrato in chiaro sullo scontrino completo) e coordinate
+  // scelte sulla mappa (origine di verità per distanza/navigazione, non
+  // l'indirizzo testuale — v. §5.10).
+  deliveryAddress        String?
+  deliveryLat            Float?
+  deliveryLng            Float?
+  deliveryDistanceMeters Float?
+  deliveryFee            Float   @default(0)
+
+  subtotal Float // somma delle righe, senza costo di consegna
+  total    Float // subtotal + deliveryFee
+
+  // Per il ritiro resta null finché l'operatore non registra a mano come
+  // il cliente ha pagato in negozio (v. §5.10) — non è una scelta del
+  // cliente online in quel caso, a differenza della consegna.
+  paymentMethod      OnlineOrderPaymentMethod?
+  paymentStatus      OnlineOrderPaymentStatus  @default(PENDING)
+  sumupCheckoutId    String? // solo per paymentMethod = CARD_ONLINE
+  sumupTransactionId String?
+
+  marketingConsent     Boolean @default(false)
+  privacyPolicyConsent Boolean @default(true)
+
+  // Obbligatoria solo se status = REJECTED.
+  rejectionReason String?
+  // Token opaco per la pagina pubblica di tracciamento ordine, nessun
+  // login — stesso pattern di Reservation.manageToken.
+  manageToken     String  @unique
+
+  // Esito della sincronizzazione Loyverse (solo se Venue.loyverseSyncOnlineOrders
+  // è attivo): id ricevuta creata, o errore se la mappatura payment_type_id
+  // non è configurata — non blocca mai l'ordine reale, v. §5.10.
+  loyverseReceiptId String?
+  loyverseSyncError String?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  lines OnlineOrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, status])
+  @@index([venueId, requestedAt])
+}
+
+/// Riga carrello di un OnlineOrder: nome voce/variante congelati al momento
+/// dell'ordine (itemName/variantName), indipendenti da rinomine successive
+/// del catalogo — lo stesso principio per cui Reservation porta i propri
+/// firstName/lastName invece di dipendere sempre dal Customer collegato.
+model OnlineOrderLine {
+  id String @id @default(cuid())
+
+  onlineOrderId String
+  onlineOrder   OnlineOrder @relation(fields: [onlineOrderId], references: [id], onDelete: Cascade)
+
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  itemName   String
+
+  variantId   String
+  variant     MenuItemVariant @relation(fields: [variantId], references: [id])
+  variantName String
+
+  quantity  Int
+  unitPrice Float // prezzo della variante congelato al momento dell'ordine
+  note      String? // es. "senza ghiaccio"
+
+  modifiers OnlineOrderLineModifier[]
+
+  @@index([onlineOrderId])
+}
+
+/// Modificatore scelto per una riga carrello: nome/prezzo congelati come
+/// sopra per OnlineOrderLine.
+model OnlineOrderLineModifier {
+  id String @id @default(cuid())
+
+  lineId String
+  line   OnlineOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  modifierOptionId String
+  modifierOption   MenuModifierOption @relation(fields: [modifierOptionId], references: [id])
+  optionName       String
+
+  price Float // prezzo del modificatore congelato al momento dell'ordine
+
+  @@index([lineId])
 }

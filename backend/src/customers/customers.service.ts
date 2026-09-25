@@ -199,6 +199,65 @@ export class CustomersService {
   }
 
   /**
+   * Equivalente a recordReservation sopra, ma per gli ordini online (§5.10
+   * di DEVELOPMENT.md): "ordersCount"/"firstOrderAt"/"lastOrderAt"
+   * aggiornati ad ogni ordine creato (qualunque sia il suo stato finale,
+   * come reservationsCount), mentre "totalOrdersSpent" resta a parte —
+   * v. recordOnlineOrderCompleted sotto, aggiornato solo alla chiusura.
+   */
+  async recordOnlineOrder(
+    venueId: string,
+    data: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      marketingConsent: boolean;
+    },
+  ) {
+    const email = data.email.trim().toLowerCase();
+    const now = new Date();
+    const customer = await this.prisma.customer.upsert({
+      where: { venueId_email: { venueId, email } },
+      create: {
+        venueId,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email,
+        phone: data.phone,
+        marketingConsent: data.marketingConsent,
+        firstOrderAt: now,
+        lastOrderAt: now,
+        ordersCount: 1,
+        privacyToken: randomUUID(),
+      },
+      update: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        marketingConsent: data.marketingConsent,
+        lastOrderAt: now,
+        ordersCount: { increment: 1 },
+      },
+    });
+    if (!customer.privacyToken) {
+      return this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { privacyToken: randomUUID() },
+      });
+    }
+    return customer;
+  }
+
+  /** Incrementa la spesa totale di un cliente: chiamato solo alla chiusura effettiva di un OnlineOrder (COMPLETED), mai alla sola creazione. */
+  recordOnlineOrderCompleted(customerId: string, orderTotal: number) {
+    return this.prisma.customer.update({
+      where: { id: customerId },
+      data: { totalOrdersSpent: { increment: orderTotal } },
+    });
+  }
+
+  /**
    * Garantisce (generandolo se assente) il token per la pagina pubblica
    * "gestisci i tuoi dati personali", per un cliente già esistente (es.
    * prima di mandare un'email che deve includere quel link, ma senza
