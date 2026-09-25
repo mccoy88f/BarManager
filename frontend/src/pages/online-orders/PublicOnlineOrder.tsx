@@ -313,13 +313,17 @@ function SumUpCardDialog({
     let active = true;
     setLoading(true);
     setError(null);
-    mountSumUpCard(SUMUP_CARD_ELEMENT_ID, checkoutId, (resultCode, data: SumUpCardResponse) => {
+    mountSumUpCard(SUMUP_CARD_ELEMENT_ID, checkoutId, (type, data: SumUpCardResponse) => {
       if (!active) return;
-      if (resultCode === 'success') {
+      if (type === 'success') {
         onSuccess();
         return;
       }
-      setError(data?.message || 'Pagamento non riuscito: verifica i dati della carta e riprova.');
+      if (type === 'error') {
+        setError(data?.message || 'Pagamento non riuscito: verifica i dati della carta e riprova.');
+      }
+      // 'sent' (invio in corso) e 'invalid' (errori di validazione, già
+      // mostrati dal widget stesso) non richiedono nessuna azione qui.
     })
       .then(() => {
         if (active) setLoading(false);

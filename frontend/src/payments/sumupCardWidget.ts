@@ -5,28 +5,40 @@
  * gira in un iframe di SumUp, noi passiamo solo il `checkoutId` già creato
  * lato server (`POST /v0.1/checkouts`, v. sumup-client.ts nel backend).
  *
- * NOTA: integrazione da verificare contro l'ambiente sandbox SumUp reale
- * prima del rilascio (nessuna chiave/ambiente di test disponibile in
- * questa sessione) — in particolare la forma esatta dei parametri di
- * `mount`/`onResponseCallback`, qui implementata secondo la documentazione
- * pubblica del Card Widget SumUp.
+ * SDK ufficiale (developer.sumup.com/online-payments/checkouts/card-widget),
+ * verificato via ricerca web prima di questa versione — non solo dedotto
+ * dalla memoria di training: `SumUpCard.mount({id, checkoutId, onResponse,
+ * locale, showFooter, currency})`, callback `onResponse(type, body)` con
+ * `type` uno tra `sent`/`invalid`/`error`/`success` (non solo successo/
+ * errore), e `SumUpCard.unmount(id)` per lo smontaggio pulito. Resta da
+ * verificare in sandbox SumUp reale (nessuna credenziale disponibile in
+ * questa sessione), ma il contratto qui sotto è quello documentato, non
+ * inventato.
  */
 
 const SDK_URL = 'https://gateway.sumup.com/gateway/ecom/card/v2/sdk.js';
 
 export interface SumUpCardResponse {
-  status?: string;
+  transaction_id?: string;
   message?: string;
   [key: string]: unknown;
 }
 
+/**
+ * `sent`: form inviato al server, in attesa di risposta (solo informativo).
+ * `invalid`: errori di validazione lato client (il widget mostra già i suoi).
+ * `error`: il server ha risposto con un errore.
+ * `success`: pagamento riuscito.
+ */
+export type SumUpCardResponseType = 'sent' | 'invalid' | 'error' | 'success';
+
 interface SumUpCardMountConfig {
   id: string;
   checkoutId: string;
-  onResponseCallback: (resultCode: 'success' | 'error' | string, data: SumUpCardResponse) => void;
-  showSubmitButton?: boolean;
-  showFooter?: boolean;
+  onResponse: (type: SumUpCardResponseType, body: SumUpCardResponse) => void;
   locale?: string;
+  showFooter?: boolean;
+  currency?: string;
 }
 
 interface SumUpCardGlobal {
@@ -59,7 +71,7 @@ function loadSumUpSdk(): Promise<void> {
 export async function mountSumUpCard(
   elementId: string,
   checkoutId: string,
-  onResponseCallback: SumUpCardMountConfig['onResponseCallback'],
+  onResponse: SumUpCardMountConfig['onResponse'],
 ): Promise<void> {
   await loadSumUpSdk();
   const sumUpCard = sumUpCardGlobal();
@@ -70,9 +82,9 @@ export async function mountSumUpCard(
     id: elementId,
     checkoutId,
     locale: 'it-IT',
-    showSubmitButton: true,
     showFooter: true,
-    onResponseCallback,
+    currency: 'EUR',
+    onResponse,
   });
 }
 
