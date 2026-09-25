@@ -1,8 +1,8 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
-import { locationIqClient } from '../common/geo/locationiq-client';
+import { LocationIqApiError, locationIqClient } from '../common/geo/locationiq-client';
 import { OnlineOrdersService } from './online-orders.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
@@ -95,16 +95,31 @@ export class PublicOnlineOrdersController {
    * Proxy verso LocationIQ (indirizzo -> coordinate, §5.10): la chiave API
    * resta lato server, mai esposta al browser. Usato dal pulsante "Cerca"
    * nel checkout consegna, prima di posizionare il puntatore sulla mappa.
+   *
+   * LocationIqApiError non è una HttpException di NestJS: senza tradurla
+   * qui (es. LOCATIONIQ_API_KEY mancante o non valida), risalirebbe come
+   * 500 Internal Server Error generico, che il frontend non mostra
+   * all'utente — la ricerca sembrerebbe non fare nulla.
    */
   @Get('geocode')
-  geocode(@Query('address') address: string) {
-    return locationIqClient.forwardGeocode(address);
+  async geocode(@Query('address') address: string) {
+    try {
+      return await locationIqClient.forwardGeocode(address);
+    } catch (err) {
+      if (err instanceof LocationIqApiError) throw new BadRequestException(err.message);
+      throw err;
+    }
   }
 
   /** Coordinate -> indirizzo leggibile, quando il cliente sposta il puntatore a mano sulla mappa. */
   @Get('reverse-geocode')
-  reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
-    return locationIqClient.reverseGeocode(Number(lat), Number(lng));
+  async reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
+    try {
+      return await locationIqClient.reverseGeocode(Number(lat), Number(lng));
+    } catch (err) {
+      if (err instanceof LocationIqApiError) throw new BadRequestException(err.message);
+      throw err;
+    }
   }
 
   @Post('sumup-checkout')

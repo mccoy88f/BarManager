@@ -550,6 +550,7 @@ export function PublicOnlineOrder() {
       setLat(data.lat);
       setLng(data.lng);
     },
+    onError: (err) => setGeocodeError(extractErrorMessage(err)),
   });
 
   /** Righe carrello nel formato richiesto dall'API, condivise fra checkout SumUp e creazione ordine finale. */
