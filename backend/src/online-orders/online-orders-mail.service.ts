@@ -99,6 +99,40 @@ export class OnlineOrdersMailService {
     });
   }
 
+  /**
+   * Ordine "il prima possibile" arrivato mentre il negozio è chiuso
+   * (§5.10 di DEVELOPMENT.md, `OnlineOrder.awaitingShopOpening`): a
+   * differenza di sendReceived, avvisa il cliente che la conferma non
+   * arriverà prima della riapertura, indicata in "requestedAt" (il
+   * prossimo istante utile).
+   */
+  sendReceivedAwaitingOpening(
+    order: OrderWithLines,
+    venueName: string,
+    trackUrl: string,
+    venueEmail?: string | null,
+    privacyUrl?: string | null,
+    logoUrl?: string | null,
+  ) {
+    const block = this.trackingBlock(trackUrl);
+    const footer = this.privacyFooter(privacyUrl);
+    const reopenText = this.when(order.requestedAt);
+    return this.mail.send({
+      to: order.email,
+      subject: `${venueName} — ordine ricevuto, in attesa di apertura`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
+      html: `<div style="font-family:sans-serif;color:#222;">
+            <p>Ciao ${escapeHtml(order.firstName)},</p>
+            <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per <strong>${escapeHtml(reopenText)}</strong>.</p>
+            ${block.html}
+            ${footer.html}
+          </div>`,
+      venueName,
+      replyTo: venueEmail,
+      logoUrl,
+    });
+  }
+
   sendConfirmed(
     order: OrderWithLines,
     venueName: string,

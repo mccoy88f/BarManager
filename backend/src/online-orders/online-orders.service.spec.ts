@@ -111,6 +111,7 @@ const variantFixture = {
     orderableOnline: true,
     visible: true,
     unavailableUntil: null as Date | null,
+    category: { orderableOnline: true, visible: true },
   },
 };
 
@@ -146,6 +147,7 @@ describe('OnlineOrdersService', () => {
     venue: { findUnique: jest.Mock; update: jest.Mock };
     menuItemVariant: { findMany: jest.Mock };
     menuModifierOption: { findMany: jest.Mock };
+    venueSpecialDay: { findUnique: jest.Mock };
     onlineOrder: {
       count: jest.Mock;
       create: jest.Mock;
@@ -163,6 +165,7 @@ describe('OnlineOrdersService', () => {
   };
   let mail: {
     sendReceived: jest.Mock;
+    sendReceivedAwaitingOpening: jest.Mock;
     sendConfirmed: jest.Mock;
     sendReady: jest.Mock;
     sendRejected: jest.Mock;
@@ -178,6 +181,7 @@ describe('OnlineOrdersService', () => {
       venue: { findUnique: jest.fn().mockResolvedValue(baseVenue), update: jest.fn() },
       menuItemVariant: { findMany: jest.fn().mockResolvedValue([variantFixture]) },
       menuModifierOption: { findMany: jest.fn().mockResolvedValue([]) },
+      venueSpecialDay: { findUnique: jest.fn().mockResolvedValue(null) },
       onlineOrder: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
@@ -195,6 +199,7 @@ describe('OnlineOrdersService', () => {
     };
     mail = {
       sendReceived: jest.fn(),
+      sendReceivedAwaitingOpening: jest.fn(),
       sendConfirmed: jest.fn(),
       sendReady: jest.fn(),
       sendRejected: jest.fn(),
@@ -273,6 +278,33 @@ describe('OnlineOrdersService', () => {
       await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(BadRequestException);
     });
 
+    it('un\'apertura speciale (§5.10) può chiudere un giorno normalmente aperto', async () => {
+      const requestedAt = nextLunchSlot();
+      prisma.venueSpecialDay.findUnique.mockResolvedValue({
+        realHoursOverride: { closed: true, slot1Start: null, slot1End: null, slot2Start: null, slot2End: null },
+        menuHoursOverride: null,
+      });
+      await expect(
+        service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: requestedAt.toISOString() })),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('un\'apertura speciale (§5.10) può aprire un giorno normalmente chiuso', async () => {
+      const closedDay = nextLunchSlot();
+      prisma.venue.findUnique.mockResolvedValue({
+        ...baseVenue,
+        onlineOrdersOpeningHours: [
+          { dayOfWeek: closedDay.getDay(), closed: true, slot1Start: null, slot1End: null, slot2Start: null, slot2End: null },
+        ],
+      });
+      prisma.venueSpecialDay.findUnique.mockResolvedValue({
+        realHoursOverride: { closed: false, slot1Start: '12:00', slot1End: '15:00', slot2Start: null, slot2End: null },
+        menuHoursOverride: null,
+      });
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: closedDay.toISOString() }));
+      expect(order).toBeDefined();
+    });
+
     it('rifiuta un modulo disattivato per il locale (onlineOrdersEnabled=false)', async () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, onlineOrdersEnabled: false });
       await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(ForbiddenException);
@@ -281,6 +313,58 @@ describe('OnlineOrdersService', () => {
     it('rifiuta il ritiro se onlineOrdersPickupEnabled è false', async () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, onlineOrdersPickupEnabled: false });
       await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rifiuta se non viene indicato né "asap" né un "requestedAt"', async () => {
+      await expect(
+        service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: undefined })),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('createPublicOrder — ordine "il prima possibile" (ASAP, §5.10)', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('con il negozio aperto: parte per subito (arrotondato al quarto d\'ora), niente awaitingShopOpening', async () => {
+      // Lunedì 1/1/2024, 12:45 a Roma: dentro la fascia pranzo di default
+      // (12:00-15:00) con margine di 30' (12:30-14:30) — già su un quarto
+      // d'ora esatto, quindi l'arrotondamento non lo sposta.
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:45:00.000Z'));
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, timezone: 'Europe/Rome' });
+
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ asap: true, requestedAt: undefined }));
+
+      expect(order.awaitingShopOpening).toBe(false);
+      expect(order.requestedAt.toISOString()).toBe('2024-01-01T11:45:00.000Z');
+      expect(mail.sendReceivedAwaitingOpening).not.toHaveBeenCalled();
+      expect(mail.sendReceived).toHaveBeenCalled();
+    });
+
+    it('con il negozio chiuso: l\'ordine nasce comunque PENDING, awaitingShopOpening=true, mai auto-accettato, email dedicata', async () => {
+      // Stesso istante di sopra, ma lunedì è chiuso: il prossimo orario
+      // utile è martedì 12:30 (apertura 12:00 + margine 30').
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:45:00.000Z'));
+      prisma.venue.findUnique.mockResolvedValue({
+        ...baseVenue,
+        timezone: 'Europe/Rome',
+        onlineOrdersOpeningHours: [
+          { dayOfWeek: 1, closed: true, slot1Start: null, slot1End: null, slot2Start: null, slot2End: null },
+          { dayOfWeek: 2, closed: false, slot1Start: '12:00', slot1End: '15:00', slot2Start: null, slot2End: null },
+        ],
+        onlineOrdersAutoAcceptEnabled: true,
+        onlineOrdersAutoAcceptPerSlot: 999,
+      });
+
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ asap: true, requestedAt: undefined }));
+
+      expect(order.status).toBe('PENDING');
+      expect(order.awaitingShopOpening).toBe(true);
+      expect(order.requestedAt.toISOString()).toBe('2024-01-02T11:30:00.000Z');
+      expect(mail.sendReceivedAwaitingOpening).toHaveBeenCalled();
+      expect(mail.sendReceived).not.toHaveBeenCalled();
+      expect(mail.sendConfirmed).not.toHaveBeenCalled();
     });
   });
 
@@ -295,6 +379,16 @@ describe('OnlineOrdersService', () => {
     it('rifiuta una voce non orderableOnline', async () => {
       prisma.menuItemVariant.findMany.mockResolvedValue([
         { ...variantFixture, menuItem: { ...variantFixture.menuItem, orderableOnline: false } },
+      ]);
+      await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(BadRequestException);
+    });
+
+    it('rifiuta una voce la cui categoria non è orderableOnline, anche se la voce stessa lo è (§5.10)', async () => {
+      prisma.menuItemVariant.findMany.mockResolvedValue([
+        {
+          ...variantFixture,
+          menuItem: { ...variantFixture.menuItem, category: { orderableOnline: false, visible: true } },
+        },
       ]);
       await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(BadRequestException);
     });

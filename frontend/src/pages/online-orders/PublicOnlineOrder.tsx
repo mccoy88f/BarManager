@@ -377,6 +377,10 @@ export function PublicOnlineOrder() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [addingItem, setAddingItem] = useState<MenuItem | null>(null);
   const [fulfillment, setFulfillment] = useState<'PICKUP' | 'DELIVERY' | ''>('');
+  // "Il prima possibile" (§5.10 di DEVELOPMENT.md): l'ordine parte subito se
+  // il negozio è aperto, altrimenti nasce comunque ma resta in attesa
+  // dell'apertura — v. awaitingShopOpening nel risultato dell'ordine.
+  const [asap, setAsap] = useState(true);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [firstName, setFirstName] = useState(contactCache.firstName);
@@ -390,7 +394,12 @@ export function PublicOnlineOrder() {
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD_ONLINE'>('CASH');
   const [marketingConsent, setMarketingConsent] = useState(true);
   const [privacyPolicyConsent, setPrivacyPolicyConsent] = useState(true);
-  const [orderResult, setOrderResult] = useState<{ id: string; manageToken: string } | null>(null);
+  const [orderResult, setOrderResult] = useState<{
+    id: string;
+    manageToken: string;
+    awaitingShopOpening: boolean;
+    requestedAt: string;
+  } | null>(null);
   const [sumupCheckout, setSumupCheckout] = useState<{ checkoutId: string; total: number } | null>(null);
 
   const infoQuery = useQuery({
@@ -451,7 +460,14 @@ export function PublicOnlineOrder() {
       (
         await api.post<{ checkoutId: string; total: number }>(
           '/public/online-orders/sumup-checkout',
-          { cart: { lines: buildLines() }, requestedAt: requestedAtIso(), deliveryAddress: address, deliveryLat: lat, deliveryLng: lng },
+          {
+            cart: { lines: buildLines() },
+            asap,
+            requestedAt: asap ? undefined : requestedAtIso(),
+            deliveryAddress: address,
+            deliveryLat: lat,
+            deliveryLng: lng,
+          },
           { params: venueSlug ? { venueSlug } : undefined },
         )
       ).data,
@@ -462,12 +478,13 @@ export function PublicOnlineOrder() {
   const finalizeOrderMutation = useMutation({
     mutationFn: async (sumupCheckoutId?: string) =>
       (
-        await api.post<{ id: string; manageToken: string }>(
+        await api.post<{ id: string; manageToken: string; awaitingShopOpening: boolean; requestedAt: string }>(
           '/public/online-orders',
           {
             lines: buildLines(),
             fulfillment,
-            requestedAt: requestedAtIso(),
+            asap,
+            requestedAt: asap ? undefined : requestedAtIso(),
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: email.trim(),
@@ -528,8 +545,7 @@ export function PublicOnlineOrder() {
   const canSubmit =
     cart.length > 0 &&
     !!fulfillment &&
-    date &&
-    time &&
+    (asap || (date && time)) &&
     firstName.trim() &&
     lastName.trim() &&
     email.trim() &&
@@ -555,9 +571,24 @@ export function PublicOnlineOrder() {
 
   if (orderResult) {
     const trackUrl = `/ordina/traccia/${orderResult.id}?token=${orderResult.manageToken}${venueSlug ? `&venueSlug=${venueSlug}` : ''}`;
+    const reopenTime = new Date(orderResult.requestedAt).toLocaleString('it-IT', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     return (
       <Box sx={{ maxWidth: 480, mx: 'auto', mt: 6, px: 2 }}>
-        <Alert severity="success">Ordine ricevuto! Riceverai una email di aggiornamento a {email}.</Alert>
+        {orderResult.awaitingShopOpening ? (
+          <Alert severity="warning">
+            Ordine ricevuto, ma il locale è al momento chiuso: non potrà essere confermato prima
+            della riapertura, prevista per {reopenTime}. Riceverai una email a {email} appena
+            possibile.
+          </Alert>
+        ) : (
+          <Alert severity="success">Ordine ricevuto! Riceverai una email di aggiornamento a {email}.</Alert>
+        )}
         <Button variant="contained" fullWidth sx={{ mt: 2 }} href={trackUrl}>
           Traccia il tuo ordine
         </Button>
@@ -727,27 +758,40 @@ export function PublicOnlineOrder() {
 
             {fulfillment && (
               <>
-                <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Data"
-                    type="date"
-                    InputLabelProps={{ shrink: true }}
-                    inputProps={{ min: today }}
-                    fullWidth
-                    value={date}
-                    onChange={(e) => { setDate(e.target.value); setTime(''); }}
-                  />
-                  <QuarterHourTimeField
-                    label={fulfillment === 'PICKUP' ? 'Orario di ritiro' : 'Orario di consegna'}
-                    fullWidth
-                    value={time}
-                    onChange={setTime}
-                    options={timeOptions}
-                    disabled={dayClosed}
-                  />
-                </Stack>
-                {dayClosed && (
-                  <Alert severity="warning">Il locale è chiuso in questo giorno: scegli un&apos;altra data.</Alert>
+                <ToggleButtonGroup
+                  value={asap ? 'ASAP' : 'SCHEDULED'}
+                  exclusive
+                  onChange={(_e, value) => value && setAsap(value === 'ASAP')}
+                  size="small"
+                >
+                  <ToggleButton value="ASAP">Il prima possibile</ToggleButton>
+                  <ToggleButton value="SCHEDULED">Scegli data e ora</ToggleButton>
+                </ToggleButtonGroup>
+                {!asap && (
+                  <>
+                    <Stack direction="row" spacing={2}>
+                      <TextField
+                        label="Data"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ min: today }}
+                        fullWidth
+                        value={date}
+                        onChange={(e) => { setDate(e.target.value); setTime(''); }}
+                      />
+                      <QuarterHourTimeField
+                        label={fulfillment === 'PICKUP' ? 'Orario di ritiro' : 'Orario di consegna'}
+                        fullWidth
+                        value={time}
+                        onChange={setTime}
+                        options={timeOptions}
+                        disabled={dayClosed}
+                      />
+                    </Stack>
+                    {dayClosed && (
+                      <Alert severity="warning">Il locale è chiuso in questo giorno: scegli un&apos;altra data.</Alert>
+                    )}
+                  </>
                 )}
               </>
             )}

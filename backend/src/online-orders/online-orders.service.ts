@@ -18,8 +18,22 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PdfService, ReceiptSection } from '../reports/pdf.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { findOpenSlotWithMargin, resolveOpeningHours } from '../common/opening-hours/opening-hours';
-import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
+import {
+  applyDayOverride,
+  DayOverride,
+  findOpenSlotWithMargin,
+  hhmmToMinutes,
+  minutesToHhmm,
+  resolveOpeningHours,
+  specialDayKey,
+} from '../common/opening-hours/opening-hours';
+import {
+  addDaysInZone,
+  dateAtTimeInZone,
+  dateOnlyInZone,
+  jsWeekdayInZone,
+  minutesOfDayInZone,
+} from '../common/timezone/timezone';
 import { distanceMeters } from '../common/geo/geo';
 import { locationIqClient } from '../common/geo/locationiq-client';
 import { sumupClient } from '../common/payments/sumup-client';
@@ -120,6 +134,7 @@ interface ResolvedLine {
 interface OrderPricing {
   venue: OnlineOrdersVenueSettings;
   requestedAt: Date;
+  awaitingShopOpening: boolean;
   resolvedLines: ResolvedLine[];
   subtotal: number;
   deliveryFee: number;
@@ -160,13 +175,29 @@ export class OnlineOrdersService {
     return privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
   }
 
+  /** Apertura speciale (§5.10) per la data di "at" (nel fuso del locale), se configurata. */
+  private async findSpecialDay(venueId: string, at: Date, timezone: string) {
+    return this.prisma.venueSpecialDay.findUnique({
+      where: { venueId_date: { venueId, date: specialDayKey(dateOnlyInZone(at, timezone)) } },
+    });
+  }
+
+  /** Il giorno risolto dallo schedule normale per "at", sostituito da un'eventuale apertura speciale per quella data. */
+  private async resolveRealHoursDay(venue: OnlineOrdersVenueSettings, at: Date) {
+    const schedule = resolveOpeningHours(venue.onlineOrdersOpeningHours ?? venue.openingHours);
+    const scheduledDay = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(at, venue.timezone))!;
+    const special = await this.findSpecialDay(venue.id, at, venue.timezone);
+    return applyDayOverride(scheduledDay, special?.realHoursOverride as DayOverride | null | undefined);
+  }
+
   /**
    * Come validateRequestedTime delle Prenotazioni (§5.7), ma con la
    * fascia ristretta di KITCHEN_MARGIN_MINUTES su ciascun lato (§5.10):
    * usa Venue.onlineOrdersOpeningHours se impostato, altrimenti ricade
-   * sugli orari generali del locale.
+   * sugli orari generali del locale — e un'eventuale apertura speciale
+   * per quella data specifica sovrascrive il giorno della settimana.
    */
-  private validateRequestedTime(venue: OnlineOrdersVenueSettings, requestedAtIso: string): Date {
+  private async validateRequestedTime(venue: OnlineOrdersVenueSettings, requestedAtIso: string): Promise<Date> {
     const requestedAt = new Date(requestedAtIso);
     if (Number.isNaN(requestedAt.getTime())) {
       throw new BadRequestException('Data/ora non valida');
@@ -187,8 +218,7 @@ export class OnlineOrdersService {
     if (minutesOfDay % 15 !== 0) {
       throw new BadRequestException("L'orario deve essere ai 15 minuti (es. 20:00, 20:15, 20:30, 20:45)");
     }
-    const schedule = resolveOpeningHours(venue.onlineOrdersOpeningHours ?? venue.openingHours);
-    const day = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(requestedAt, venue.timezone))!;
+    const day = await this.resolveRealHoursDay(venue, requestedAt);
     if (findOpenSlotWithMargin(day, minutesOfDay, KITCHEN_MARGIN_MINUTES) === null) {
       throw new BadRequestException(
         day.closed
@@ -197,6 +227,59 @@ export class OnlineOrdersService {
       );
     }
     return requestedAt;
+  }
+
+  /**
+   * Cerca il prossimo istante richiedibile (inizio fascia + margine
+   * cucina) a partire da "from", scandendo fino a 14 giorni in avanti e
+   * tenendo conto di eventuali aperture speciali (§5.10 di
+   * DEVELOPMENT.md) — usato solo quando un ordine "il prima possibile"
+   * arriva mentre il negozio è chiuso in questo momento (v.
+   * resolveAsapRequestedAt sotto).
+   */
+  private async nextOpeningMoment(venue: OnlineOrdersVenueSettings, from: Date): Promise<Date> {
+    for (let offset = 0; offset <= 14; offset++) {
+      const candidateBase = addDaysInZone(from, offset, venue.timezone);
+      const day = await this.resolveRealHoursDay(venue, candidateBase);
+      if (day.closed) continue;
+      for (const [start, end] of [
+        [day.slot1Start, day.slot1End],
+        [day.slot2Start, day.slot2End],
+      ] as const) {
+        if (!start || !end) continue;
+        const marginStart = hhmmToMinutes(start) + KITCHEN_MARGIN_MINUTES;
+        const marginEnd = hhmmToMinutes(end) - KITCHEN_MARGIN_MINUTES;
+        if (marginStart > marginEnd) continue; // fascia troppo corta per il margine di cucina
+        const candidateStart = dateAtTimeInZone(from, offset, minutesToHhmm(marginStart), venue.timezone);
+        if (candidateStart.getTime() >= from.getTime()) return candidateStart;
+      }
+    }
+    throw new BadRequestException('Nessun orario di apertura trovato nei prossimi 14 giorni: contatta il locale.');
+  }
+
+  /**
+   * Un ordine "il prima possibile" (checkout senza data/ora scelta a
+   * mano): se il negozio è aperto adesso (con lo stesso margine cucina
+   * degli ordini programmati), l'ordine parte per subito, arrotondato al
+   * quarto d'ora successivo — stessa granularità degli ordini
+   * programmati, per la stessa logica di occupazione/accettazione
+   * automatica per fascia. Se invece il negozio è chiuso in questo
+   * momento, l'ordine nasce comunque (non viene bloccato, §5.10 su
+   * richiesta esplicita dell'utente): "requestedAt" diventa il prossimo
+   * istante di apertura utile e "awaitingShopOpening" true, così lo staff
+   * lo saprà solo da lì in poi (v. accept/createPublicOrder).
+   */
+  private async resolveAsapRequestedAt(
+    venue: OnlineOrdersVenueSettings,
+  ): Promise<{ requestedAt: Date; awaitingShopOpening: boolean }> {
+    const now = new Date();
+    const day = await this.resolveRealHoursDay(venue, now);
+    const minutesOfDay = minutesOfDayInZone(now, venue.timezone);
+    if (findOpenSlotWithMargin(day, minutesOfDay, KITCHEN_MARGIN_MINUTES) !== null) {
+      const quarterMs = 15 * 60 * 1000;
+      return { requestedAt: new Date(Math.ceil(now.getTime() / quarterMs) * quarterMs), awaitingShopOpening: false };
+    }
+    return { requestedAt: await this.nextOpeningMoment(venue, now), awaitingShopOpening: true };
   }
 
   /**
@@ -235,7 +318,8 @@ export class OnlineOrdersService {
     venueId: string,
     cart: CartDto,
     fulfillment: OnlineOrderFulfillment,
-    requestedAtIso: string,
+    requestedAtIso: string | undefined,
+    asap: boolean,
     delivery?: { address?: string; lat?: number; lng?: number },
   ): Promise<OrderPricing> {
     const venue = await this.getVenueSettings(venueId);
@@ -249,12 +333,20 @@ export class OnlineOrdersService {
       throw new ForbiddenException('La consegna a domicilio non è disponibile per questo locale');
     }
 
-    const requestedAt = this.validateRequestedTime(venue, requestedAtIso);
+    let requestedAt: Date;
+    let awaitingShopOpening: boolean;
+    if (asap) {
+      ({ requestedAt, awaitingShopOpening } = await this.resolveAsapRequestedAt(venue));
+    } else {
+      if (!requestedAtIso) throw new BadRequestException("L'orario richiesto è obbligatorio");
+      requestedAt = await this.validateRequestedTime(venue, requestedAtIso);
+      awaitingShopOpening = false;
+    }
 
     const variantIds = [...new Set(cart.lines.map((l) => l.variantId))];
     const variants = await this.prisma.menuItemVariant.findMany({
       where: { id: { in: variantIds } },
-      include: { menuItem: true },
+      include: { menuItem: { include: { category: true } } },
     });
     const variantById = new Map(variants.map((v) => [v.id, v]));
 
@@ -279,7 +371,12 @@ export class OnlineOrdersService {
       ) {
         throw new BadRequestException('Una voce del carrello non è più disponibile');
       }
-      if (!variant.menuItem.orderableOnline || !variant.menuItem.visible) {
+      if (
+        !variant.menuItem.orderableOnline ||
+        !variant.menuItem.visible ||
+        !variant.menuItem.category.orderableOnline ||
+        !variant.menuItem.category.visible
+      ) {
         throw new BadRequestException(`"${variant.menuItem.name}" non è ordinabile online`);
       }
       if (variant.menuItem.unavailableUntil && variant.menuItem.unavailableUntil > new Date()) {
@@ -355,6 +452,7 @@ export class OnlineOrdersService {
     return {
       venue,
       requestedAt,
+      awaitingShopOpening,
       resolvedLines,
       subtotal,
       deliveryFee,
@@ -370,10 +468,11 @@ export class OnlineOrdersService {
   async initiateSumUpCheckout(
     venueId: string,
     cart: CartDto,
-    requestedAt: string,
+    requestedAt: string | undefined,
+    asap: boolean,
     delivery: { address?: string; lat?: number; lng?: number },
   ) {
-    const pricing = await this.computeOrderPricing(venueId, cart, 'DELIVERY', requestedAt, delivery);
+    const pricing = await this.computeOrderPricing(venueId, cart, 'DELIVERY', requestedAt, asap, delivery);
     if (!pricing.venue.sumupEnabled || !pricing.venue.sumupApiKeyEnc) {
       throw new BadRequestException('Il pagamento con carta online non è disponibile per questo locale');
     }
@@ -391,11 +490,14 @@ export class OnlineOrdersService {
       throw new BadRequestException('Devi autorizzare il trattamento dei dati personali per completare l\'ordine.');
     }
 
-    const pricing = await this.computeOrderPricing(venueId, { lines: dto.lines }, dto.fulfillment, dto.requestedAt, {
-      address: dto.deliveryAddress,
-      lat: dto.deliveryLat,
-      lng: dto.deliveryLng,
-    });
+    const pricing = await this.computeOrderPricing(
+      venueId,
+      { lines: dto.lines },
+      dto.fulfillment,
+      dto.requestedAt,
+      dto.asap ?? false,
+      { address: dto.deliveryAddress, lat: dto.deliveryLat, lng: dto.deliveryLng },
+    );
 
     let paymentMethod: OnlineOrderPaymentMethod | null = null;
     let paymentStatus: 'PENDING' | 'PAID' = 'PENDING';
@@ -437,8 +539,13 @@ export class OnlineOrdersService {
           ? pricing.venue.onlineOrdersAutoAcceptPerSlotPickup
           : pricing.venue.onlineOrdersAutoAcceptPerSlotDelivery
         : pricing.venue.onlineOrdersAutoAcceptPerSlot;
+    // Un ordine in attesa di apertura (§5.10) non viene mai accettato in
+    // automatico: non avrebbe senso confermarlo mentre il negozio è ancora
+    // chiuso e non può prepararlo.
     const initialStatus: OnlineOrderStatus =
-      pricing.venue.onlineOrdersAutoAcceptEnabled && occupancy < threshold ? 'CONFIRMED' : 'PENDING';
+      !pricing.awaitingShopOpening && pricing.venue.onlineOrdersAutoAcceptEnabled && occupancy < threshold
+        ? 'CONFIRMED'
+        : 'PENDING';
 
     const customer = await this.customers.recordOnlineOrder(venueId, {
       firstName: dto.firstName,
@@ -455,6 +562,7 @@ export class OnlineOrdersService {
         fulfillment: dto.fulfillment,
         status: initialStatus,
         requestedAt: pricing.requestedAt,
+        awaitingShopOpening: pricing.awaitingShopOpening,
         firstName: dto.firstName,
         lastName: dto.lastName,
         email: dto.email.trim().toLowerCase(),
@@ -501,6 +609,8 @@ export class OnlineOrdersService {
     const privacyUrl = this.privacyUrl(venue, customer.privacyToken);
     if (initialStatus === 'CONFIRMED') {
       await this.mail.sendConfirmed(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+    } else if (order.awaitingShopOpening) {
+      await this.mail.sendReceivedAwaitingOpening(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
     } else {
       await this.mail.sendReceived(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
     }

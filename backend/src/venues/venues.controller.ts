@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -34,6 +35,7 @@ import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
 import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
+import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
 
 /** Gestione locali: esclusivamente Super Admin, salvo le rotte "me" (§5.4). */
 @Controller('venues')
@@ -74,6 +76,13 @@ export class VenuesController {
   @Roles(Role.ADMIN)
   updateOwnOpeningHours(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOpeningHoursDto) {
     return this.venuesService.updateOpeningHours(requireVenueId(user), dto);
+  }
+
+  /** Fasce pranzo/cena del menù (§5.10), pagina "Impostazioni Menù" — decoupled dall'orario reale sopra. */
+  @Patch('me/menu-hours')
+  @Roles(Role.ADMIN)
+  updateOwnMenuHours(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOpeningHoursDto) {
+    return this.venuesService.updateMenuHours(requireVenueId(user), dto);
   }
 
   @Patch('me/clock-in-settings')
@@ -211,6 +220,25 @@ export class VenuesController {
     @Body() dto: UpdateSumUpPaymentMethodsDto,
   ) {
     return this.venuesService.updateSumUpPaymentMethods(requireVenueId(user), dto);
+  }
+
+  /** Aperture speciali (§5.10): sovrascrivono per una data l'orario reale e/o gli orari pranzo/cena del menù. */
+  @Get('me/special-days')
+  @Roles(Role.ADMIN)
+  listOwnSpecialDays(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.listSpecialDays(requireVenueId(user));
+  }
+
+  @Post('me/special-days')
+  @Roles(Role.ADMIN)
+  upsertOwnSpecialDay(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertSpecialDayDto) {
+    return this.venuesService.upsertSpecialDay(requireVenueId(user), dto);
+  }
+
+  @Delete('me/special-days/:id')
+  @Roles(Role.ADMIN)
+  removeOwnSpecialDay(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.venuesService.removeSpecialDay(requireVenueId(user), id);
   }
 
   /** Metodi di pagamento configurati dal locale nel proprio Back Office Loyverse, per la mappatura in Impostazioni. */

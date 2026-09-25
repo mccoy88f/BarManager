@@ -173,6 +173,16 @@ export const navigation: NavItem[] = [
     icon: RestaurantMenuIcon,
     description: 'Categorie, piatti, disponibilità',
     moduleKey: 'menu',
+    children: [
+      {
+        key: 'menu-settings',
+        label: 'Impostazioni Menù',
+        path: '/menu/admin/settings',
+        icon: RestaurantMenuIcon,
+        description: 'Fasce pranzo/cena mostrate nel menù pubblico',
+        roles: ['ADMIN'],
+      },
+    ],
   },
   {
     key: 'tasks',
@@ -228,6 +238,14 @@ export const navigation: NavItem[] = [
         path: '/online-orders/history',
         icon: DeliveryDiningIcon,
         description: 'Ordini conclusi, esito sincronizzazione Loyverse',
+      },
+      {
+        key: 'online-orders-link',
+        label: 'Link e QR',
+        path: '/online-orders/link',
+        icon: DeliveryDiningIcon,
+        description: 'Indirizzo e QR code del checkout pubblico /ordina',
+        roles: ['ADMIN'],
       },
       {
         key: 'online-orders-settings',

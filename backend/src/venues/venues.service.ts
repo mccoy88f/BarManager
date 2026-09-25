@@ -16,6 +16,8 @@ import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
 import { UpdateSumUpPaymentMethodsDto } from './dto/update-sumup-payment-methods.dto';
+import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
+import { specialDayKey } from '../common/opening-hours/opening-hours';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -83,6 +85,7 @@ export class VenuesService {
         email: true,
         slug: true,
         openingHours: true,
+        menuMealPeriodsHours: true,
         clockInQrEnabled: true,
         clockInGpsEnabled: true,
         clockInNfcEnabled: true,
@@ -141,6 +144,7 @@ export class VenuesService {
     return {
       ...venueWithoutSecrets,
       openingHours: resolveOpeningHours(venue.openingHours),
+      menuMealPeriodsHours: resolveOpeningHours(venue.menuMealPeriodsHours),
       onlineOrdersOpeningHours: venue.onlineOrdersOpeningHours
         ? resolveOpeningHours(venue.onlineOrdersOpeningHours)
         : null,
@@ -150,6 +154,14 @@ export class VenuesService {
 
   updateOpeningHours(venueId: string, dto: UpdateOpeningHoursDto) {
     return this.prisma.venue.update({ where: { id: venueId }, data: { openingHours: dto.days as object } });
+  }
+
+  /** Fasce pranzo/cena del MENÙ (§5.10), decoupled dall'orario reale sopra. */
+  updateMenuHours(venueId: string, dto: UpdateOpeningHoursDto) {
+    return this.prisma.venue.update({
+      where: { id: venueId },
+      data: { menuMealPeriodsHours: dto.days as object },
+    });
   }
 
   updateClockInSettings(venueId: string, dto: UpdateClockInSettingsDto) {
@@ -233,6 +245,40 @@ export class VenuesService {
       where: { id: venueId },
       data: { sumupEnabledPaymentMethods: dto.methods },
     });
+  }
+
+  /**
+   * Aperture speciali (§5.10 di DEVELOPMENT.md): sovrascrivono per una
+   * singola data l'orario reale e/o gli orari pranzo/cena del menù.
+   */
+  listSpecialDays(venueId: string) {
+    return this.prisma.venueSpecialDay.findMany({ where: { venueId }, orderBy: { date: 'asc' } });
+  }
+
+  upsertSpecialDay(venueId: string, dto: UpsertSpecialDayDto) {
+    const date = specialDayKey(dto.date);
+    // I campi Json? nullable di Prisma non accettano un plain `null` nel
+    // tipo generato (richiede Prisma.JsonNull) — il cast qui sotto è lo
+    // stesso compromesso pragmatico già usato altrove nel file per i campi
+    // Json (es. updateOpeningHours: "dto.days as object").
+    const overrides = {
+      realHoursOverride: (dto.realHoursOverride ?? null) as unknown as object,
+      menuHoursOverride: (dto.menuHoursOverride ?? null) as unknown as object,
+    };
+    return this.prisma.venueSpecialDay.upsert({
+      where: { venueId_date: { venueId, date } },
+      create: { venueId, date, label: dto.label ?? null, ...overrides },
+      update: { label: dto.label ?? null, ...overrides },
+    });
+  }
+
+  async removeSpecialDay(venueId: string, id: string) {
+    const day = await this.prisma.venueSpecialDay.findUnique({ where: { id } });
+    if (!day || day.venueId !== venueId) {
+      throw new NotFoundException('Apertura speciale non trovata');
+    }
+    await this.prisma.venueSpecialDay.delete({ where: { id } });
+    return { success: true };
   }
 
   /** Metodi di pagamento configurati dal locale nel proprio Back Office Loyverse, per la mappatura in Impostazioni (§5.10). */

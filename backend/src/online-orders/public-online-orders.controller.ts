@@ -64,7 +64,12 @@ export class PublicOnlineOrdersController {
   async menu(@Req() req: Request, @Query('venueSlug') venueSlug?: string) {
     const venueId = await this.resolveVenueId(req, venueSlug);
     const categories = await this.prisma.menuCategory.findMany({
-      where: { venueId, visible: true, items: { some: { orderableOnline: true, visible: true } } },
+      where: {
+        venueId,
+        visible: true,
+        orderableOnline: true,
+        items: { some: { orderableOnline: true, visible: true } },
+      },
       orderBy: { sortOrder: 'asc' },
       include: {
         items: {
@@ -101,11 +106,19 @@ export class PublicOnlineOrdersController {
   @Post('sumup-checkout')
   sumupCheckout(
     @Req() req: Request,
-    @Body() body: { cart: CartDto; requestedAt: string; deliveryAddress?: string; deliveryLat?: number; deliveryLng?: number },
+    @Body()
+    body: {
+      cart: CartDto;
+      requestedAt?: string;
+      asap?: boolean;
+      deliveryAddress?: string;
+      deliveryLat?: number;
+      deliveryLng?: number;
+    },
     @Query('venueSlug') venueSlug?: string,
   ) {
     return this.resolveVenueId(req, venueSlug).then((venueId) =>
-      this.onlineOrdersService.initiateSumUpCheckout(venueId, body.cart, body.requestedAt, {
+      this.onlineOrdersService.initiateSumUpCheckout(venueId, body.cart, body.requestedAt, body.asap ?? false, {
         address: body.deliveryAddress,
         lat: body.deliveryLat,
         lng: body.deliveryLng,

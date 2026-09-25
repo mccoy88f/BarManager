@@ -73,6 +73,15 @@ export class MenuController {
     return this.menuService.setCategoryVisibility(requireVenueId(user), id, visible);
   }
 
+  @Patch('categories/:id/orderable-online')
+  setCategoryOrderableOnline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('orderableOnline') orderableOnline: boolean,
+  ) {
+    return this.menuService.setCategoryOrderableOnline(requireVenueId(user), id, orderableOnline);
+  }
+
   @Patch('categories/:id')
   updateCategory(
     @CurrentUser() user: AuthenticatedUser,
@@ -90,6 +99,12 @@ export class MenuController {
   @Post('items')
   createItem(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateMenuItemDto) {
     return this.menuService.createItem(requireVenueId(user), dto);
+  }
+
+  /** Attiva "ordinabile online" per tutte le categorie/voci già visibili sul menù (§5.10). */
+  @Post('items/sync-orderable-online')
+  syncOrderableOnline(@CurrentUser() user: AuthenticatedUser) {
+    return this.menuService.syncOrderableOnlineFromVisible(requireVenueId(user));
   }
 
   @Get('items')

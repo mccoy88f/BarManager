@@ -26,9 +26,20 @@ export class CreateOnlineOrderDto {
   @IsEnum(OnlineOrderFulfillment)
   fulfillment: OnlineOrderFulfillment;
 
-  /** Orario desiderato di ritiro/consegna, ISO 8601 — v. validateRequestedTime nel service. */
+  /**
+   * "Il prima possibile" (§5.10 di DEVELOPMENT.md): se true, "requestedAt"
+   * è ignorato e il servizio calcola da sé l'orario (adesso se il negozio
+   * è aperto, altrimenti il prossimo orario di apertura, con
+   * `awaitingShopOpening` di conseguenza). Obbligatorio uno tra i due.
+   */
+  @IsOptional()
+  @IsBoolean()
+  asap?: boolean;
+
+  /** Orario desiderato di ritiro/consegna, ISO 8601 — v. validateRequestedTime nel service. Ignorato se asap=true. */
+  @IsOptional()
   @IsISO8601()
-  requestedAt: string;
+  requestedAt?: string;
 
   @IsString()
   @MinLength(1)

@@ -39,6 +39,8 @@ import StarBorderIcon from '@mui/icons-material/StarBorder';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
+import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
+import SyncIcon from '@mui/icons-material/Sync';
 import {
   DndContext,
   closestCenter,
@@ -67,6 +69,7 @@ interface MenuCategory {
   id: string;
   name: string;
   visible: boolean;
+  orderableOnline: boolean;
 }
 interface MenuItemVariant {
   id: string;
@@ -159,10 +162,12 @@ function SortableCategorySection({
   index,
   locked,
   expanded,
+  onlineOrdersEnabled,
   onToggleExpand,
   onEdit,
   onDeleteRequest,
   onToggleVisible,
+  onToggleOrderableOnline,
   renderItem,
 }: {
   category: MenuCategory;
@@ -170,10 +175,12 @@ function SortableCategorySection({
   index: number;
   locked: boolean;
   expanded: boolean;
+  onlineOrdersEnabled: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
   onDeleteRequest: () => void;
   onToggleVisible: (visible: boolean) => void;
+  onToggleOrderableOnline: (orderableOnline: boolean) => void;
   renderItem: (item: MenuItemRow) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -220,6 +227,17 @@ function SortableCategorySection({
               onChange={(e) => onToggleVisible(e.target.checked)}
               title="Mostra/nascondi dal menù"
             />
+            {onlineOrdersEnabled && (
+              <Switch
+                size="small"
+                color="secondary"
+                checked={category.orderableOnline}
+                onChange={(e) => onToggleOrderableOnline(e.target.checked)}
+                title="Ordinabile online (asporto/consegna)"
+                icon={<DeliveryDiningIcon fontSize="small" sx={{ opacity: 0.4 }} />}
+                checkedIcon={<DeliveryDiningIcon fontSize="small" />}
+              />
+            )}
             {!locked && (
               <>
                 <IconButton size="small" title="Modifica" onClick={onEdit}>
@@ -292,6 +310,15 @@ export function MenuAdmin() {
     queryFn: async () => (await api.get<{ enabled: boolean }>('/loyverse/status')).data,
   });
   const locked = loyverseStatusQuery.data?.enabled === true;
+
+  // Il flag "ordinabile online" (categoria e voce) ha senso solo se il
+  // locale ha attivato il modulo Ordini online: altrimenti resta nascosto,
+  // come da richiesta esplicita dell'utente (§5.10 di DEVELOPMENT.md).
+  const venueQuery = useQuery({
+    queryKey: ['venue-me'],
+    queryFn: async () => (await api.get<{ onlineOrdersEnabled: boolean }>('/venues/me')).data,
+  });
+  const onlineOrdersEnabled = venueQuery.data?.onlineOrdersEnabled === true;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['menu-items'] });
 
@@ -369,6 +396,27 @@ export function MenuAdmin() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
   });
 
+  const setCategoryOrderableOnlineMutation = useMutation({
+    mutationFn: async ({ id, orderableOnline }: { id: string; orderableOnline: boolean }) =>
+      (await api.patch(`/menu/categories/${id}/orderable-online`, { orderableOnline })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
+  });
+
+  /** Scorciatoia (§5.10): attiva "ordinabile online" per tutto ciò che è già visibile sul menù, invece di doverlo fare voce per voce nel dialog. */
+  const syncOrderableOnlineMutation = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ categories: number; items: number }>('/menu/items/sync-orderable-online')).data,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+      invalidate();
+      showToast(
+        result.categories === 0 && result.items === 0
+          ? 'Erano già tutti attivi per gli ordini online'
+          : `Attivati per gli ordini online: ${result.categories} categorie e ${result.items} voci`,
+      );
+    },
+  });
+
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
@@ -433,6 +481,12 @@ export function MenuAdmin() {
   const toggleFeaturedMutation = useMutation({
     mutationFn: async ({ id, featured }: { id: string; featured: boolean }) =>
       (await api.patch(`/menu/items/${id}/featured`, { featured })).data,
+    onSuccess: invalidate,
+  });
+
+  const toggleItemOrderableOnlineMutation = useMutation({
+    mutationFn: async ({ id, orderableOnline }: { id: string; orderableOnline: boolean }) =>
+      (await api.patch(`/menu/items/${id}`, { orderableOnline })).data,
     onSuccess: invalidate,
   });
 
@@ -555,14 +609,14 @@ export function MenuAdmin() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Button
-        variant="outlined"
-        startIcon={<QrCodeIcon />}
-        sx={{ justifySelf: 'flex-start' }}
-        onClick={() => navigate('/menu/admin/link')}
-      >
-        Link e QR code del menù pubblico
-      </Button>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ justifySelf: 'flex-start' }}>
+        <Button variant="outlined" startIcon={<QrCodeIcon />} onClick={() => navigate('/menu/admin/link')}>
+          Link e QR code del menù pubblico
+        </Button>
+        <Button variant="outlined" onClick={() => navigate('/menu/admin/settings')}>
+          Impostazioni Menù
+        </Button>
+      </Stack>
 
       {locked && (
         <Alert severity="info">
@@ -604,6 +658,17 @@ export function MenuAdmin() {
                 hidden
                 onChange={handleImportFileChange}
               />
+              {onlineOrdersEnabled && (
+                <Button
+                  variant="outlined"
+                  startIcon={<SyncIcon />}
+                  onClick={() => syncOrderableOnlineMutation.mutate()}
+                  disabled={syncOrderableOnlineMutation.isPending}
+                  title="Attiva 'ordinabile online' per le categorie/voci già visibili sul menù"
+                >
+                  Attiva ordini online per il visibile
+                </Button>
+              )}
               {!locked && (
                 <Button variant="outlined" startIcon={<AddIcon />} onClick={openCategoryDialog}>
                   Aggiungi categoria
@@ -660,6 +725,7 @@ export function MenuAdmin() {
                     index={index}
                     locked={locked}
                     expanded={isSearchingItems || openCategory === category.id}
+                    onlineOrdersEnabled={onlineOrdersEnabled}
                     onToggleExpand={() =>
                       setOpenCategory((current) => (current === category.id ? false : category.id))
                     }
@@ -670,6 +736,9 @@ export function MenuAdmin() {
                     }}
                     onToggleVisible={(visible) =>
                       setCategoryVisibilityMutation.mutate({ id: category.id, visible })
+                    }
+                    onToggleOrderableOnline={(orderableOnline) =>
+                      setCategoryOrderableOnlineMutation.mutate({ id: category.id, orderableOnline })
                     }
                     renderItem={(item) => (
                       <Card key={item.id} variant="outlined">
@@ -794,6 +863,21 @@ export function MenuAdmin() {
                                   }
                                   title="Mostra/nascondi dal menù"
                                 />
+                                {onlineOrdersEnabled && (
+                                  <Switch
+                                    color="secondary"
+                                    checked={item.orderableOnline}
+                                    onChange={(e) =>
+                                      toggleItemOrderableOnlineMutation.mutate({
+                                        id: item.id,
+                                        orderableOnline: e.target.checked,
+                                      })
+                                    }
+                                    title="Ordinabile online (asporto/consegna)"
+                                    icon={<DeliveryDiningIcon fontSize="small" sx={{ opacity: 0.4 }} />}
+                                    checkedIcon={<DeliveryDiningIcon fontSize="small" />}
+                                  />
+                                )}
                                 {!locked && (
                                   <>
                                     <IconButton size="small" title="Modifica" onClick={() => openEditItem(item)}>

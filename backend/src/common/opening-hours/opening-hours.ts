@@ -36,10 +36,43 @@ export function resolveOpeningHours(raw: unknown): OpeningHoursDay[] {
   return DEFAULT_OPENING_HOURS.map((fallback) => byDay.get(fallback.dayOfWeek) ?? fallback);
 }
 
-function toMinutes(hhmm: string): number {
+/** Sovrascrittura di un giorno per una data specifica (VenueSpecialDay.realHoursOverride/menuHoursOverride), senza "dayOfWeek". */
+export type DayOverride = Omit<OpeningHoursDay, 'dayOfWeek'>;
+
+/**
+ * "YYYY-MM-DD" (nel fuso del locale) -> chiave di data usata per
+ * VenueSpecialDay.date (mezzanotte UTC di quel calendario, non
+ * un istante reale: è solo una chiave di lookup, mai confrontata come
+ * orario). Scrittura e lettura devono sempre passare da qui per restare
+ * consistenti.
+ */
+export function specialDayKey(dateOnly: string): Date {
+  return new Date(`${dateOnly}T00:00:00.000Z`);
+}
+
+/**
+ * Il giorno della settimana risolto dallo schedule normale, sostituito per
+ * intero da "override" quando presente (una VenueSpecialDay, §5.10): non è
+ * un merge campo per campo, l'override porta sempre tutti i 5 campi.
+ */
+export function applyDayOverride(day: OpeningHoursDay, override: DayOverride | null | undefined): OpeningHoursDay {
+  return override ? { dayOfWeek: day.dayOfWeek, ...override } : day;
+}
+
+/** "HH:mm" -> minuti dalla mezzanotte, es. "14:30" -> 870. */
+export function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 }
+
+/** Inverso di hhmmToMinutes: minuti dalla mezzanotte -> "HH:mm". */
+export function minutesToHhmm(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const toMinutes = hhmmToMinutes;
 
 /** In quale fascia (1 o 2) cade l'orario dato per quel giorno, o null se chiuso/fuori orario. */
 export function findOpenSlot(day: OpeningHoursDay, minutesOfDay: number): 1 | 2 | null {

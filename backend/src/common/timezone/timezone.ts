@@ -71,3 +71,32 @@ export function parseDateOnlyStartOfDayInZone(dateOnly: string, timezone: string
 export function parseDateOnlyEndOfDayInZone(dateOnly: string, timezone: string | null | undefined): Date {
   return DateTime.fromISO(dateOnly, { zone: zoneOrDefault(timezone) }).endOf('day').toJSDate();
 }
+
+/** `at` spostato di `days` giorni nel fuso del locale (stessa ora di orologio) — usato per scandire i giorni successivi cercando il prossimo orario di apertura (§5.10 di DEVELOPMENT.md). */
+export function addDaysInZone(at: Date, days: number, timezone: string | null | undefined): Date {
+  return DateTime.fromJSDate(at, { zone: zoneOrDefault(timezone) }).plus({ days }).toJSDate();
+}
+
+/** "YYYY-MM-DD" del giorno di `at` nel fuso del locale — inverso di parseDateOnlyStartOfDayInZone, usato per le chiavi di VenueSpecialDay (§5.10). */
+export function dateOnlyInZone(at: Date, timezone: string | null | undefined): string {
+  return DateTime.fromJSDate(at, { zone: zoneOrDefault(timezone) }).toISODate()!;
+}
+
+/**
+ * Istante corrispondente a "HH:mm" (una fascia di OpeningHoursDay) per il
+ * giorno di `baseDate` + `dayOffset` giorni, nel fuso del locale (§5.10 di
+ * DEVELOPMENT.md: ricerca del prossimo orario di apertura per un ordine
+ * "il prima possibile" arrivato mentre il negozio è chiuso).
+ */
+export function dateAtTimeInZone(
+  baseDate: Date,
+  dayOffset: number,
+  hhmm: string,
+  timezone: string | null | undefined,
+): Date {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  return DateTime.fromJSDate(baseDate, { zone: zoneOrDefault(timezone) })
+    .plus({ days: dayOffset })
+    .set({ hour, minute, second: 0, millisecond: 0 })
+    .toJSDate();
+}

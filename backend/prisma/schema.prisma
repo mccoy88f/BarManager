@@ -46,15 +46,30 @@ model Venue {
   // implicitamente quel fuso invece di quello reale del locale.
   timezone String @default("Europe/Rome")
 
-  // Orari di apertura settimanali del locale: un array di 7 giorni
-  // (0=domenica..6=sabato, come Date#getDay()), ciascuno "chiuso" oppure
-  // aperto con una o due fasce orarie (es. pranzo+cena, con pausa fra le
-  // due). Usati sia dal menù pubblico (voci "solo pranzo"/"solo cena")
-  // sia dal modulo Prenotazioni (§5.7) per validare l'orario richiesto.
-  // Se null, non ancora configurato: si usa il default (aperto tutti i
-  // giorni, 12:00-15:00 e 19:00-23:00) calcolato in codice, vedi
+  // Orario "reale" di apertura settimanale del locale (quello in cui il
+  // negozio è fisicamente aperto): un array di 7 giorni (0=domenica..
+  // 6=sabato, come Date#getDay()), ciascuno "chiuso" oppure aperto con una
+  // o due fasce orarie. Usato dal modulo Prenotazioni (§5.7) per validare
+  // l'orario richiesto, e dagli Ordini online (§5.10) per decidere se un
+  // ordine "il prima possibile" può essere confermato subito o deve
+  // attendere l'apertura (v. OnlineOrder.awaitingShopOpening). NON è più
+  // usato per il tag "solo pranzo"/"solo cena" del menù, che da §5.10 in
+  // avanti è un concetto indipendente (v. menuMealPeriodsHours sotto): un
+  // locale può restare aperto continuativamente ma voler comunque
+  // distinguere le voci di pranzo da quelle di cena. Se null, non ancora
+  // configurato: si usa il default (aperto tutti i giorni, 12:00-15:00 e
+  // 19:00-23:00) calcolato in codice, vedi
   // backend/src/common/opening-hours/opening-hours.ts.
   openingHours Json?
+
+  // Fasce orarie pranzo/cena del MENÙ (stessa forma di openingHours sopra),
+  // decoupled dall'orario reale di apertura (§5.10 di DEVELOPMENT.md, su
+  // richiesta esplicita dell'utente): determina solo quali voci "Solo
+  // pranzo"/"Solo cena" sono mostrate come disponibili nel menù pubblico
+  // in base all'ora corrente, editato nella pagina "Impostazioni Menù"
+  // (distinta da Impostazioni locale). Se null si usa lo stesso default
+  // di openingHours.
+  menuMealPeriodsHours Json?
 
   // Aspetto del menù pubblico: immagine di copertina in alto e informazioni
   // di contatto in fondo (social, telefono), impostati dall'admin.
@@ -230,6 +245,35 @@ model Venue {
   customers          Customer[]
   communications     Communication[]
   onlineOrders       OnlineOrder[]
+  specialDays        VenueSpecialDay[]
+}
+
+/// Apertura/chiusura straordinaria per una singola data (§5.10 di
+/// DEVELOPMENT.md, es. "Vigilia di Natale" o "chiuso per ferie"):
+/// sovrascrive, solo per quel giorno, l'orario reale del locale
+/// (Venue.openingHours) e/o gli orari pranzo/cena del menù
+/// (Venue.menuMealPeriodsHours) — i due aspetti sono indipendenti, si può
+/// sovrascrivere solo uno dei due o entrambi insieme.
+model VenueSpecialDay {
+  id    String   @id @default(cuid())
+  date  DateTime // solo la data (mezzanotte locale del fuso del locale)
+  label String? // es. "Vigilia di Natale", facoltativo, solo per l'admin
+
+  // Ciascuno, se presente, ha la stessa forma di un giorno di
+  // OpeningHoursDay (closed/slot1Start/slot1End/slot2Start/slot2End,
+  // senza "dayOfWeek" perché è già la data specifica): null = nessuna
+  // sovrascrittura per quell'aspetto in questa data, resta l'orario
+  // settimanale normale.
+  realHoursOverride Json?
+  menuHoursOverride Json?
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([venueId, date])
+  @@index([venueId, date])
 }
 
 enum OnlineOrdersSlotMode {
@@ -702,6 +746,13 @@ model MenuCategory {
   name      String
   sortOrder Int     @default(0)
   visible   Boolean @default(true) // mostra/nascondi dal menù pubblico, come le voci di menù
+
+  // Canale "ordini online" (§5.10 di DEVELOPMENT.md), come MenuItem.orderableOnline
+  // sotto ma a livello di intera categoria: permette di escludere in blocco
+  // una categoria dal checkout /ordina con un solo switch, senza dover
+  // disattivare ogni singola voce al suo interno. Il "menù locale" (pagina
+  // /menu) non ne tiene conto, come per il flag equivalente sulla voce.
+  orderableOnline Boolean @default(false)
 
   // Popolata solo dal sync Loyverse: chiave per aggiornare la categoria
   // senza duplicarla ai sync successivi, mai impostata a mano.
@@ -1280,10 +1331,21 @@ model OnlineOrder {
   status      OnlineOrderStatus      @default(PENDING)
 
   // Orario desiderato di ritiro/consegna, validato ai 15 minuti dentro una
-  // fascia di apertura con margine di 30 minuti (v. isWithinOnlineOrdersWindow
-  // in common/opening-hours/opening-hours.ts) — non "adesso": anche un
-  // ordine "appena possibile" corrisponde comunque a uno slot valido.
+  // fascia di apertura con margine di 30 minuti (v. findOpenSlotWithMargin
+  // in common/opening-hours/opening-hours.ts). Per un ordine "il prima
+  // possibile" (checkoutAsap sul DTO) inviato mentre il negozio è chiuso,
+  // vale invece il prossimo istante utile di apertura (v.
+  // awaitingShopOpening sotto): l'ordine nasce comunque, non viene bloccato.
   requestedAt         DateTime
+  // true solo per un ordine "il prima possibile" arrivato mentre il
+  // negozio era chiuso secondo l'orario reale (§5.10, su richiesta
+  // esplicita dell'utente): nasce comunque PENDING (mai auto-accettato),
+  // il cliente è avvisato che la conferma arriverà solo dopo l'apertura, e
+  // la notifica sonora nella coda admin resta silenziosa finché
+  // "requestedAt" (il prossimo orario di apertura) non è passato — poi
+  // suona in continuo finché lo staff non apre la scheda "Da confermare"
+  // (v. OnlineOrdersAdmin.tsx).
+  awaitingShopOpening Boolean   @default(false)
   // Nuovo orario proposto dallo staff (tipicamente per spostare un ordine
   // da una fascia satura a una più libera), in attesa di conferma del
   // cliente dalla pagina di tracciamento — stesso pattern di

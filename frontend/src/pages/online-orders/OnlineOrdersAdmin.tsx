@@ -52,6 +52,7 @@ interface OrderRow {
   status: OnlineOrderStatus;
   fulfillment: Fulfillment;
   requestedAt: string;
+  awaitingShopOpening: boolean;
   proposedRequestedAt: string | null;
   firstName: string;
   lastName: string;
@@ -110,6 +111,11 @@ function extractErrorMessage(error: unknown): string {
 
 function navigateUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
+/** Ordine "il prima possibile" arrivato mentre il negozio era chiuso (§5.10), la cui apertura non è ancora passata. */
+function isAwaitingOpening(order: OrderRow): boolean {
+  return order.awaitingShopOpening && new Date(order.requestedAt).getTime() > Date.now();
 }
 
 /** Fascia di poll della coda (§5.10 di DEVELOPMENT.md: "coda in tempo reale", non un vero WebSocket in questa v1). */
@@ -172,9 +178,14 @@ export function OnlineOrdersAdmin() {
 
   // Notifica sonora (§5.10): confronta ad ogni poll l'elenco PENDING con
   // quello precedente e suona solo se compare un id nuovo — mai al primo
-  // caricamento della pagina (knownPendingIdsRef ancora null).
+  // caricamento della pagina (knownPendingIdsRef ancora null). Un ordine
+  // "il prima possibile" arrivato mentre il negozio era chiuso non conta
+  // come "nuovo" finché non passa il suo orario di apertura: il primo beep
+  // arriva solo allora, non alla creazione dell'ordine.
   useEffect(() => {
-    const currentPendingIds = new Set((queueQuery.data ?? []).filter((o) => o.status === 'PENDING').map((o) => o.id));
+    const currentPendingIds = new Set(
+      (queueQuery.data ?? []).filter((o) => o.status === 'PENDING' && !isAwaitingOpening(o)).map((o) => o.id),
+    );
     const previous = knownPendingIdsRef.current;
     if (previous && soundEnabled && audioCtxRef.current) {
       const hasNewOrder = [...currentPendingIds].some((id) => !previous.has(id));
@@ -182,6 +193,26 @@ export function OnlineOrdersAdmin() {
     }
     knownPendingIdsRef.current = currentPendingIds;
   }, [queueQuery.data, soundEnabled]);
+
+  // Notifica sonora continua (§5.10): appena l'orario di apertura di un
+  // ordine "il prima possibile" nato a negozio chiuso passa, il beep si
+  // ripete a intervalli regolari finché lo staff non apre la scheda "Da
+  // confermare" — un singolo beep (sopra) potrebbe passare inosservato se
+  // nessuno guarda lo schermo esattamente in quel momento.
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const queueDataRef = useRef(queueQuery.data);
+  queueDataRef.current = queueQuery.data;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!soundEnabled || !audioCtxRef.current || tabRef.current === 'PENDING') return;
+      const hasReadyAwaitingOrder = (queueDataRef.current ?? []).some(
+        (o) => o.status === 'PENDING' && o.awaitingShopOpening && !isAwaitingOpening(o),
+      );
+      if (hasReadyAwaitingOrder) playBeep(audioCtxRef.current);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [soundEnabled]);
 
   const ordersByTab = useMemo(() => {
     const grouped: Record<OnlineOrderStatus, OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [] };
@@ -280,6 +311,14 @@ export function OnlineOrdersAdmin() {
                 color="warning"
                 sx={{ mt: 0.5 }}
                 label={`In attesa di conferma nuovo orario: ${formatWhen(order.proposedRequestedAt)}`}
+              />
+            )}
+            {isAwaitingOpening(order) && (
+              <Chip
+                size="small"
+                color="warning"
+                sx={{ mt: 0.5, ml: order.proposedRequestedAt ? 0.5 : 0 }}
+                label={`In attesa di apertura (${formatWhen(order.requestedAt)})`}
               />
             )}
             <Box sx={{ mt: 1 }}>

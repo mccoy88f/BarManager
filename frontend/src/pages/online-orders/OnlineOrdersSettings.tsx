@@ -20,15 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
 import { SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
-
-interface OpeningHoursDay {
-  dayOfWeek: number;
-  closed: boolean;
-  slot1Start: string | null;
-  slot1End: string | null;
-  slot2Start: string | null;
-  slot2End: string | null;
-}
+import { OpeningHoursWeekEditor, type OpeningHoursDay } from '../../components/OpeningHoursWeekEditor';
 
 type SlotMode = 'COMBINED' | 'SEPARATE';
 
@@ -65,17 +57,6 @@ interface LoyversePaymentType {
   id: string;
   name: string;
 }
-
-const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const DAY_LABELS: Record<number, string> = {
-  0: 'Domenica',
-  1: 'Lunedì',
-  2: 'Martedì',
-  3: 'Mercoledì',
-  4: 'Giovedì',
-  5: 'Venerdì',
-  6: 'Sabato',
-};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
@@ -318,84 +299,8 @@ export function OnlineOrdersSettings() {
             Il primo/ultimo orario richiedibile dal cliente è comunque sempre ristretto di 30 minuti
             su ciascun lato della fascia (margine fisso di preparazione, non modificabile qui).
           </Typography>
-          <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
-            {DAY_ORDER.map((dayOfWeek) => {
-              const day = openingHours.find((d) => d.dayOfWeek === dayOfWeek);
-              if (!day) return null;
-              const hasSlot2 = day.slot2Start != null && day.slot2End != null;
-              return (
-                <Box
-                  key={dayOfWeek}
-                  sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, p: 1, borderRadius: 1, bgcolor: 'action.hover' }}
-                >
-                  <Typography variant="body2" fontWeight={600} sx={{ width: 100, flexShrink: 0 }}>
-                    {DAY_LABELS[dayOfWeek]}
-                  </Typography>
-                  <FormControlLabel
-                    sx={{ mr: 0 }}
-                    control={
-                      <Switch
-                        size="small"
-                        checked={!day.closed}
-                        onChange={(e) => updateDay(dayOfWeek, { closed: !e.target.checked })}
-                      />
-                    }
-                    label={day.closed ? 'Chiuso' : 'Aperto'}
-                  />
-                  {!day.closed && (
-                    <>
-                      <TextField
-                        label="Dalle"
-                        type="time"
-                        size="small"
-                        inputProps={{ step: 900 }}
-                        InputLabelProps={{ shrink: true }}
-                        value={day.slot1Start ?? ''}
-                        onChange={(e) => updateDay(dayOfWeek, { slot1Start: e.target.value })}
-                      />
-                      <TextField
-                        label="Alle"
-                        type="time"
-                        size="small"
-                        inputProps={{ step: 900 }}
-                        InputLabelProps={{ shrink: true }}
-                        value={day.slot1End ?? ''}
-                        onChange={(e) => updateDay(dayOfWeek, { slot1End: e.target.value })}
-                      />
-                      {hasSlot2 ? (
-                        <>
-                          <TextField
-                            label="Dalle (2ª fascia)"
-                            type="time"
-                            size="small"
-                            inputProps={{ step: 900 }}
-                            InputLabelProps={{ shrink: true }}
-                            value={day.slot2Start ?? ''}
-                            onChange={(e) => updateDay(dayOfWeek, { slot2Start: e.target.value })}
-                          />
-                          <TextField
-                            label="Alle (2ª fascia)"
-                            type="time"
-                            size="small"
-                            inputProps={{ step: 900 }}
-                            InputLabelProps={{ shrink: true }}
-                            value={day.slot2End ?? ''}
-                            onChange={(e) => updateDay(dayOfWeek, { slot2End: e.target.value })}
-                          />
-                          <Button size="small" color="error" onClick={() => updateDay(dayOfWeek, { slot2Start: null, slot2End: null })}>
-                            Rimuovi 2ª fascia
-                          </Button>
-                        </>
-                      ) : (
-                        <Button size="small" onClick={() => updateDay(dayOfWeek, { slot2Start: '19:00', slot2End: '23:00' })}>
-                          + Aggiungi seconda fascia
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </Box>
-              );
-            })}
+          <Box sx={{ mt: 2 }}>
+            <OpeningHoursWeekEditor days={openingHours} onChangeDay={updateDay} />
           </Box>
           <Button
             variant="contained"

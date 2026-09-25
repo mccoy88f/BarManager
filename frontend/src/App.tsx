@@ -23,6 +23,7 @@ import { OrderHistory } from './pages/inventory/OrderHistory';
 import { OrderDetail } from './pages/inventory/OrderDetail';
 import { MenuAdmin } from './pages/menu/MenuAdmin';
 import { MenuPublicLink } from './pages/menu/MenuPublicLink';
+import { MenuSettings } from './pages/menu/MenuSettings';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { TasksHistory } from './pages/tasks/TasksHistory';
@@ -48,6 +49,7 @@ import { PublicOnlineOrderTrack } from './pages/online-orders/PublicOnlineOrderT
 import { OnlineOrdersAdmin } from './pages/online-orders/OnlineOrdersAdmin';
 import { OnlineOrdersHistory } from './pages/online-orders/OnlineOrdersHistory';
 import { OnlineOrdersSettings } from './pages/online-orders/OnlineOrdersSettings';
+import { OnlineOrdersPublicLink } from './pages/online-orders/OnlineOrdersPublicLink';
 
 export default function App() {
   return (
@@ -114,6 +116,7 @@ export default function App() {
           <Route element={<ProtectedRoute moduleKey="menu" />}>
             <Route path="/menu/admin" element={<MenuAdmin />} />
             <Route path="/menu/admin/link" element={<MenuPublicLink />} />
+            <Route path="/menu/admin/settings" element={<MenuSettings />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="tasks" />}>
             <Route path="/tasks" element={<TasksAdmin />} />
@@ -131,6 +134,7 @@ export default function App() {
           <Route element={<ProtectedRoute moduleKey="onlineOrders" />}>
             <Route path="/online-orders" element={<OnlineOrdersAdmin />} />
             <Route path="/online-orders/history" element={<OnlineOrdersHistory />} />
+            <Route path="/online-orders/link" element={<OnlineOrdersPublicLink />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="onlineOrders" allow={['ADMIN']} />}>
             <Route path="/online-orders/settings" element={<OnlineOrdersSettings />} />

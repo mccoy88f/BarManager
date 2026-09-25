@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Autocomplete,
@@ -24,12 +25,15 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SyncIcon from '@mui/icons-material/Sync';
 import ArticleIcon from '@mui/icons-material/Article';
 import CheckIcon from '@mui/icons-material/Check';
+import EventIcon from '@mui/icons-material/Event';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { ACCENT_COLOR_PRESETS, DEFAULT_ACCENT_COLOR } from '../../config/accentColors';
+import { OpeningHoursWeekEditor, type OpeningHoursDay } from '../../components/OpeningHoursWeekEditor';
+import { SpecialDaysCard } from './SpecialDaysCard';
 
 interface LoyverseSyncSummary {
   categories: number;
@@ -46,16 +50,6 @@ interface LoyverseStatus {
   lastSyncAt?: string;
   lastSyncError?: string;
   lastSyncSummary?: LoyverseSyncSummary | null;
-}
-
-interface OpeningHoursDay {
-  /** 0 = domenica .. 6 = sabato, come Date#getDay(). */
-  dayOfWeek: number;
-  closed: boolean;
-  slot1Start: string | null;
-  slot1End: string | null;
-  slot2Start: string | null;
-  slot2End: string | null;
 }
 
 interface VenueHours {
@@ -77,18 +71,6 @@ interface VenueHours {
   themeAccentColor?: string | null;
 }
 
-/** Lunedì(1)...domenica(0), nell'ordine in cui mostrarli in UI: Date#getDay() usa invece 0=domenica. */
-const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const DAY_LABELS: Record<number, string> = {
-  0: 'Domenica',
-  1: 'Lunedì',
-  2: 'Martedì',
-  3: 'Mercoledì',
-  4: 'Giovedì',
-  5: 'Venerdì',
-  6: 'Sabato',
-};
-
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
     ?.data;
@@ -102,9 +84,14 @@ function extractErrorMessage(error: unknown): string {
 const timezoneOptions: string[] =
   typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : ['Europe/Rome'];
 
-/** Fasce orarie pranzo/cena del locale: determinano quali voci di menù sono
- * mostrate come disponibili nel menù pubblico in base all'ora corrente. */
+/**
+ * Orario "reale" di apertura del locale: usato dal modulo Prenotazioni e dal
+ * gating "negozio aperto/chiuso" degli ordini online (§5.10 di
+ * DEVELOPMENT.md) — non più per il tag "solo pranzo"/"solo cena" del menù,
+ * che da qui in avanti è indipendente (v. pagina "Impostazioni Menù").
+ */
 export function VenueSettings() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const showToast = useToast();
   const setCachedThemeAccentColor = useAuthStore((s) => s.setThemeAccentColor);
@@ -269,107 +256,17 @@ export function VenueSettings() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Orari di apertura
+            Orario di apertura
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Giorni di apertura/chiusura e fino a due fasce orarie al giorno (es. pranzo e cena,
-            con una pausa fra le due). Determinano quali voci "Solo pranzo"/"Solo cena" sono
-            mostrate come disponibili nel menù pubblico, e gli orari prenotabili nel modulo
-            Prenotazioni.
+            Giorni di apertura/chiusura e fino a due fasce orarie al giorno: l'orario "reale" in
+            cui il locale è fisicamente aperto. Usato dal modulo Prenotazioni e per decidere se un
+            ordine online "il prima possibile" può essere confermato subito o deve attendere
+            l'apertura. Le fasce pranzo/cena mostrate nel menù pubblico sono invece impostate a
+            parte, nella pagina "Impostazioni Menù".
           </Typography>
-          <Box sx={{ display: 'grid', gap: 1.5, mt: 2 }}>
-            {DAY_ORDER.map((dayOfWeek) => {
-              const day = openingHours.find((d) => d.dayOfWeek === dayOfWeek);
-              if (!day) return null;
-              const hasSlot2 = day.slot2Start != null && day.slot2End != null;
-              return (
-                <Box
-                  key={dayOfWeek}
-                  sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    p: 1,
-                    borderRadius: 1,
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  <Typography variant="body2" fontWeight={600} sx={{ width: 100, flexShrink: 0 }}>
-                    {DAY_LABELS[dayOfWeek]}
-                  </Typography>
-                  <FormControlLabel
-                    sx={{ mr: 0 }}
-                    control={
-                      <Switch
-                        size="small"
-                        checked={!day.closed}
-                        onChange={(e) => updateDay(dayOfWeek, { closed: !e.target.checked })}
-                      />
-                    }
-                    label={day.closed ? 'Chiuso' : 'Aperto'}
-                  />
-                  {!day.closed && (
-                    <>
-                      <TextField
-                        label="Dalle"
-                        type="time"
-                        size="small"
-                        inputProps={{ step: 900 }}
-                        InputLabelProps={{ shrink: true }}
-                        value={day.slot1Start ?? ''}
-                        onChange={(e) => updateDay(dayOfWeek, { slot1Start: e.target.value })}
-                      />
-                      <TextField
-                        label="Alle"
-                        type="time"
-                        size="small"
-                        inputProps={{ step: 900 }}
-                        InputLabelProps={{ shrink: true }}
-                        value={day.slot1End ?? ''}
-                        onChange={(e) => updateDay(dayOfWeek, { slot1End: e.target.value })}
-                      />
-                      {hasSlot2 ? (
-                        <>
-                          <TextField
-                            label="Dalle (2ª fascia)"
-                            type="time"
-                            size="small"
-                            inputProps={{ step: 900 }}
-                            InputLabelProps={{ shrink: true }}
-                            value={day.slot2Start ?? ''}
-                            onChange={(e) => updateDay(dayOfWeek, { slot2Start: e.target.value })}
-                          />
-                          <TextField
-                            label="Alle (2ª fascia)"
-                            type="time"
-                            size="small"
-                            inputProps={{ step: 900 }}
-                            InputLabelProps={{ shrink: true }}
-                            value={day.slot2End ?? ''}
-                            onChange={(e) => updateDay(dayOfWeek, { slot2End: e.target.value })}
-                          />
-                          <Button
-                            size="small"
-                            color="error"
-                            onClick={() => updateDay(dayOfWeek, { slot2Start: null, slot2End: null })}
-                          >
-                            Rimuovi 2ª fascia
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="small"
-                          onClick={() => updateDay(dayOfWeek, { slot2Start: '19:00', slot2End: '23:00' })}
-                        >
-                          + Aggiungi seconda fascia (es. cena, con una pausa)
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </Box>
-              );
-            })}
+          <Box sx={{ mt: 2 }}>
+            <OpeningHoursWeekEditor days={openingHours} onChangeDay={updateDay} />
           </Box>
           <Button
             variant="contained"
@@ -379,8 +276,17 @@ export function VenueSettings() {
           >
             Salva
           </Button>
+          <Button
+            sx={{ mt: 2, ml: 1 }}
+            startIcon={<EventIcon />}
+            onClick={() => navigate('/menu/admin/settings')}
+          >
+            Fasce pranzo/cena del menù
+          </Button>
         </CardContent>
       </Card>
+
+      <SpecialDaysCard />
 
       <Card>
         <CardContent>

@@ -298,6 +298,7 @@ describe('MenuService.getPublicMenu', () => {
   let prisma: {
     venue: { findUnique: jest.Mock };
     menuCategory: { findMany: jest.Mock };
+    venueSpecialDay: { findUnique: jest.Mock };
   };
   let service: MenuService;
 
@@ -322,13 +323,14 @@ describe('MenuService.getPublicMenu', () => {
     menuInstagramUrl: null,
     menuFacebookUrl: null,
     menuWebsiteUrl: null,
-    openingHours: alwaysOpenSchedule,
+    menuMealPeriodsHours: alwaysOpenSchedule,
   };
 
   beforeEach(() => {
     prisma = {
       venue: { findUnique: jest.fn().mockResolvedValue(baseVenue) },
       menuCategory: { findMany: jest.fn() },
+      venueSpecialDay: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     service = new MenuService(prisma as unknown as PrismaService, {} as never);
   });
@@ -390,6 +392,76 @@ describe('MenuService.getPublicMenu', () => {
     const result = await service.getPublicMenu('venue-1');
 
     expect(result.categories).toEqual([]);
+  });
+});
+
+describe('MenuService.getPublicMenu — fascia pranzo/cena (§5.10, orari menù decoupled)', () => {
+  let prisma: {
+    venue: { findUnique: jest.Mock };
+    menuCategory: { findMany: jest.Mock };
+    venueSpecialDay: { findUnique: jest.Mock };
+  };
+  let service: MenuService;
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const lunchOnlySchedule = Array.from({ length: 7 }, (_, dayOfWeek) => ({
+    dayOfWeek,
+    closed: false,
+    slot1Start: '12:00',
+    slot1End: '15:00',
+    slot2Start: null,
+    slot2End: null,
+  }));
+
+  beforeEach(() => {
+    prisma = {
+      venue: { findUnique: jest.fn() },
+      menuCategory: { findMany: jest.fn().mockResolvedValue([]) },
+      venueSpecialDay: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
+  });
+
+  it('usa Venue.menuMealPeriodsHours (non openingHours) per determinare pranzo/cena', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:00:00.000Z')); // lunedì, 12:00 a Roma
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      active: true,
+      name: 'Bar Demo',
+      timezone: 'Europe/Rome',
+      openingHours: [], // deliberatamente diverso/vuoto: non deve avere alcun effetto qui
+      menuMealPeriodsHours: lunchOnlySchedule,
+    });
+
+    await service.getPublicMenu('venue-1');
+
+    const allowed = prisma.menuCategory.findMany.mock.calls[0][0].include.items.where.availability.in;
+    expect(allowed).toEqual(['LUNCH', 'ALL_DAY']);
+  });
+
+  it('un\'apertura speciale (§5.10) può sovrascrivere solo gli orari menù, indipendentemente dall\'orario reale', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:00:00.000Z')); // 12:00 a Roma: dentro lunchOnlySchedule
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      active: true,
+      name: 'Bar Demo',
+      timezone: 'Europe/Rome',
+      menuMealPeriodsHours: lunchOnlySchedule,
+    });
+    prisma.venueSpecialDay.findUnique.mockResolvedValue({
+      realHoursOverride: null,
+      menuHoursOverride: { closed: false, slot1Start: null, slot1End: null, slot2Start: '19:00', slot2End: '23:00' },
+    });
+
+    await service.getPublicMenu('venue-1');
+
+    // Con l'override il pranzo non esiste più (solo una fascia cena
+    // 19-23): alle 12:00 non si cade in nessuna fascia -> NONE.
+    const allowed = prisma.menuCategory.findMany.mock.calls[0][0].include.items.where.availability.in;
+    expect(allowed).toEqual(['ALL_DAY']);
   });
 });
 

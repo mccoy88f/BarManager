@@ -2,8 +2,14 @@ import { BadRequestException, NotFoundException, Injectable } from '@nestjs/comm
 import { Allergen, MenuAvailability } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { XlsxService } from '../reports/xlsx.service';
-import { findOpenSlot, resolveOpeningHours } from '../common/opening-hours/opening-hours';
-import { jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
+import {
+  applyDayOverride,
+  DayOverride,
+  findOpenSlot,
+  resolveOpeningHours,
+  specialDayKey,
+} from '../common/opening-hours/opening-hours';
+import { dateOnlyInZone, jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
@@ -150,6 +156,34 @@ export class MenuService {
       throw new NotFoundException('Categoria non trovata');
     }
     return this.prisma.menuCategory.update({ where: { id: categoryId }, data: { visible } });
+  }
+
+  /** Canale ordini online (§5.10): flag di presentazione come "visible", non tocca il menù locale. */
+  async setCategoryOrderableOnline(venueId: string, categoryId: string, orderableOnline: boolean) {
+    const category = await this.prisma.menuCategory.findUnique({ where: { id: categoryId } });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    return this.prisma.menuCategory.update({ where: { id: categoryId }, data: { orderableOnline } });
+  }
+
+  /**
+   * Scorciatoia richiesta dall'admin (§5.10): attiva "ordinabile online"
+   * per tutte le categorie/voci già visibili sul menù, senza doverlo fare
+   * una per una nel dialog di modifica. Solo additiva (mai un
+   * "azzeramento"): non tocca chi ha già orderableOnline=true, né
+   * disattiva chi non è visibile.
+   */
+  async syncOrderableOnlineFromVisible(venueId: string): Promise<{ categories: number; items: number }> {
+    const categories = await this.prisma.menuCategory.updateMany({
+      where: { venueId, visible: true, orderableOnline: false },
+      data: { orderableOnline: true },
+    });
+    const items = await this.prisma.menuItem.updateMany({
+      where: { venueId, visible: true, orderableOnline: false },
+      data: { orderableOnline: true },
+    });
+    return { categories: categories.count, items: items.count };
   }
 
   async updateCategory(venueId: string, categoryId: string, dto: UpdateMenuCategoryDto) {
@@ -531,15 +565,27 @@ export class MenuService {
   // ---- Menù pubblico (nessun login) --------------------------------------
 
   /**
-   * Determina la fascia corrente (pranzo/cena/nessuna) in base agli orari
-   * di apertura configurati dal locale per il giorno corrente (prima
-   * fascia = "pranzo", seconda fascia opzionale = "cena"), calcolati nel
-   * fuso orario del locale (`Venue.timezone`), non in quello del server.
+   * Determina la fascia corrente (pranzo/cena/nessuna) in base alle fasce
+   * pranzo/cena del MENÙ configurate dal locale per il giorno corrente
+   * (`Venue.menuMealPeriodsHours`, indipendenti dall'orario reale di
+   * apertura — §5.10 di DEVELOPMENT.md), calcolate nel fuso orario del
+   * locale (`Venue.timezone`), non in quello del server. Un'eventuale
+   * apertura speciale per la data di oggi (`VenueSpecialDay.menuHoursOverride`)
+   * sostituisce per intero il giorno altrimenti risolto dallo schedule.
    */
-  private currentPeriod(openingHoursRaw: unknown, timezone: string): 'LUNCH' | 'DINNER' | 'NONE' {
-    const schedule = resolveOpeningHours(openingHoursRaw);
+  private async currentPeriod(
+    venueId: string,
+    menuMealPeriodsHoursRaw: unknown,
+    timezone: string,
+  ): Promise<'LUNCH' | 'DINNER' | 'NONE'> {
+    const schedule = resolveOpeningHours(menuMealPeriodsHoursRaw);
     const now = new Date();
-    const day = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(now, timezone))!;
+    const todayKey = specialDayKey(dateOnlyInZone(now, timezone));
+    const special = await this.prisma.venueSpecialDay.findUnique({
+      where: { venueId_date: { venueId, date: todayKey } },
+    });
+    const scheduledDay = schedule.find((d) => d.dayOfWeek === jsWeekdayInZone(now, timezone))!;
+    const day = applyDayOverride(scheduledDay, special?.menuHoursOverride as DayOverride | null | undefined);
     const minutes = minutesOfDayInZone(now, timezone);
     const slot = findOpenSlot(day, minutes);
     return slot === 1 ? 'LUNCH' : slot === 2 ? 'DINNER' : 'NONE';
@@ -551,7 +597,7 @@ export class MenuService {
       throw new NotFoundException('Locale non trovato');
     }
 
-    const period = this.currentPeriod(venue.openingHours, venue.timezone);
+    const period = await this.currentPeriod(venueId, venue.menuMealPeriodsHours, venue.timezone);
     const allowedAvailabilities: MenuAvailability[] =
       period === 'LUNCH'
         ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]
