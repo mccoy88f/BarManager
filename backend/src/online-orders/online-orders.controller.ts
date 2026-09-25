@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { OnlineOrderStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -75,5 +76,27 @@ export class OnlineOrdersController {
     @Body() dto: ProposeOrderTimeChangeDto,
   ) {
     return this.onlineOrdersService.proposeTimeChange(user, requireVenueId(user), id, dto);
+  }
+
+  /** Comanda cucina (§5.10): solo voci/varianti/modificatori/note, nessun prezzo/indirizzo. */
+  @Get(':id/kitchen-ticket/pdf')
+  async kitchenTicketPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.onlineOrdersService.exportKitchenTicketPdf(requireVenueId(user), id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="comanda-${id}.pdf"`,
+    });
+    res.send(buffer);
+  }
+
+  /** Scontrino completo (§5.10): dati cliente, indirizzo, prezzi, totale, pagamento. */
+  @Get(':id/receipt/pdf')
+  async fullReceiptPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.onlineOrdersService.exportFullReceiptPdf(requireVenueId(user), id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="scontrino-${id}.pdf"`,
+    });
+    res.send(buffer);
   }
 }

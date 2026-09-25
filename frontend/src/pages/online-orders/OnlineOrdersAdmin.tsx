@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -22,12 +22,17 @@ import {
 } from '@mui/material';
 import PhoneIcon from '@mui/icons-material/Phone';
 import DirectionsIcon from '@mui/icons-material/Directions';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
+import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
+import { shareReceiptPdf } from '../../printing/printJob';
 
 type OnlineOrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 type Fulfillment = 'PICKUP' | 'DELIVERY';
@@ -107,12 +112,33 @@ function navigateUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }
 
+/** Fascia di poll della coda (§5.10 di DEVELOPMENT.md: "coda in tempo reale", non un vero WebSocket in questa v1). */
+const QUEUE_POLL_MS = 15000;
+
+/**
+ * Beep sintetizzato via Web Audio API per la notifica sonora di un nuovo
+ * ordine (§5.10): niente file audio da distribuire, un semplice oscillatore
+ * breve basta. Richiede un `AudioContext` già creato/ripreso da
+ * un'interazione dell'utente (v. `enableSound` sotto) — i browser bloccano
+ * altrimenti l'audio non ancora "sbloccato" da un gesto.
+ */
+function playBeep(ctx: AudioContext) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.value = 880;
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+  oscillator.start();
+  oscillator.stop(ctx.currentTime + 0.4);
+}
+
 /**
  * Coda ordini online (§5.10 di DEVELOPMENT.md): tre schede — Da
  * confermare, In preparazione, Pronti — stesso schema a tab della coda
- * prenotazioni. Le stampe dei due scontrini (comanda cucina/scontrino
- * completo) e la sincronizzazione Loyverse arrivano in una fase
- * successiva (§5.10), non ancora collegate qui.
+ * prenotazioni.
  */
 export function OnlineOrdersAdmin() {
   const queryClient = useQueryClient();
@@ -127,10 +153,35 @@ export function OnlineOrdersAdmin() {
   const [changingTime, setChangingTime] = useState<OrderRow | null>(null);
   const [timeForm, setTimeForm] = useState({ date: '', time: '' });
 
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const knownPendingIdsRef = useRef<Set<string> | null>(null);
+
+  const enableSound = () => {
+    if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+    void audioCtxRef.current.resume();
+    setSoundEnabled(true);
+    playBeep(audioCtxRef.current);
+  };
+
   const queueQuery = useQuery({
     queryKey: ['online-orders-queue'],
     queryFn: async () => (await api.get<OrderRow[]>('/online-orders')).data,
+    refetchInterval: QUEUE_POLL_MS,
   });
+
+  // Notifica sonora (§5.10): confronta ad ogni poll l'elenco PENDING con
+  // quello precedente e suona solo se compare un id nuovo — mai al primo
+  // caricamento della pagina (knownPendingIdsRef ancora null).
+  useEffect(() => {
+    const currentPendingIds = new Set((queueQuery.data ?? []).filter((o) => o.status === 'PENDING').map((o) => o.id));
+    const previous = knownPendingIdsRef.current;
+    if (previous && soundEnabled && audioCtxRef.current) {
+      const hasNewOrder = [...currentPendingIds].some((id) => !previous.has(id));
+      if (hasNewOrder) playBeep(audioCtxRef.current);
+    }
+    knownPendingIdsRef.current = currentPendingIds;
+  }, [queueQuery.data, soundEnabled]);
 
   const ordersByTab = useMemo(() => {
     const grouped: Record<OnlineOrderStatus, OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [] };
@@ -188,6 +239,15 @@ export function OnlineOrdersAdmin() {
       setChangingTime(null);
       showToast('Nuovo orario proposto: in attesa di conferma del cliente');
     },
+  });
+
+  /** Due scontrini distinti (§5.10): comanda cucina senza prezzi/indirizzo, scontrino completo per staff/rider — stesso schema di condivisione PDF già usato per gli ordini fornitori (§5.3). */
+  const printMutation = useMutation({
+    mutationFn: async ({ id, kind }: { id: string; kind: 'kitchen-ticket' | 'receipt' }) => {
+      const response = await api.get(`/online-orders/${id}/${kind}/pdf`, { responseType: 'blob' });
+      await shareReceiptPdf(response.data, kind === 'kitchen-ticket' ? `Comanda ${id}` : `Scontrino ${id}`);
+    },
+    onError: () => showToast({ message: 'Stampa non riuscita.', severity: 'error' }),
   });
 
   const renderOrderCard = (order: OrderRow) => (
@@ -254,6 +314,20 @@ export function OnlineOrdersAdmin() {
                   <DirectionsIcon fontSize="small" />
                 </IconButton>
               )}
+              <IconButton
+                size="small"
+                title="Stampa comanda cucina"
+                onClick={() => printMutation.mutate({ id: order.id, kind: 'kitchen-ticket' })}
+              >
+                <SoupKitchenIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                title="Stampa scontrino completo"
+                onClick={() => printMutation.mutate({ id: order.id, kind: 'receipt' })}
+              >
+                <ReceiptLongIcon fontSize="small" />
+              </IconButton>
             </Stack>
 
             {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
@@ -313,7 +387,18 @@ export function OnlineOrdersAdmin() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Typography variant="h6">Ordini online</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h6">Ordini online</Typography>
+        <Button
+          size="small"
+          variant={soundEnabled ? 'outlined' : 'contained'}
+          startIcon={soundEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
+          onClick={enableSound}
+          disabled={soundEnabled}
+        >
+          {soundEnabled ? 'Notifiche sonore attive' : 'Attiva notifiche sonore'}
+        </Button>
+      </Box>
 
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ minHeight: 0 }} variant="scrollable" scrollButtons="auto">
         {QUEUE_TABS.map((s) => (

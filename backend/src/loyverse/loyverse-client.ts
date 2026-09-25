@@ -64,6 +64,35 @@ export interface LoyverseModifierOption {
   price?: number;
 }
 
+export interface LoyverseStore {
+  id: string;
+  name: string;
+}
+
+export interface LoyverseReceiptLineItem {
+  variant_id: string;
+  quantity: number;
+  price: number;
+  line_modifiers?: { modifier_option_id: string; price: number }[];
+}
+
+export interface LoyverseReceiptPayment {
+  payment_type_id: string;
+  money_amount: number;
+}
+
+export interface LoyverseCreateReceiptRequest {
+  store_id: string;
+  line_items: LoyverseReceiptLineItem[];
+  payments: LoyverseReceiptPayment[];
+  receipt_date: string;
+}
+
+export interface LoyverseReceipt {
+  receipt_number: string;
+  [key: string]: unknown;
+}
+
 /// NOTA: struttura non ancora verificata contro una risposta reale
 /// dell'endpoint (a differenza di LoyverseItem/LoyverseVariant sopra,
 /// verificati contro la documentazione incollata dall'utente) — da
@@ -126,9 +155,45 @@ async function fetchAllPages<T>(
   return results;
 }
 
+async function postJson<TBody, TResponse>(accessToken: string, path: string, body: TBody): Promise<TResponse> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new LoyverseApiError('Token Loyverse non valido o senza i permessi necessari.', res.status);
+  }
+  if (res.status === 429) {
+    throw new LoyverseApiError(
+      'Limite di richieste Loyverse superato: riprova più tardi.',
+      res.status,
+    );
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new LoyverseApiError(`Loyverse ha risposto con errore ${res.status}${text ? `: ${text}` : ''}.`, res.status);
+  }
+  return res.json();
+}
+
 export const loyverseClient = {
   async listCategories(accessToken: string): Promise<LoyverseCategory[]> {
     return fetchAllPages<LoyverseCategory>(accessToken, '/categories', 'categories');
+  },
+
+  /** Punti vendita dell'account (§5.10): BarManager assume un solo punto vendita per locale, v. Venue.loyverseStoreId. */
+  async listStores(accessToken: string): Promise<LoyverseStore[]> {
+    return fetchAllPages<LoyverseStore>(accessToken, '/stores', 'stores');
+  },
+
+  /** Crea la ricevuta di un ordine online concluso (§5.10 di DEVELOPMENT.md, solo alla transizione a COMPLETED). */
+  async createReceipt(accessToken: string, receipt: LoyverseCreateReceiptRequest): Promise<LoyverseReceipt> {
+    return postJson<LoyverseCreateReceiptRequest, LoyverseReceipt>(accessToken, '/receipts', receipt);
   },
 
   async listItems(accessToken: string): Promise<LoyverseItem[]> {

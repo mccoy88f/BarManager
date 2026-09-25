@@ -9,10 +9,13 @@ import { randomUUID } from 'crypto';
 import {
   OnlineOrder,
   OnlineOrderFulfillment,
+  OnlineOrderLine,
+  OnlineOrderLineModifier,
   OnlineOrderPaymentMethod,
   OnlineOrderStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PdfService, ReceiptSection } from '../reports/pdf.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { findOpenSlotWithMargin, resolveOpeningHours } from '../common/opening-hours/opening-hours';
@@ -21,7 +24,10 @@ import { distanceMeters } from '../common/geo/geo';
 import { locationIqClient } from '../common/geo/locationiq-client';
 import { sumupClient } from '../common/payments/sumup-client';
 import { decryptSecret } from '../common/crypto/secret-crypto';
+import { venuePublicUrl, venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
+import { loyverseClient } from '../loyverse/loyverse-client';
 import { CustomersService } from '../customers/customers.service';
+import { OnlineOrdersMailService } from './online-orders-mail.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
 import { RejectOnlineOrderDto } from './dto/reject-online-order.dto';
@@ -36,6 +42,7 @@ const VENUE_SELECT = {
   name: true,
   slug: true,
   email: true,
+  logoUrl: true,
   timezone: true,
   gpsLat: true,
   gpsLng: true,
@@ -55,6 +62,13 @@ const VENUE_SELECT = {
   deliveryFreeAboveAmount: true,
   sumupEnabled: true,
   sumupApiKeyEnc: true,
+  loyverseIntegrationEnabled: true,
+  loyverseSyncOnlineOrders: true,
+  loyverseAccessTokenEnc: true,
+  loyverseStoreId: true,
+  loyversePaymentTypeIdCash: true,
+  loyversePaymentTypeIdCardOnline: true,
+  loyversePaymentTypeIdCardInStore: true,
 } as const;
 
 type OnlineOrdersVenueSettings = {
@@ -62,6 +76,7 @@ type OnlineOrdersVenueSettings = {
   name: string;
   slug: string;
   email: string | null;
+  logoUrl: string | null;
   timezone: string;
   gpsLat: number | null;
   gpsLng: number | null;
@@ -81,6 +96,13 @@ type OnlineOrdersVenueSettings = {
   deliveryFreeAboveAmount: number | null;
   sumupEnabled: boolean;
   sumupApiKeyEnc: string | null;
+  loyverseIntegrationEnabled: boolean;
+  loyverseSyncOnlineOrders: boolean;
+  loyverseAccessTokenEnc: string | null;
+  loyverseStoreId: string | null;
+  loyversePaymentTypeIdCash: string | null;
+  loyversePaymentTypeIdCardOnline: string | null;
+  loyversePaymentTypeIdCardInStore: string | null;
 };
 
 const HISTORY_STATUSES: OnlineOrderStatus[] = ['COMPLETED', 'REJECTED', 'CANCELLED'];
@@ -116,12 +138,28 @@ export class OnlineOrdersService {
     private prisma: PrismaService,
     private audit: AuditService,
     private customers: CustomersService,
+    private mail: OnlineOrdersMailService,
+    private pdf: PdfService,
   ) {}
 
   private async getVenueSettings(venueId: string): Promise<OnlineOrdersVenueSettings> {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: VENUE_SELECT });
     if (!venue) throw new NotFoundException('Locale non trovato');
     return venue as OnlineOrdersVenueSettings;
+  }
+
+  /** Pagina pubblica di tracciamento (nessun login), stesso pattern di Reservation.manageToken (§5.7/§5.10). */
+  private trackUrl(venue: OnlineOrdersVenueSettings, orderId: string, token: string): string {
+    return venuePublicUrl(venue, `/ordina/traccia/${orderId}?token=${token}`);
+  }
+
+  /** Link (autenticato) alla coda "Ordini online" in amministrazione, per l'email di notifica al locale. */
+  private adminQueueUrl(venue: OnlineOrdersVenueSettings): string {
+    return venuePublicUrl(venue, '/online-orders');
+  }
+
+  private privacyUrl(venue: OnlineOrdersVenueSettings, privacyToken: string | null): string | null {
+    return privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
   }
 
   /**
@@ -459,7 +497,26 @@ export class OnlineOrdersService {
       include: { lines: { include: { modifiers: true } } },
     });
 
-    // Email al cliente/locale e notifica sonora: v. OnlineOrdersMailService (task successivo).
+    const venue = pricing.venue;
+    const logoUrl = venueLogoAbsoluteUrl(venue);
+    const trackUrl = this.trackUrl(venue, order.id, order.manageToken);
+    const privacyUrl = this.privacyUrl(venue, customer.privacyToken);
+    if (initialStatus === 'CONFIRMED') {
+      await this.mail.sendConfirmed(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+    } else {
+      await this.mail.sendReceived(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+    }
+    // Notifica sonora nella coda admin: v. OnlineOrdersAdmin.tsx (confronto poll su poll, §5.10).
+    if (venue.email) {
+      await this.mail.sendVenueNotification(
+        order,
+        venue.name,
+        venue.email,
+        this.adminQueueUrl(venue),
+        initialStatus === 'PENDING',
+        logoUrl,
+      );
+    }
     return order;
   }
 
@@ -516,6 +573,16 @@ export class OnlineOrdersService {
       before: order,
       after: updated,
     });
+    const venue = await this.getVenueSettings(venueId);
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
+    await this.mail.sendConfirmed(
+      updated,
+      venue.name,
+      this.trackUrl(venue, updated.id, updated.manageToken),
+      venue.email,
+      this.privacyUrl(venue, privacyToken),
+      venueLogoAbsoluteUrl(venue),
+    );
     return updated;
   }
 
@@ -543,8 +610,8 @@ export class OnlineOrdersService {
     // addebitato senza che l'ordine venga preparato (§5.10 di
     // DEVELOPMENT.md): l'ordine resta comunque REJECTED anche se il
     // rimborso fallisce, ma l'errore va sempre segnalato allo staff.
+    const venue = await this.getVenueSettings(venueId);
     if (order.paymentMethod === 'CARD_ONLINE' && order.paymentStatus === 'PAID' && order.sumupTransactionId) {
-      const venue = await this.getVenueSettings(venueId);
       if (venue.sumupApiKeyEnc) {
         try {
           await sumupClient.refund(decryptSecret(venue.sumupApiKeyEnc), order.sumupTransactionId);
@@ -556,6 +623,16 @@ export class OnlineOrdersService {
         }
       }
     }
+
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
+    await this.mail.sendRejected(
+      updated,
+      venue.name,
+      dto.reason,
+      venue.email,
+      this.privacyUrl(venue, privacyToken),
+      venueLogoAbsoluteUrl(venue),
+    );
 
     return updated;
   }
@@ -579,6 +656,16 @@ export class OnlineOrdersService {
       before: order,
       after: updated,
     });
+    const venue = await this.getVenueSettings(venueId);
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
+    await this.mail.sendReady(
+      updated,
+      venue.name,
+      this.trackUrl(venue, updated.id, updated.manageToken),
+      venue.email,
+      this.privacyUrl(venue, privacyToken),
+      venueLogoAbsoluteUrl(venue),
+    );
     return updated;
   }
 
@@ -618,9 +705,101 @@ export class OnlineOrdersService {
     if (updated.customerId) {
       await this.customers.recordOnlineOrderCompleted(updated.customerId, updated.total);
     }
-    // Sincronizzazione Loyverse (Venue.loyverseSyncOnlineOrders): v. task successivo.
+
+    const venue = await this.getVenueSettings(venueId);
+    if (venue.loyverseIntegrationEnabled && venue.loyverseSyncOnlineOrders && venue.loyverseAccessTokenEnc) {
+      return this.syncLoyverseReceipt(venue, updated);
+    }
 
     return updated;
+  }
+
+  /**
+   * Crea la ricevuta Loyverse per un ordine appena COMPLETED (§5.10 di
+   * DEVELOPMENT.md — solo qui, mai per un ordine ancora aperto). Un
+   * fallimento qualunque (mappatura pagamento assente, voce senza
+   * corrispondente Loyverse, errore di rete/API) non deve mai bloccare
+   * l'ordine reale: viene solo salvato come `loyverseSyncError`, sullo
+   * stesso schema di `Order.emailSent`/`emailError` per gli ordini
+   * fornitori.
+   */
+  private async syncLoyverseReceipt(
+    venue: OnlineOrdersVenueSettings,
+    order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
+  ) {
+    try {
+      const paymentTypeId =
+        order.paymentMethod === 'CASH'
+          ? venue.loyversePaymentTypeIdCash
+          : order.paymentMethod === 'CARD_ONLINE'
+            ? venue.loyversePaymentTypeIdCardOnline
+            : order.paymentMethod === 'CARD_IN_STORE'
+              ? venue.loyversePaymentTypeIdCardInStore
+              : null;
+      if (!paymentTypeId) {
+        throw new Error('Metodo di pagamento non collegato a Loyverse (v. Impostazioni Loyverse)');
+      }
+
+      const accessToken = decryptSecret(venue.loyverseAccessTokenEnc!);
+
+      let storeId = venue.loyverseStoreId;
+      if (!storeId) {
+        const stores = await loyverseClient.listStores(accessToken);
+        storeId = stores[0]?.id ?? null;
+        if (!storeId) throw new Error('Nessun punto vendita trovato sull\'account Loyverse collegato');
+        await this.prisma.venue.update({ where: { id: venue.id }, data: { loyverseStoreId: storeId } });
+      }
+
+      const variantIds = [...new Set(order.lines.map((l) => l.variantId))];
+      const variants = await this.prisma.menuItemVariant.findMany({ where: { id: { in: variantIds } } });
+      const loyverseVariantIdByLocalId = new Map(variants.map((v) => [v.id, v.loyverseVariantId]));
+
+      const modifierOptionIds = [...new Set(order.lines.flatMap((l) => l.modifiers.map((m) => m.modifierOptionId)))];
+      const modifierOptions = modifierOptionIds.length
+        ? await this.prisma.menuModifierOption.findMany({ where: { id: { in: modifierOptionIds } } })
+        : [];
+      const loyverseModifierOptionIdByLocalId = new Map(
+        modifierOptions.map((o) => [o.id, o.loyverseModifierOptionId]),
+      );
+
+      const lineItems = order.lines.map((line) => {
+        const loyverseVariantId = loyverseVariantIdByLocalId.get(line.variantId);
+        if (!loyverseVariantId) {
+          throw new Error(`"${line.itemName}" non ha un corrispondente Loyverse sincronizzato`);
+        }
+        return {
+          variant_id: loyverseVariantId,
+          quantity: line.quantity,
+          price: line.unitPrice,
+          line_modifiers: line.modifiers.map((m) => {
+            const loyverseModifierOptionId = loyverseModifierOptionIdByLocalId.get(m.modifierOptionId);
+            if (!loyverseModifierOptionId) {
+              throw new Error(`"${m.optionName}" non ha un corrispondente Loyverse sincronizzato`);
+            }
+            return { modifier_option_id: loyverseModifierOptionId, price: m.price };
+          }),
+        };
+      });
+
+      const receipt = await loyverseClient.createReceipt(accessToken, {
+        store_id: storeId,
+        line_items: lineItems,
+        payments: [{ payment_type_id: paymentTypeId, money_amount: order.total }],
+        receipt_date: new Date().toISOString(),
+      });
+
+      return this.prisma.onlineOrder.update({
+        where: { id: order.id },
+        data: { loyverseReceiptId: receipt.receipt_number, loyverseSyncError: null },
+        include: { lines: { include: { modifiers: true } } },
+      });
+    } catch (err) {
+      return this.prisma.onlineOrder.update({
+        where: { id: order.id },
+        data: { loyverseSyncError: (err as Error).message },
+        include: { lines: { include: { modifiers: true } } },
+      });
+    }
   }
 
   async cancel(user: AuthenticatedUser, venueId: string, id: string) {
@@ -669,7 +848,16 @@ export class OnlineOrdersService {
       before: order,
       after: updated,
     });
-    // Email con link alla pagina di tracciamento: v. OnlineOrdersMailService (task successivo).
+    const venue = await this.getVenueSettings(venueId);
+    const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
+    await this.mail.sendTimeChangeRequest(
+      updated,
+      venue.name,
+      this.trackUrl(venue, updated.id, updated.manageToken),
+      venue.email,
+      this.privacyUrl(venue, privacyToken),
+      venueLogoAbsoluteUrl(venue),
+    );
     return updated;
   }
 
@@ -695,5 +883,106 @@ export class OnlineOrdersService {
       data: { requestedAt: order.proposedRequestedAt, proposedRequestedAt: null },
       include: { lines: { include: { modifiers: true } } },
     });
+  }
+
+  private fulfillmentLabel(order: { fulfillment: OnlineOrderFulfillment }): string {
+    return order.fulfillment === 'DELIVERY' ? 'Consegna a domicilio' : 'Ritiro in negozio';
+  }
+
+  private paymentMethodLabel(method: OnlineOrderPaymentMethod | null): string {
+    if (method === 'CASH') return 'Contanti';
+    if (method === 'CARD_ONLINE') return 'Carta (pagata online)';
+    if (method === 'CARD_IN_STORE') return 'Carta in negozio';
+    return 'Non ancora indicato';
+  }
+
+  /**
+   * Comanda cucina (§5.10 di DEVELOPMENT.md): solo voci/varianti/
+   * modificatori/note per riga — nessun prezzo, nessun totale, nessun
+   * indirizzo, pensata per restare in cucina/bar dove non deve essere
+   * visibile l'importo pagato dal cliente.
+   */
+  private buildKitchenTicketPayload(
+    venueName: string,
+    order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
+  ): ReceiptSection {
+    const lines = order.lines.flatMap((line) => [
+      `${line.quantity}x ${line.itemName}${line.variantName ? ` (${line.variantName})` : ''}`,
+      ...line.modifiers.map((m) => `  + ${m.optionName}`),
+      ...(line.note ? [`  nota: ${line.note}`] : []),
+    ]);
+    return {
+      title: `Comanda ${this.fulfillmentLabel(order).toLowerCase()} — ${order.firstName} ${order.lastName}`,
+      lines,
+      letterhead: [venueName],
+    };
+  }
+
+  /**
+   * Scontrino completo (§5.10): dati cliente, modalità e indirizzo di
+   * consegna se presente, ogni riga con prezzo, costo di consegna,
+   * totale, metodo e stato del pagamento — pensato per lo staff/il rider,
+   * o da allegare alla consegna.
+   */
+  private buildFullReceiptPayload(
+    venue: { name: string; menuAddress?: string | null; city?: string | null; vatNumber?: string | null },
+    order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
+  ): ReceiptSection {
+    const letterheadExtra = [venue.city, venue.vatNumber ? `P.IVA ${venue.vatNumber}` : null]
+      .filter(Boolean)
+      .join(' — ');
+    const letterhead = [venue.name, venue.menuAddress, letterheadExtra || null].filter(
+      (l): l is string => !!l,
+    );
+
+    const header = [
+      `${order.firstName} ${order.lastName} — ${order.phone}`,
+      this.fulfillmentLabel(order),
+      ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [order.deliveryAddress] : []),
+      '',
+    ];
+
+    const productLines = order.lines.flatMap((line) => {
+      const lineTotal = line.quantity * (line.unitPrice + line.modifiers.reduce((sum, m) => sum + m.price, 0));
+      const base = `${line.quantity}x ${line.itemName}${line.variantName ? ` (${line.variantName})` : ''}`;
+      return [
+        `${base}  €${lineTotal.toFixed(2)}`,
+        ...line.modifiers.map((m) => `  + ${m.optionName}  €${m.price.toFixed(2)}`),
+        ...(line.note ? [`  nota: ${line.note}`] : []),
+      ];
+    });
+
+    const footer = [
+      `Subtotale: €${order.subtotal.toFixed(2)}`,
+      ...(order.deliveryFee > 0 ? [`Consegna: €${order.deliveryFee.toFixed(2)}`] : []),
+      `TOTALE: €${order.total.toFixed(2)}`,
+      `Pagamento: ${this.paymentMethodLabel(order.paymentMethod)} (${order.paymentStatus})`,
+    ];
+
+    return {
+      title: `Ordine ${order.firstName} ${order.lastName}`,
+      lines: [...header, ...productLines],
+      footer,
+      letterhead,
+    };
+  }
+
+  /** PDF comanda cucina di un ordine, largo come uno scontrino: v. buildKitchenTicketPayload. */
+  async exportKitchenTicketPdf(venueId: string, id: string): Promise<Buffer> {
+    const order = await this.requireOrder(venueId, id);
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { name: true } });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+    return this.pdf.buildReceiptDocument([this.buildKitchenTicketPayload(venue.name, order)]);
+  }
+
+  /** PDF scontrino completo di un ordine, largo come uno scontrino: v. buildFullReceiptPayload. */
+  async exportFullReceiptPdf(venueId: string, id: string): Promise<Buffer> {
+    const order = await this.requireOrder(venueId, id);
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { name: true, menuAddress: true, city: true, vatNumber: true },
+    });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+    return this.pdf.buildReceiptDocument([this.buildFullReceiptPayload(venue, order)]);
   }
 }

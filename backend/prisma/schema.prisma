@@ -199,6 +199,13 @@ model Venue {
   loyversePaymentTypeIdCash        String?
   loyversePaymentTypeIdCardOnline  String?
   loyversePaymentTypeIdCardInStore String?
+  // Punto vendita Loyverse a cui agganciare le ricevute (POST /receipts lo
+  // richiede sempre): BarManager assume un account a punto vendita unico
+  // per locale (v. loyverse-client.ts), quindi va letto una sola volta
+  // (GET /stores, primo risultato) e mantenuto in cache qui invece di
+  // richiederlo ad ogni ricevuta — popolato in automatico alla prima
+  // sincronizzazione ordini online, non da un campo impostabile a mano.
+  loyverseStoreId                  String?
 
   users              User[]
   employees          Employee[]
