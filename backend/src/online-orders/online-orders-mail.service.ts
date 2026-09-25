@@ -86,10 +86,11 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ordine ricevuto`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))}. Ti confermeremo a breve.</p>
+            ${this.orderHtml(order)}
             ${block.html}
             ${footer.html}
           </div>`,
@@ -120,10 +121,11 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ordine ricevuto, in attesa di apertura`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per <strong>${escapeHtml(reopenText)}</strong>.</p>
+            ${this.orderHtml(order)}
             ${block.html}
             ${footer.html}
           </div>`,
@@ -146,10 +148,11 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ordine confermato`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.${block.text}${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))} è confermato ed è in preparazione.</p>
+            ${this.orderHtml(order)}
             ${block.html}
             ${footer.html}
           </div>`,

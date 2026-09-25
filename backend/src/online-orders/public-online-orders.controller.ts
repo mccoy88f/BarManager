@@ -51,6 +51,10 @@ export class PublicOnlineOrdersController {
         menuAddress: true,
         city: true,
         menuPhone: true,
+        menuCoverUrl: true,
+        menuInstagramUrl: true,
+        menuFacebookUrl: true,
+        menuWebsiteUrl: true,
       },
     });
     if (!venue || !venue.onlineOrdersEnabled) {

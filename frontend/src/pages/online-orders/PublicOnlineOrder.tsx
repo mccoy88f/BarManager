@@ -1,7 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -13,11 +17,16 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Fab,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   Radio,
   RadioGroup,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   Switch,
   TextField,
   ToggleButton,
@@ -27,10 +36,17 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SearchIcon from '@mui/icons-material/Search';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import PhoneIcon from '@mui/icons-material/Phone';
+import InstagramIcon from '@mui/icons-material/Instagram';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
+import { ImageLightbox } from '../../components/ImageLightbox';
 import { useCheckoutContactStore } from '../../store/checkoutContactStore';
 import { mountSumUpCard, unmountSumUpCard, type SumUpCardResponse } from '../../payments/sumupCardWidget';
 
@@ -67,6 +83,10 @@ interface OnlineOrdersInfo {
   menuAddress?: string;
   city?: string;
   menuPhone?: string;
+  menuCoverUrl?: string;
+  menuInstagramUrl?: string;
+  menuFacebookUrl?: string;
+  menuWebsiteUrl?: string;
 }
 
 interface ModifierOption {
@@ -142,12 +162,96 @@ function lineTotal(line: CartLine): number {
   return line.quantity * (line.unitPrice + line.modifiers.reduce((sum, m) => sum + m.price, 0));
 }
 
+/** Nessuna scelta da fare (una sola variante, nessun modificatore): l'icona nella riga può aggiungere direttamente al carrello. */
+function canQuickAdd(item: MenuItem): boolean {
+  return item.variants.length <= 1 && item.modifierGroups.length === 0;
+}
+
+function matchesSearch(item: MenuItem, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    item.name.toLowerCase().includes(q) ||
+    (item.description ?? '').toLowerCase().includes(q) ||
+    item.variants.some((v) => v.name.toLowerCase().includes(q))
+  );
+}
+
+function itemPriceLabel(item: MenuItem): string {
+  const priced = item.variants.filter((v) => v.price != null);
+  if (priced.length === 0) return '';
+  if (priced.length === 1 && item.variants.length === 1) return `€ ${priced[0].price!.toFixed(2)}`;
+  return `da € ${Math.min(...priced.map((v) => v.price as number)).toFixed(2)}`;
+}
+
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
   const message = data?.message;
   if (Array.isArray(message)) return message.join('; ');
   if (message) return message;
   return 'Non è stato possibile inviare la richiesta. Riprova più tardi.';
+}
+
+/** Voce di menù nella lista a fisarmonica: click sulla riga apre la scelta variante/modificatori, l'icona aggiunge direttamente quando non c'è nulla da scegliere, il click sull'immagine la ingrandisce. */
+function MenuItemRow({
+  item,
+  onOpen,
+  onQuickAdd,
+  onImageClick,
+}: {
+  item: MenuItem;
+  onOpen: () => void;
+  onQuickAdd: () => void;
+  onImageClick: (url: string) => void;
+}) {
+  return (
+    <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={onOpen}>
+      <Box sx={{ display: 'flex' }}>
+        {item.photoUrl && (
+          <CardMedia
+            component="img"
+            image={item.photoUrl}
+            alt={item.name}
+            onClick={(e) => {
+              e.stopPropagation();
+              onImageClick(item.photoUrl!);
+            }}
+            sx={{ width: 88, height: 88, objectFit: 'cover', cursor: 'zoom-in' }}
+          />
+        )}
+        <CardContent sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {item.name}
+              </Typography>
+              {item.description && (
+                <Typography variant="body2" color="text.secondary">
+                  {item.description}
+                </Typography>
+              )}
+            </Box>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {itemPriceLabel(item)}
+              </Typography>
+              <IconButton
+                size="small"
+                color="primary"
+                title="Aggiungi al carrello"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuickAdd();
+                }}
+              >
+                <AddShoppingCartIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Box>
+        </CardContent>
+      </Box>
+    </Card>
+  );
 }
 
 /** Dialog di scelta variante/modificatori/quantità per una voce, prima di aggiungerla al carrello. */
@@ -363,6 +467,8 @@ function SumUpCardDialog({
   );
 }
 
+const CHECKOUT_STEPS = ['Carrello', 'Ritiro o consegna', 'I tuoi dati'];
+
 /**
  * Checkout pubblico /ordina (§5.10 di DEVELOPMENT.md), nessun login:
  * pagina "gemella" di /menu ma con carrello, scelta ritiro/consegna e
@@ -376,6 +482,11 @@ export function PublicOnlineOrder() {
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [addingItem, setAddingItem] = useState<MenuItem | null>(null);
+  const [search, setSearch] = useState('');
+  const [openCategory, setOpenCategory] = useState<string | false>(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState(0);
   const [fulfillment, setFulfillment] = useState<'PICKUP' | 'DELIVERY' | ''>('');
   // "Il prima possibile" (§5.10 di DEVELOPMENT.md): l'ordine parte subito se
   // il negozio è aperto, altrimenti nasce comunque ma resta in attesa
@@ -511,6 +622,7 @@ export function PublicOnlineOrder() {
         deliveryLng: fulfillment === 'DELIVERY' ? lng : undefined,
       });
       setSumupCheckout(null);
+      setCheckoutOpen(false);
       setOrderResult(data);
       setCart([]);
     },
@@ -525,7 +637,36 @@ export function PublicOnlineOrder() {
     }
   };
 
+  /** Aggiunge direttamente al carrello quando non c'è nulla da scegliere, altrimenti apre il dialog variante/modificatori. */
+  const quickAddToCart = (item: MenuItem) => {
+    if (!canQuickAdd(item)) {
+      setAddingItem(item);
+      return;
+    }
+    const variant = item.variants[0];
+    setCart((prev) => [
+      ...prev,
+      {
+        key: `${Date.now()}-${Math.random()}`,
+        menuItemId: item.id,
+        itemName: item.name,
+        variantId: variant?.id ?? '',
+        variantName: variant?.name ?? '',
+        unitPrice: variant?.price ?? 0,
+        quantity: 1,
+        modifiers: [],
+        note: '',
+      },
+    ]);
+  };
+
+  const openCheckout = () => {
+    setCheckoutStep(0);
+    setCheckoutOpen(true);
+  };
+
   const info = infoQuery.data;
+  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + lineTotal(line), 0), [cart]);
   const deliveryFee =
     fulfillment === 'DELIVERY' && info
@@ -542,16 +683,28 @@ export function PublicOnlineOrder() {
   const dayClosed = !!date && !!selectedDaySchedule?.closed;
   const timeOptions = date ? quarterHourOptionsForDay(selectedDaySchedule) : undefined;
 
-  const canSubmit =
-    cart.length > 0 &&
+  const canProceedFulfillment =
     !!fulfillment &&
     (asap || (date && time)) &&
+    (fulfillment !== 'DELIVERY' || (address.trim() && lat != null && lng != null));
+
+  const canSubmit =
+    cart.length > 0 &&
+    canProceedFulfillment &&
     firstName.trim() &&
     lastName.trim() &&
     email.trim() &&
     phone.trim() &&
-    privacyPolicyConsent &&
-    (fulfillment !== 'DELIVERY' || (address.trim() && lat != null && lng != null));
+    privacyPolicyConsent;
+
+  const isSearching = search.trim() !== '';
+  const filteredCategories = useMemo(() => {
+    if (!menuQuery.data) return [];
+    if (!isSearching) return menuQuery.data;
+    return menuQuery.data
+      .map((category) => ({ ...category, items: category.items.filter((i) => matchesSearch(i, search)) }))
+      .filter((category) => category.items.length > 0);
+  }, [menuQuery.data, search, isSearching]);
 
   if (infoQuery.isLoading) {
     return (
@@ -596,76 +749,158 @@ export function PublicOnlineOrder() {
     );
   }
 
+  const hasContacts = info.menuAddress || info.city || info.menuPhone || info.menuInstagramUrl || info.menuFacebookUrl || info.menuWebsiteUrl;
+
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', px: 2, py: 4 }}>
-      <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
-        Ordina online — {info.name}
-      </Typography>
-
-      {menuQuery.isLoading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
-
-      {menuQuery.data?.map((category) => (
-        <Box key={category.id} sx={{ mt: 3 }}>
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>
-            {category.name}
-          </Typography>
+    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+      {info.menuCoverUrl ? (
+        <Box
+          onClick={() => setLightbox(info.menuCoverUrl!)}
+          sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220, md: 320 }, cursor: 'zoom-in' }}
+        >
+          <Box
+            component="img"
+            src={info.menuCoverUrl}
+            alt={info.name}
+            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
           <Box
             sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
-              gap: 2,
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0) 60%)',
             }}
           >
-            {category.items.map((item) => {
-              const priced = item.variants.filter((v) => v.price != null);
-              const priceLabel =
-                priced.length === 1
-                  ? `€ ${priced[0].price!.toFixed(2)}`
-                  : priced.length > 1
-                    ? `da € ${Math.min(...priced.map((v) => v.price!)).toFixed(2)}`
-                    : '';
-              return (
-                <Card
-                  key={item.id}
-                  variant="outlined"
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => setAddingItem(item)}
-                >
-                  <Box sx={{ display: 'flex' }}>
-                    {item.photoUrl && (
-                      <CardMedia
-                        component="img"
-                        image={item.photoUrl}
-                        alt={item.name}
-                        sx={{ width: 88, height: 88, objectFit: 'cover' }}
-                      />
-                    )}
-                    <CardContent sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                          {item.name}
-                        </Typography>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                          {priceLabel}
-                        </Typography>
-                      </Box>
-                      {item.description && (
-                        <Typography variant="body2" color="text.secondary">
-                          {item.description}
-                        </Typography>
-                      )}
-                    </CardContent>
-                  </Box>
-                </Card>
-              );
-            })}
+            <Typography
+              variant="h4"
+              fontWeight={700}
+              textAlign="center"
+              sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
+            >
+              Ordina online — {info.name}
+            </Typography>
           </Box>
         </Box>
-      ))}
+      ) : (
+        <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
+          Ordina online — {info.name}
+        </Typography>
+      )}
+
+      <Box
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          bgcolor: 'background.default',
+          px: 2,
+          py: 1.5,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Cerca nel menù..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
+      <Box sx={{ p: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+        {menuQuery.isLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <CircularProgress />
+          </Box>
+        )}
+
+        {filteredCategories.map((category) => (
+          <Accordion
+            key={category.id}
+            expanded={isSearching || openCategory === category.id}
+            onChange={(_e, expanded) => setOpenCategory(expanded ? category.id : false)}
+            disableGutters
+            TransitionProps={{ unmountOnExit: true }}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6" fontWeight={700}>
+                {category.name}
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                {category.items.map((item) => (
+                  <MenuItemRow
+                    key={item.id}
+                    item={item}
+                    onOpen={() => setAddingItem(item)}
+                    onQuickAdd={() => quickAddToCart(item)}
+                    onImageClick={setLightbox}
+                  />
+                ))}
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+
+        {filteredCategories.length === 0 && !menuQuery.isLoading && (
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 4 }}>
+            Nessun piatto trovato.
+          </Typography>
+        )}
+
+        {hasContacts && (
+          <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="subtitle2" fontWeight={700}>
+              {info.name}
+            </Typography>
+            {(info.menuAddress || info.city) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {[info.menuAddress, info.city].filter(Boolean).join(' — ')}
+              </Typography>
+            )}
+            <Stack direction="row" spacing={1} justifyContent="center">
+              {info.menuPhone && (
+                <IconButton component="a" href={`tel:${info.menuPhone}`} title="Chiama">
+                  <PhoneIcon />
+                </IconButton>
+              )}
+              {info.menuInstagramUrl && (
+                <IconButton component="a" href={info.menuInstagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram">
+                  <InstagramIcon />
+                </IconButton>
+              )}
+              {info.menuFacebookUrl && (
+                <IconButton component="a" href={info.menuFacebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook">
+                  <FacebookIcon />
+                </IconButton>
+              )}
+              {info.menuWebsiteUrl && (
+                <IconButton component="a" href={info.menuWebsiteUrl} target="_blank" rel="noopener noreferrer" title="Sito web">
+                  <LanguageIcon />
+                </IconButton>
+              )}
+            </Stack>
+          </Box>
+        )}
+      </Box>
 
       {addingItem && (
         <AddToCartDialog
@@ -678,224 +913,238 @@ export function PublicOnlineOrder() {
         />
       )}
 
-      <Divider sx={{ my: 4 }} />
-
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        <ShoppingCartIcon />
-        <Typography variant="h6" fontWeight={700}>
-          Il tuo carrello
-        </Typography>
-      </Stack>
-
-      {cart.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          Il carrello è vuoto: scegli qualcosa dal menù sopra.
-        </Typography>
-      ) : (
-        <Card variant="outlined">
-          <CardContent sx={{ display: 'grid', gap: 1.5 }}>
-            {cart.map((line) => (
-              <Box key={line.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Box>
-                  <Typography variant="body2" fontWeight={600}>
-                    {line.quantity}× {line.itemName}
-                    {line.variantName ? ` (${line.variantName})` : ''}
-                  </Typography>
-                  {line.modifiers.length > 0 && (
-                    <Typography variant="caption" color="text.secondary">
-                      {line.modifiers.map((m) => m.name).join(', ')}
-                    </Typography>
-                  )}
-                  {line.note && (
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      Nota: {line.note}
-                    </Typography>
-                  )}
-                </Box>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2">€ {lineTotal(line).toFixed(2)}</Typography>
-                  <IconButton size="small" onClick={() => setCart((prev) => prev.filter((l) => l.key !== line.key))}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Stack>
-              </Box>
-            ))}
-            <Divider />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2">Subtotale</Typography>
-              <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
-            </Box>
-            {fulfillment === 'DELIVERY' && (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2">Consegna</Typography>
-                <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
-              </Box>
-            )}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle1" fontWeight={700}>
-                Totale
-              </Typography>
-              <Typography variant="subtitle1" fontWeight={700}>
-                € {total.toFixed(2)}
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
-
       {cart.length > 0 && (
-        <Card variant="outlined" sx={{ mt: 3 }}>
-          <CardContent sx={{ display: 'grid', gap: 2 }}>
-            <Typography variant="h6">Ritiro o consegna?</Typography>
-            <ToggleButtonGroup
-              value={fulfillment}
-              exclusive
-              onChange={(_e, value) => value && setFulfillment(value)}
-            >
-              {info.onlineOrdersPickupEnabled && <ToggleButton value="PICKUP">Ritiro in negozio</ToggleButton>}
-              {info.onlineOrdersDeliveryEnabled && <ToggleButton value="DELIVERY">Consegna a domicilio</ToggleButton>}
-            </ToggleButtonGroup>
-
-            {fulfillment && (
-              <>
-                <ToggleButtonGroup
-                  value={asap ? 'ASAP' : 'SCHEDULED'}
-                  exclusive
-                  onChange={(_e, value) => value && setAsap(value === 'ASAP')}
-                  size="small"
-                >
-                  <ToggleButton value="ASAP">Il prima possibile</ToggleButton>
-                  <ToggleButton value="SCHEDULED">Scegli data e ora</ToggleButton>
-                </ToggleButtonGroup>
-                {!asap && (
-                  <>
-                    <Stack direction="row" spacing={2}>
-                      <TextField
-                        label="Data"
-                        type="date"
-                        InputLabelProps={{ shrink: true }}
-                        inputProps={{ min: today }}
-                        fullWidth
-                        value={date}
-                        onChange={(e) => { setDate(e.target.value); setTime(''); }}
-                      />
-                      <QuarterHourTimeField
-                        label={fulfillment === 'PICKUP' ? 'Orario di ritiro' : 'Orario di consegna'}
-                        fullWidth
-                        value={time}
-                        onChange={setTime}
-                        options={timeOptions}
-                        disabled={dayClosed}
-                      />
-                    </Stack>
-                    {dayClosed && (
-                      <Alert severity="warning">Il locale è chiuso in questo giorno: scegli un&apos;altra data.</Alert>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {fulfillment === 'DELIVERY' && (
-              <Box sx={{ display: 'grid', gap: 1.5 }}>
-                <Stack direction="row" spacing={1}>
-                  <TextField
-                    label="Indirizzo di consegna"
-                    fullWidth
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                  />
-                  <Button
-                    variant="outlined"
-                    sx={{ flexShrink: 0 }}
-                    disabled={!address.trim() || geocodeMutation.isPending}
-                    onClick={() => geocodeMutation.mutate()}
-                  >
-                    Cerca
-                  </Button>
-                </Stack>
-                {geocodeError && <Alert severity="warning">{geocodeError}</Alert>}
-                <Suspense
-                  fallback={
-                    <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  }
-                >
-                  <LocationPicker
-                    lat={lat}
-                    lng={lng}
-                    radiusMeters={info.deliveryRadiusMeters ?? undefined}
-                    onChange={(newLat, newLng) => {
-                      setLat(newLat);
-                      setLng(newLng);
-                      setGeocodeError(null);
-                    }}
-                  />
-                </Suspense>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
+        <Fab
+          color="primary"
+          onClick={openCheckout}
+          sx={{ position: 'fixed', bottom: { xs: 16, md: 24 }, right: { xs: 16, md: 24 }, zIndex: 10 }}
+        >
+          <Badge badgeContent={cartItemCount} color="error">
+            <ShoppingCartIcon />
+          </Badge>
+        </Fab>
       )}
 
-      {fulfillment && (
-        <Card variant="outlined" sx={{ mt: 3 }}>
-          <CardContent sx={{ display: 'grid', gap: 2 }}>
-            <Typography variant="h6">I tuoi dati</Typography>
-            <Stack direction="row" spacing={2}>
-              <TextField label="Nome" fullWidth value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              <TextField label="Cognome" fullWidth value={lastName} onChange={(e) => setLastName(e.target.value)} />
-            </Stack>
-            <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <TextField label="Telefono" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      <Dialog open={checkoutOpen} onClose={() => setCheckoutOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Il tuo ordine</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2 }}>
+          <Stepper activeStep={checkoutStep} sx={{ mb: 1 }}>
+            {CHECKOUT_STEPS.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
 
-            {fulfillment === 'DELIVERY' && (
-              <Box>
-                <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-                  Pagamento
-                </Typography>
-                <RadioGroup
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'CASH' | 'CARD_ONLINE')}
-                >
-                  <FormControlLabel value="CASH" control={<Radio />} label="Contanti alla consegna" />
-                  {info.sumupEnabled && info.sumupEnabledPaymentMethods.length > 0 && (
-                    <FormControlLabel value="CARD_ONLINE" control={<Radio />} label="Carta online" />
-                  )}
-                </RadioGroup>
+          {checkoutStep === 0 && (
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              {cart.map((line) => (
+                <Box key={line.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {line.quantity}× {line.itemName}
+                      {line.variantName ? ` (${line.variantName})` : ''}
+                    </Typography>
+                    {line.modifiers.length > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        {line.modifiers.map((m) => m.name).join(', ')}
+                      </Typography>
+                    )}
+                    {line.note && (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Nota: {line.note}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2">€ {lineTotal(line).toFixed(2)}</Typography>
+                    <IconButton size="small" onClick={() => setCart((prev) => prev.filter((l) => l.key !== line.key))}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Box>
+              ))}
+              <Divider />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2">Subtotale</Typography>
+                <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
               </Box>
-            )}
-            {fulfillment === 'PICKUP' && (
-              <Alert severity="info">
-                Il pagamento (contanti o carta) si effettua direttamente in negozio al momento del ritiro.
-              </Alert>
-            )}
+              {fulfillment === 'DELIVERY' && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Consegna</Typography>
+                  <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
+                </Box>
+              )}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Totale
+                </Typography>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  € {total.toFixed(2)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
 
-            <FormControlLabel
-              control={<Switch checked={marketingConsent} onChange={(e) => setMarketingConsent(e.target.checked)} />}
-              label="Accetto di ricevere comunicazioni promozionali via email (facoltativo)"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={privacyPolicyConsent}
-                  onChange={(e) => setPrivacyPolicyConsent(e.target.checked)}
-                />
-              }
-              label="Autorizzo il trattamento dei dati personali secondo la normativa vigente (obbligatorio)"
-            />
-            {!privacyPolicyConsent && (
-              <Alert severity="warning">Devi autorizzare il trattamento dei dati personali per ordinare.</Alert>
-            )}
+          {checkoutStep === 1 && (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <ToggleButtonGroup value={fulfillment} exclusive onChange={(_e, value) => value && setFulfillment(value)}>
+                {info.onlineOrdersPickupEnabled && <ToggleButton value="PICKUP">Ritiro in negozio</ToggleButton>}
+                {info.onlineOrdersDeliveryEnabled && <ToggleButton value="DELIVERY">Consegna a domicilio</ToggleButton>}
+              </ToggleButtonGroup>
 
-            {finalizeOrderMutation.isError && (
-              <Alert severity="error">{extractErrorMessage(finalizeOrderMutation.error)}</Alert>
-            )}
-            {createSumupCheckoutMutation.isError && (
-              <Alert severity="error">{extractErrorMessage(createSumupCheckoutMutation.error)}</Alert>
-            )}
+              {fulfillment && (
+                <>
+                  <ToggleButtonGroup
+                    value={asap ? 'ASAP' : 'SCHEDULED'}
+                    exclusive
+                    onChange={(_e, value) => value && setAsap(value === 'ASAP')}
+                    size="small"
+                  >
+                    <ToggleButton value="ASAP">Il prima possibile</ToggleButton>
+                    <ToggleButton value="SCHEDULED">Scegli data e ora</ToggleButton>
+                  </ToggleButtonGroup>
+                  {!asap && (
+                    <>
+                      <Stack direction="row" spacing={2}>
+                        <TextField
+                          label="Data"
+                          type="date"
+                          InputLabelProps={{ shrink: true }}
+                          inputProps={{ min: today }}
+                          fullWidth
+                          value={date}
+                          onChange={(e) => { setDate(e.target.value); setTime(''); }}
+                        />
+                        <QuarterHourTimeField
+                          label={fulfillment === 'PICKUP' ? 'Orario di ritiro' : 'Orario di consegna'}
+                          fullWidth
+                          value={time}
+                          onChange={setTime}
+                          options={timeOptions}
+                          disabled={dayClosed}
+                        />
+                      </Stack>
+                      {dayClosed && (
+                        <Alert severity="warning">Il locale è chiuso in questo giorno: scegli un&apos;altra data.</Alert>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
 
+              {fulfillment === 'DELIVERY' && (
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      label="Indirizzo di consegna"
+                      fullWidth
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                    />
+                    <Button
+                      variant="outlined"
+                      sx={{ flexShrink: 0 }}
+                      disabled={!address.trim() || geocodeMutation.isPending}
+                      onClick={() => geocodeMutation.mutate()}
+                    >
+                      Cerca
+                    </Button>
+                  </Stack>
+                  {geocodeError && <Alert severity="warning">{geocodeError}</Alert>}
+                  <Suspense
+                    fallback={
+                      <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    }
+                  >
+                    <LocationPicker
+                      lat={lat}
+                      lng={lng}
+                      radiusMeters={info.deliveryRadiusMeters ?? undefined}
+                      onChange={(newLat, newLng) => {
+                        setLat(newLat);
+                        setLng(newLng);
+                        setGeocodeError(null);
+                      }}
+                    />
+                  </Suspense>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {checkoutStep === 2 && (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <Stack direction="row" spacing={2}>
+                <TextField label="Nome" fullWidth value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                <TextField label="Cognome" fullWidth value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              </Stack>
+              <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <TextField label="Telefono" value={phone} onChange={(e) => setPhone(e.target.value)} />
+
+              {fulfillment === 'DELIVERY' && (
+                <Box>
+                  <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                    Pagamento
+                  </Typography>
+                  <RadioGroup
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as 'CASH' | 'CARD_ONLINE')}
+                  >
+                    <FormControlLabel value="CASH" control={<Radio />} label="Contanti alla consegna" />
+                    {info.sumupEnabled && info.sumupEnabledPaymentMethods.length > 0 && (
+                      <FormControlLabel value="CARD_ONLINE" control={<Radio />} label="Carta online" />
+                    )}
+                  </RadioGroup>
+                </Box>
+              )}
+              {fulfillment === 'PICKUP' && (
+                <Alert severity="info">
+                  Il pagamento (contanti o carta) si effettua direttamente in negozio al momento del ritiro.
+                </Alert>
+              )}
+
+              <FormControlLabel
+                control={<Switch checked={marketingConsent} onChange={(e) => setMarketingConsent(e.target.checked)} />}
+                label="Accetto di ricevere comunicazioni promozionali via email (facoltativo)"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={privacyPolicyConsent}
+                    onChange={(e) => setPrivacyPolicyConsent(e.target.checked)}
+                  />
+                }
+                label="Autorizzo il trattamento dei dati personali secondo la normativa vigente (obbligatorio)"
+              />
+              {!privacyPolicyConsent && (
+                <Alert severity="warning">Devi autorizzare il trattamento dei dati personali per ordinare.</Alert>
+              )}
+
+              {finalizeOrderMutation.isError && (
+                <Alert severity="error">{extractErrorMessage(finalizeOrderMutation.error)}</Alert>
+              )}
+              {createSumupCheckoutMutation.isError && (
+                <Alert severity="error">{extractErrorMessage(createSumupCheckoutMutation.error)}</Alert>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          {checkoutStep > 0 && <Button onClick={() => setCheckoutStep((s) => s - 1)}>Indietro</Button>}
+          <Box sx={{ flex: 1 }} />
+          {checkoutStep < CHECKOUT_STEPS.length - 1 && (
+            <Button
+              variant="contained"
+              disabled={checkoutStep === 1 && !canProceedFulfillment}
+              onClick={() => setCheckoutStep((s) => s + 1)}
+            >
+              Continua
+            </Button>
+          )}
+          {checkoutStep === CHECKOUT_STEPS.length - 1 && (
             <Button
               variant="contained"
               size="large"
@@ -908,9 +1157,9 @@ export function PublicOnlineOrder() {
                   ? `Paga e conferma ordine — € ${total.toFixed(2)}`
                   : `Conferma ordine — € ${total.toFixed(2)}`}
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </DialogActions>
+      </Dialog>
 
       {sumupCheckout && (
         <SumUpCardDialog
@@ -929,13 +1178,7 @@ export function PublicOnlineOrder() {
         />
       )}
 
-      {info.menuPhone && (
-        <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-          <IconButton component="a" href={`tel:${info.menuPhone}`} title="Chiama">
-            <PhoneIcon />
-          </IconButton>
-        </Box>
-      )}
+      <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </Box>
   );
 }
