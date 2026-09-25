@@ -43,6 +43,8 @@ export interface LoyverseItem {
   variants?: LoyverseVariant[];
   deleted_at?: string | null;
   image_url?: string;
+  /** Modificatori assegnati a questo articolo (verificato contro la documentazione ufficiale incollata dall'utente). */
+  modifiers_ids?: string[];
 }
 
 /** Nome variante per BarManager: i valori delle opzioni Loyverse uniti (es. "Piccola" o "Piccola, Rosso"). */
@@ -93,10 +95,9 @@ export interface LoyverseReceipt {
   [key: string]: unknown;
 }
 
-/// NOTA: struttura non ancora verificata contro una risposta reale
-/// dell'endpoint (a differenza di LoyverseItem/LoyverseVariant sopra,
-/// verificati contro la documentazione incollata dall'utente) — da
-/// confermare in sandbox prima del rilascio (§5.10 di DEVELOPMENT.md).
+/// Struttura verificata contro la documentazione ufficiale incollata
+/// dall'utente (developer.loyverse.com/docs/#tag/Modifiers), come
+/// LoyverseItem/LoyverseVariant sopra.
 export interface LoyverseModifier {
   id: string;
   name: string;

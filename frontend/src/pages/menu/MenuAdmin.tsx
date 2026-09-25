@@ -782,6 +782,11 @@ export function MenuAdmin() {
                                       .join(' · ')}
                                   </Typography>
                                 )}
+                                {item.modifierGroups.length > 0 && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    Modificatori: {item.modifierGroups.map((g) => g.modifierGroup.name).join(', ')}
+                                  </Typography>
+                                )}
                                 <Typography variant="body2" color="text.secondary">
                                   {item.description}
                                 </Typography>

@@ -42,6 +42,7 @@ interface LoyverseSyncSummary {
   categoriesRemoved: number;
   imagesDownloaded: number;
   imagesSkipped: boolean;
+  modifierGroups: number;
   warnings: string[];
 }
 interface LoyverseStatus {
@@ -597,8 +598,9 @@ export function VenueSettings() {
               severity={loyverseStatusQuery.data.lastSyncSummary.warnings.length > 0 ? 'warning' : 'success'}
               sx={{ mt: 2 }}
             >
-              Sincronizzate {loyverseStatusQuery.data.lastSyncSummary.categories} categorie e{' '}
-              {loyverseStatusQuery.data.lastSyncSummary.items} voci di menù.
+              Sincronizzate {loyverseStatusQuery.data.lastSyncSummary.categories} categorie,{' '}
+              {loyverseStatusQuery.data.lastSyncSummary.items} voci di menù e{' '}
+              {loyverseStatusQuery.data.lastSyncSummary.modifierGroups} gruppi di modificatori.
               {loyverseStatusQuery.data.lastSyncSummary.imagesSkipped
                 ? ' Nessuna immagine trovata su Loyverse per questi prodotti.'
                 : ` ${loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} nuove immagini scaricate.`}
@@ -649,6 +651,7 @@ export function VenueSettings() {
               <Typography variant="body2">
                 {loyverseStatusQuery.data.lastSyncSummary.categories} categorie,{' '}
                 {loyverseStatusQuery.data.lastSyncSummary.items} voci sincronizzate,{' '}
+                {loyverseStatusQuery.data.lastSyncSummary.modifierGroups} gruppi di modificatori,{' '}
                 {loyverseStatusQuery.data.lastSyncSummary.imagesDownloaded} immagini scaricate.
                 {(loyverseStatusQuery.data.lastSyncSummary.categoriesRemoved > 0 ||
                   loyverseStatusQuery.data.lastSyncSummary.itemsRemoved > 0) &&

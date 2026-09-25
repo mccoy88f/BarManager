@@ -140,8 +140,6 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
 
   const canSubmit = name.trim() && optionForms.some((o) => o.name.trim());
 
-  if (locked) return null;
-
   return (
     <Card>
       <CardContent>
@@ -149,12 +147,16 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
           <Box>
             <Typography variant="h6">Modificatori</Typography>
             <Typography variant="body2" color="text.secondary">
-              Gruppi come "Estras", riusabili su più voci di menù (§5.10)
+              {locked
+                ? 'Sincronizzati da Loyverse: nome e opzioni non modificabili qui (§5.10).'
+                : 'Gruppi come "Estras", riusabili su più voci di menù (§5.10)'}
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-            Aggiungi
-          </Button>
+          {!locked && (
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
+              Aggiungi
+            </Button>
+          )}
         </Box>
 
         <Stack spacing={1} sx={{ mt: 2 }}>
@@ -171,14 +173,16 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
                   {group.options.map((o) => o.name).join(', ')}
                 </Typography>
               </Box>
-              <Box>
-                <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Box>
+              {!locked && (
+                <Box>
+                  <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )}
             </Box>
           ))}
           {groupsQuery.data?.length === 0 && (

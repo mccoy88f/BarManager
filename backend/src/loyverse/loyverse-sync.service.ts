@@ -6,7 +6,15 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret } from '../common/crypto/secret-crypto';
 import { safeExtension } from '../common/upload/safe-extension';
-import { loyverseClient, LoyverseApiError, LoyverseItem, LoyverseVariant, variantDisplayName } from './loyverse-client';
+import {
+  loyverseClient,
+  LoyverseApiError,
+  LoyverseItem,
+  LoyverseModifier,
+  LoyverseModifierOption,
+  LoyverseVariant,
+  variantDisplayName,
+} from './loyverse-client';
 
 /**
  * Le descrizioni Loyverse arrivano come richtext HTML (es. "<p>...</p>").
@@ -32,6 +40,7 @@ export interface LoyverseSyncSummary {
   categoriesRemoved: number;
   imagesDownloaded: number;
   imagesSkipped: boolean;
+  modifierGroups: number;
   /** Voci Loyverse saltate durante il sync e il motivo (es. senza categoria mappata). */
   warnings: string[];
 }
@@ -61,15 +70,18 @@ export class LoyverseSyncService {
 
     try {
       const accessToken = decryptSecret(venue.loyverseAccessTokenEnc);
-      const [remoteCategories, remoteItems] = await Promise.all([
+      const [remoteCategories, remoteItems, remoteModifiers] = await Promise.all([
         loyverseClient.listCategories(accessToken),
         loyverseClient.listItems(accessToken),
+        loyverseClient.listModifiers(accessToken),
       ]);
 
       const { idMap: categoryIdMap, removed: categoriesRemoved } = await this.syncCategories(
         venueId,
         remoteCategories,
       );
+
+      const modifierGroupIdMap = await this.syncModifierGroups(venueId, remoteModifiers);
 
       let imagesDownloaded = 0;
       let itemsSynced = 0;
@@ -82,7 +94,7 @@ export class LoyverseSyncService {
       const fallbackCategory: { id?: string } = {};
 
       for (const item of remoteItems.filter((i) => !i.deleted_at)) {
-        const result = await this.syncItem(venueId, item, categoryIdMap, fallbackCategory, warnings);
+        const result = await this.syncItem(venueId, item, categoryIdMap, fallbackCategory, warnings, modifierGroupIdMap);
         if (result.synced) itemsSynced++;
         if (result.downloadedImage) imagesDownloaded++;
       }
@@ -96,6 +108,7 @@ export class LoyverseSyncService {
         categoriesRemoved,
         imagesDownloaded,
         imagesSkipped: !sawAnyImageField,
+        modifierGroups: modifierGroupIdMap.size,
         warnings,
       };
 
@@ -170,6 +183,89 @@ export class LoyverseSyncService {
   }
 
   /**
+   * Modificatori Loyverse (Modifier + le sue Modifier_option) →
+   * MenuModifierGroup/MenuModifierOption, stesso pattern "mirror" delle
+   * categorie: nome/opzioni sempre sovrascritti dal sync. Loyverse non
+   * espone impostazioni di selezione (obbligatorio/multiplo/min-max) sul
+   * modificatore — i gruppi sincronizzati restano sempre "selezione
+   * multipla, opzionale" (il comportamento più permissivo, nessun vincolo
+   * inventato che Loyverse non ha mai definito). Solo i gruppi con
+   * loyverseModifierId sono toccati: quelli nativi (creati a mano prima di
+   * attivare Loyverse, o quando l'integrazione è spenta) restano intatti.
+   */
+  private async syncModifierGroups(
+    venueId: string,
+    remoteModifiers: LoyverseModifier[],
+  ): Promise<Map<string, string>> {
+    const idMap = new Map<string, string>();
+    const existingGroups = await this.prisma.menuModifierGroup.findMany({
+      where: { venueId, loyverseModifierId: { not: null } },
+      include: { options: true },
+    });
+
+    for (const remote of remoteModifiers.filter((m) => !m.deleted_at)) {
+      const found = existingGroups.find((g) => g.loyverseModifierId === remote.id);
+      let groupId: string;
+      if (found) {
+        groupId = found.id;
+        if (found.name !== remote.name) {
+          await this.prisma.menuModifierGroup.update({ where: { id: groupId }, data: { name: remote.name } });
+        }
+      } else {
+        const created = await this.prisma.menuModifierGroup.create({
+          data: {
+            venueId,
+            name: remote.name,
+            loyverseModifierId: remote.id,
+            selectionType: 'MULTIPLE',
+            minSelections: 0,
+          },
+        });
+        groupId = created.id;
+      }
+
+      await this.syncModifierOptions(groupId, remote.modifier_options ?? [], found?.options ?? []);
+      idMap.set(remote.id, groupId);
+    }
+
+    // Gruppi rimossi in Loyverse: eliminati (cascata su opzioni e
+    // assegnazioni alle voci), mai quelli nativi (esclusi dal find sopra).
+    const remoteIds = new Set(remoteModifiers.filter((m) => !m.deleted_at).map((m) => m.id));
+    for (const group of existingGroups) {
+      if (group.loyverseModifierId && !remoteIds.has(group.loyverseModifierId)) {
+        await this.prisma.menuModifierGroup.delete({ where: { id: group.id } });
+      }
+    }
+
+    return idMap;
+  }
+
+  private async syncModifierOptions(
+    groupId: string,
+    remoteOptions: LoyverseModifierOption[],
+    existingOptions: { id: string; loyverseModifierOptionId: string | null }[],
+  ) {
+    for (const [index, remote] of remoteOptions.entries()) {
+      const found = existingOptions.find((o) => o.loyverseModifierOptionId === remote.id);
+      const data = { name: remote.name, price: remote.price ?? 0, sortOrder: index };
+      if (found) {
+        await this.prisma.menuModifierOption.update({ where: { id: found.id }, data });
+      } else {
+        await this.prisma.menuModifierOption.create({
+          data: { ...data, groupId, loyverseModifierOptionId: remote.id },
+        });
+      }
+    }
+
+    const remoteIds = new Set(remoteOptions.map((o) => o.id));
+    for (const option of existingOptions) {
+      if (option.loyverseModifierOptionId && !remoteIds.has(option.loyverseModifierOptionId)) {
+        await this.prisma.menuModifierOption.delete({ where: { id: option.id } });
+      }
+    }
+  }
+
+  /**
    * Categoria di riserva per le voci Loyverse la cui categoria non esiste
    * più (eliminata su Loyverse, ma l'articolo è rimasto agganciato al
    * vecchio id): mai saltarle, altrimenti sparirebbero senza che l'admin
@@ -231,6 +327,7 @@ export class LoyverseSyncService {
     categoryIdMap: Map<string, string>,
     fallbackCategory: { id?: string },
     warnings: string[],
+    modifierGroupIdMap: Map<string, string>,
   ): Promise<{ synced: boolean; downloadedImage: boolean }> {
     let categoryId = remote.category_id ? categoryIdMap.get(remote.category_id) : undefined;
     if (!categoryId) {
@@ -282,6 +379,7 @@ export class LoyverseSyncService {
     }
 
     await this.syncVariants(menuItemId, remoteVariants, existing?.variants ?? []);
+    await this.syncItemModifierGroups(menuItemId, remote.modifiers_ids ?? [], modifierGroupIdMap);
 
     let downloadedImage = false;
     if (!existing?.photoUrl) {
@@ -336,6 +434,42 @@ export class LoyverseSyncService {
     for (const variant of existingVariants) {
       if (variant.loyverseVariantId && !remoteIds.has(variant.loyverseVariantId)) {
         await this.prisma.menuItemVariant.update({ where: { id: variant.id }, data: { active: false } });
+      }
+    }
+  }
+
+  /**
+   * Item.modifiers_ids (Loyverse) → MenuItemModifierGroup per questa voce.
+   * Tocca solo i link verso gruppi con origine Loyverse (risolti tramite
+   * modifierGroupIdMap, popolata solo da syncModifierGroups): un gruppo
+   * nativo assegnato a mano dall'admin non viene mai toccato dal sync,
+   * anche se questa stessa voce è sincronizzata da Loyverse.
+   */
+  private async syncItemModifierGroups(
+    menuItemId: string,
+    remoteModifierIds: string[],
+    modifierGroupIdMap: Map<string, string>,
+  ) {
+    const wantedGroupIds = new Set(
+      remoteModifierIds.map((id) => modifierGroupIdMap.get(id)).filter((id): id is string => !!id),
+    );
+
+    const existingLinks = await this.prisma.menuItemModifierGroup.findMany({
+      where: { menuItemId },
+      include: { modifierGroup: { select: { loyverseModifierId: true } } },
+    });
+
+    for (const groupId of wantedGroupIds) {
+      if (!existingLinks.some((l) => l.modifierGroupId === groupId)) {
+        await this.prisma.menuItemModifierGroup.create({ data: { menuItemId, modifierGroupId: groupId } });
+      }
+    }
+
+    for (const link of existingLinks) {
+      if (link.modifierGroup.loyverseModifierId && !wantedGroupIds.has(link.modifierGroupId)) {
+        await this.prisma.menuItemModifierGroup.delete({
+          where: { menuItemId_modifierGroupId: { menuItemId, modifierGroupId: link.modifierGroupId } },
+        });
       }
     }
   }

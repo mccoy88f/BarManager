@@ -9,6 +9,7 @@ jest.mock('./loyverse-client', () => ({
   loyverseClient: {
     listCategories: jest.fn(),
     listItems: jest.fn(),
+    listModifiers: jest.fn(),
     extractImageUrl: jest.fn(() => undefined),
   },
 }));
@@ -32,6 +33,9 @@ describe('LoyverseSyncService', () => {
       count: jest.Mock;
     };
     menuItemVariant: { create: jest.Mock; update: jest.Mock };
+    menuModifierGroup: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    menuModifierOption: { create: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    menuItemModifierGroup: { findMany: jest.Mock; create: jest.Mock; delete: jest.Mock };
   };
   let service: LoyverseSyncService;
 
@@ -55,10 +59,23 @@ describe('LoyverseSyncService', () => {
         count: jest.fn().mockResolvedValue(0),
       },
       menuItemVariant: { create: jest.fn(), update: jest.fn() },
+      menuModifierGroup: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
+      menuModifierOption: { create: jest.fn(), update: jest.fn(), delete: jest.fn() },
+      menuItemModifierGroup: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        delete: jest.fn(),
+      },
     };
     service = new LoyverseSyncService(prisma as unknown as PrismaService);
     jest.clearAllMocks();
     (loyverseClient.extractImageUrl as jest.Mock).mockReturnValue(undefined);
+    (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([]);
   });
 
   it('rifiuta il sync se l\'integrazione non è attiva o non ha un token', async () => {
@@ -121,6 +138,7 @@ describe('LoyverseSyncService', () => {
           categoriesRemoved: 0,
           imagesDownloaded: 0,
           imagesSkipped: true,
+          modifierGroups: 0,
           warnings: [],
         },
       },
@@ -363,5 +381,145 @@ describe('LoyverseSyncService', () => {
       data: { name: '', price: null, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: '' },
     });
     expect(summary.items).toBe(1);
+  });
+
+  describe('modificatori Loyverse (Modifier → MenuModifierGroup, §5.10)', () => {
+    it('crea un nuovo gruppo con le sue opzioni e lo assegna alla voce tramite modifiers_ids', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        id: 'venue-1',
+        loyverseIntegrationEnabled: true,
+        loyverseAccessTokenEnc: encryptSecret('token-123'),
+      });
+      (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Pizze' }]);
+      (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([
+        {
+          id: 'mod-ext-1',
+          name: 'Estras',
+          modifier_options: [{ id: 'opt-ext-1', name: 'Formaggio extra', price: 1.5 }],
+        },
+      ]);
+      (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+        {
+          id: 'item-ext-1',
+          item_name: 'Margherita',
+          category_id: 'cat-ext-1',
+          modifiers_ids: ['mod-ext-1'],
+          variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 6 }],
+        },
+      ]);
+      prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
+      prisma.menuModifierGroup.create.mockResolvedValue({ id: 'group-local-1' });
+      prisma.menuItem.create.mockResolvedValue({ id: 'item-local-1' });
+
+      const summary = await service.sync('venue-1');
+
+      expect(prisma.menuModifierGroup.create).toHaveBeenCalledWith({
+        data: { venueId: 'venue-1', name: 'Estras', loyverseModifierId: 'mod-ext-1', selectionType: 'MULTIPLE', minSelections: 0 },
+      });
+      expect(prisma.menuModifierOption.create).toHaveBeenCalledWith({
+        data: { name: 'Formaggio extra', price: 1.5, sortOrder: 0, groupId: 'group-local-1', loyverseModifierOptionId: 'opt-ext-1' },
+      });
+      expect(prisma.menuItemModifierGroup.create).toHaveBeenCalledWith({
+        data: { menuItemId: 'item-local-1', modifierGroupId: 'group-local-1' },
+      });
+      expect(summary.modifierGroups).toBe(1);
+    });
+
+    it('aggiorna nome del gruppo e prezzo dell\'opzione quando cambiano su Loyverse', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        id: 'venue-1',
+        loyverseIntegrationEnabled: true,
+        loyverseAccessTokenEnc: encryptSecret('token-123'),
+      });
+      prisma.menuModifierGroup.findMany.mockResolvedValue([
+        {
+          id: 'group-local-1',
+          loyverseModifierId: 'mod-ext-1',
+          name: 'Vecchio nome',
+          options: [{ id: 'opt-local-1', loyverseModifierOptionId: 'opt-ext-1' }],
+        },
+      ]);
+      (loyverseClient.listCategories as jest.Mock).mockResolvedValue([]);
+      (loyverseClient.listItems as jest.Mock).mockResolvedValue([]);
+      (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([
+        {
+          id: 'mod-ext-1',
+          name: 'Nuovo nome',
+          modifier_options: [{ id: 'opt-ext-1', name: 'Formaggio extra', price: 2 }],
+        },
+      ]);
+
+      await service.sync('venue-1');
+
+      expect(prisma.menuModifierGroup.update).toHaveBeenCalledWith({
+        where: { id: 'group-local-1' },
+        data: { name: 'Nuovo nome' },
+      });
+      expect(prisma.menuModifierOption.update).toHaveBeenCalledWith({
+        where: { id: 'opt-local-1' },
+        data: { name: 'Formaggio extra', price: 2, sortOrder: 0 },
+      });
+    });
+
+    it('elimina un gruppo il cui modificatore Loyverse non esiste più, mai un gruppo nativo (escluso a monte dalla query)', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        id: 'venue-1',
+        loyverseIntegrationEnabled: true,
+        loyverseAccessTokenEnc: encryptSecret('token-123'),
+      });
+      // La query di syncModifierGroups filtra già `loyverseModifierId: { not: null }`:
+      // un gruppo nativo non compare mai in questo elenco, quindi non può
+      // mai essere eliminato da qui, indipendentemente dalla logica sotto.
+      prisma.menuModifierGroup.findMany.mockResolvedValue([
+        { id: 'group-local-1', loyverseModifierId: 'mod-ext-rimosso', name: 'Estras', options: [] },
+      ]);
+      (loyverseClient.listCategories as jest.Mock).mockResolvedValue([]);
+      (loyverseClient.listItems as jest.Mock).mockResolvedValue([]);
+      (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([]); // rimosso da Loyverse
+
+      await service.sync('venue-1');
+
+      expect(prisma.menuModifierGroup.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { venueId: 'venue-1', loyverseModifierId: { not: null } } }),
+      );
+      expect(prisma.menuModifierGroup.delete).toHaveBeenCalledWith({ where: { id: 'group-local-1' } });
+    });
+
+    it('non rimuove l\'assegnazione di un gruppo nativo a una voce, anche se la voce è sincronizzata da Loyverse', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        id: 'venue-1',
+        loyverseIntegrationEnabled: true,
+        loyverseAccessTokenEnc: encryptSecret('token-123'),
+      });
+      prisma.menuCategory.findMany.mockResolvedValue([
+        { id: 'cat-local-1', venueId: 'venue-1', loyverseCategoryId: 'cat-ext-1', name: 'Pizze', sortOrder: 0 },
+      ]);
+      prisma.menuItem.findFirst.mockResolvedValue({
+        id: 'item-local-1',
+        name: 'Margherita',
+        description: null,
+        categoryId: 'cat-local-1',
+        photoUrl: '/uploads/menu/existing.jpg',
+        variants: [{ id: 'var-local-1', loyverseVariantId: 'var-ext-1' }],
+      });
+      prisma.menuItemModifierGroup.findMany.mockResolvedValue([
+        { menuItemId: 'item-local-1', modifierGroupId: 'group-native-1', modifierGroup: { loyverseModifierId: null } },
+      ]);
+      (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Pizze' }]);
+      (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([]); // nessun modificatore Loyverse assegnato
+      (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+        {
+          id: 'item-ext-1',
+          item_name: 'Margherita',
+          category_id: 'cat-ext-1',
+          modifiers_ids: [],
+          variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 6 }],
+        },
+      ]);
+
+      await service.sync('venue-1');
+
+      expect(prisma.menuItemModifierGroup.delete).not.toHaveBeenCalled();
+    });
   });
 });
