@@ -30,6 +30,7 @@ interface VenueOnlineOrdersSettings {
   onlineOrdersOpeningHours: OpeningHoursDay[] | null;
   openingHours: OpeningHoursDay[];
   onlineOrdersMinLeadMinutes: number;
+  onlineOrdersMinOrderAmount: number | null;
   onlineOrdersAutoAcceptEnabled: boolean;
   onlineOrdersAutoAcceptSlotMode: SlotMode;
   onlineOrdersAutoAcceptPerSlot: number;
@@ -78,6 +79,7 @@ export function OnlineOrdersSettings() {
     onlineOrdersPickupEnabled: true,
     onlineOrdersDeliveryEnabled: true,
     onlineOrdersMinLeadMinutes: '30',
+    onlineOrdersMinOrderAmount: '',
   });
   const [openingHours, setOpeningHours] = useState<OpeningHoursDay[]>([]);
   const [delivery, setDelivery] = useState({ deliveryRadiusMeters: '', deliveryFee: '0', deliveryFreeAboveAmount: '' });
@@ -101,6 +103,7 @@ export function OnlineOrdersSettings() {
       onlineOrdersPickupEnabled: v.onlineOrdersPickupEnabled,
       onlineOrdersDeliveryEnabled: v.onlineOrdersDeliveryEnabled,
       onlineOrdersMinLeadMinutes: String(v.onlineOrdersMinLeadMinutes),
+      onlineOrdersMinOrderAmount: v.onlineOrdersMinOrderAmount != null ? String(v.onlineOrdersMinOrderAmount) : '',
     });
     setOpeningHours(v.onlineOrdersOpeningHours ?? v.openingHours);
     setDelivery({
@@ -133,6 +136,8 @@ export function OnlineOrdersSettings() {
           onlineOrdersPickupEnabled: general.onlineOrdersPickupEnabled,
           onlineOrdersDeliveryEnabled: general.onlineOrdersDeliveryEnabled,
           onlineOrdersMinLeadMinutes: Number(general.onlineOrdersMinLeadMinutes),
+          onlineOrdersMinOrderAmount:
+            general.onlineOrdersMinOrderAmount === '' ? null : Number(general.onlineOrdersMinOrderAmount),
         })
       ).data,
     onSuccess: () => { invalidateVenue(); showToast('Impostazioni generali salvate'); },
@@ -249,15 +254,26 @@ export function OnlineOrdersSettings() {
               label="Consegna a domicilio"
             />
           </Stack>
-          <TextField
-            label="Anticipo minimo (minuti da adesso)"
-            type="number"
-            size="small"
-            sx={{ mt: 2, maxWidth: 300 }}
-            inputProps={{ min: 0 }}
-            value={general.onlineOrdersMinLeadMinutes}
-            onChange={(e) => setGeneral((f) => ({ ...f, onlineOrdersMinLeadMinutes: e.target.value }))}
-          />
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
+            <TextField
+              label="Anticipo minimo (minuti da adesso)"
+              type="number"
+              size="small"
+              sx={{ flex: '1 1 260px', maxWidth: 300 }}
+              inputProps={{ min: 0 }}
+              value={general.onlineOrdersMinLeadMinutes}
+              onChange={(e) => setGeneral((f) => ({ ...f, onlineOrdersMinLeadMinutes: e.target.value }))}
+            />
+            <TextField
+              label="Ordine minimo (€, vuoto = nessun minimo)"
+              type="number"
+              size="small"
+              sx={{ flex: '1 1 260px', maxWidth: 300 }}
+              inputProps={{ min: 0, step: 0.5 }}
+              value={general.onlineOrdersMinOrderAmount}
+              onChange={(e) => setGeneral((f) => ({ ...f, onlineOrdersMinOrderAmount: e.target.value }))}
+            />
+          </Box>
           <Box>
             <Button
               variant="contained"

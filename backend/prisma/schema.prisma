@@ -174,6 +174,9 @@ model Venue {
   // equivalente a reservationMinLeadMinutes ma un valore proprio: il tempo
   // di preparazione di un ordine non è quello di un tavolo.
   onlineOrdersMinLeadMinutes  Int     @default(30)
+  // Importo minimo del subtotale (prodotti, senza consegna) per poter
+  // ordinare: null = nessun minimo.
+  onlineOrdersMinOrderAmount  Float?
 
   // Accettazione automatica per fascia da 15 minuti di "requestedAt": se
   // attiva, un ordine sotto soglia nasce già CONFIRMED (salta PENDING).

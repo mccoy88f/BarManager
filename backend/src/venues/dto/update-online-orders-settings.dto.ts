@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { OnlineOrdersSlotMode } from '@prisma/client';
 
 /** Impostazioni del modulo Ordini online (§5.10): interruttori, consegna, accettazione automatica, mappatura Loyverse. */
@@ -20,6 +20,12 @@ export class UpdateOnlineOrdersSettingsDto {
   @IsInt()
   @Min(0)
   onlineOrdersMinLeadMinutes?: number;
+
+  /** Subtotale minimo (prodotti, senza consegna) per poter ordinare. null = nessun minimo. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  onlineOrdersMinOrderAmount?: number | null;
 
   @IsOptional()
   @IsBoolean()

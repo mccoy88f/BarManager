@@ -117,6 +117,7 @@ export class VenuesService {
         onlineOrdersDeliveryEnabled: true,
         onlineOrdersOpeningHours: true,
         onlineOrdersMinLeadMinutes: true,
+        onlineOrdersMinOrderAmount: true,
         onlineOrdersAutoAcceptEnabled: true,
         onlineOrdersAutoAcceptSlotMode: true,
         onlineOrdersAutoAcceptPerSlot: true,

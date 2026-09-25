@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -66,6 +67,7 @@ const VENUE_SELECT = {
   onlineOrdersOpeningHours: true,
   openingHours: true,
   onlineOrdersMinLeadMinutes: true,
+  onlineOrdersMinOrderAmount: true,
   onlineOrdersAutoAcceptEnabled: true,
   onlineOrdersAutoAcceptSlotMode: true,
   onlineOrdersAutoAcceptPerSlot: true,
@@ -99,6 +101,7 @@ type OnlineOrdersVenueSettings = {
   onlineOrdersOpeningHours: unknown;
   openingHours: unknown;
   onlineOrdersMinLeadMinutes: number;
+  onlineOrdersMinOrderAmount: number | null;
   onlineOrdersAutoAcceptEnabled: boolean;
   onlineOrdersAutoAcceptSlotMode: 'COMBINED' | 'SEPARATE';
   onlineOrdersAutoAcceptPerSlot: number;
@@ -147,6 +150,8 @@ interface OrderPricing {
 
 @Injectable()
 export class OnlineOrdersService {
+  private readonly logger = new Logger(OnlineOrdersService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -416,6 +421,12 @@ export class OnlineOrdersService {
       });
     }
 
+    if (venue.onlineOrdersMinOrderAmount != null && subtotal < venue.onlineOrdersMinOrderAmount) {
+      throw new BadRequestException(
+        `Ordine minimo € ${venue.onlineOrdersMinOrderAmount.toFixed(2)}: aggiungi altri prodotti per raggiungere la soglia.`,
+      );
+    }
+
     let deliveryFee = 0;
     let deliveryDistanceMeters: number | null = null;
     let deliveryLat: number | null = null;
@@ -490,6 +501,14 @@ export class OnlineOrdersService {
       });
     } catch (err) {
       if (err instanceof SumUpApiError) {
+        // Il messaggio verso il cliente resta generico (non deve rivelare
+        // dettagli dell'account SumUp del locale), ma la causa reale va
+        // sempre loggata qui: altrimenti nemmeno l'admin può capire se è
+        // una chiave non valida, un rate limit o altro senza log applicativi
+        // — usa "Verifica API key" in Impostazioni per un check diretto.
+        this.logger.error(
+          `SumUp createCheckout fallito per venue ${venueId}: ${err.message} (status ${err.status ?? 'n/d'})`,
+        );
         throw new BadRequestException('Il pagamento con carta online non è al momento disponibile: riprova più tardi o scegli un altro metodo.');
       }
       throw err;

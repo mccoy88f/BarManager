@@ -71,6 +71,7 @@ const baseVenue = {
   onlineOrdersOpeningHours: null as unknown,
   openingHours: null as unknown, // resolveOpeningHours ricade sul default: 12:00-15:00 / 19:00-23:00
   onlineOrdersMinLeadMinutes: 0,
+  onlineOrdersMinOrderAmount: null as number | null,
   onlineOrdersAutoAcceptEnabled: false,
   onlineOrdersAutoAcceptSlotMode: 'COMBINED' as 'COMBINED' | 'SEPARATE',
   onlineOrdersAutoAcceptPerSlot: 0,
@@ -455,6 +456,22 @@ describe('OnlineOrdersService', () => {
       await expect(
         service.createPublicOrder('venue-1', baseOrderDto({ lines: cartDto({ modifierOptionIds: ['mod-1'] }).lines })),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rifiuta un ordine sotto la soglia minima configurata dall\'admin (§5.10)', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, onlineOrdersMinOrderAmount: 25 });
+      // baseOrderDto ordina per un subtotale di 20 (2 × 10): sotto la soglia di 25.
+      await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(BadRequestException);
+      await expect(service.createPublicOrder('venue-1', baseOrderDto())).rejects.toThrow(/Ordine minimo/);
+    });
+
+    it('accetta un ordine che raggiunge esattamente la soglia minima', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, onlineOrdersMinOrderAmount: 20 });
+      await expect(service.createPublicOrder('venue-1', baseOrderDto())).resolves.toBeDefined();
+    });
+
+    it('nessun minimo (default null): un ordine di qualsiasi importo è accettato', async () => {
+      await expect(service.createPublicOrder('venue-1', baseOrderDto())).resolves.toBeDefined();
     });
   });
 

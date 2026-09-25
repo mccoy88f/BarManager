@@ -34,6 +34,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -48,6 +49,7 @@ import { api } from '../../api/client';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { ImageLightbox } from '../../components/ImageLightbox';
 import { useCheckoutContactStore } from '../../store/checkoutContactStore';
+import { useCheckoutCartStore, type CartLine } from '../../store/checkoutCartStore';
 import { mountSumUpCard, unmountSumUpCard, type SumUpCardResponse } from '../../payments/sumupCardWidget';
 
 const SUMUP_CARD_ELEMENT_ID = 'sumup-card';
@@ -75,6 +77,7 @@ interface OnlineOrdersInfo {
   onlineOrdersDeliveryEnabled: boolean;
   openingHours: OpeningHoursDay[];
   onlineOrdersMinLeadMinutes: number;
+  onlineOrdersMinOrderAmount: number | null;
   deliveryRadiusMeters: number | null;
   deliveryFee: number;
   deliveryFreeAboveAmount: number | null;
@@ -118,18 +121,6 @@ interface MenuCategory {
   id: string;
   name: string;
   items: MenuItem[];
-}
-
-interface CartLine {
-  key: string;
-  menuItemId: string;
-  itemName: string;
-  variantId: string;
-  variantName: string;
-  unitPrice: number;
-  quantity: number;
-  modifiers: ModifierOption[];
-  note: string;
 }
 
 function toMinutes(hhmm: string): number {
@@ -478,8 +469,11 @@ export function PublicOnlineOrder() {
   const params = new URLSearchParams(window.location.search);
   const venueSlug = params.get('venueSlug');
   const contactCache = useCheckoutContactStore();
+  const cartStore = useCheckoutCartStore();
+  const cart = cartStore.cart;
+  const setCart = (updater: CartLine[] | ((prev: CartLine[]) => CartLine[])) =>
+    cartStore.setCart(typeof updater === 'function' ? (updater as (prev: CartLine[]) => CartLine[])(cartStore.cart) : updater);
 
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [addingItem, setAddingItem] = useState<MenuItem | null>(null);
   const [search, setSearch] = useState('');
   const [openCategory, setOpenCategory] = useState<string | false>(false);
@@ -675,6 +669,8 @@ export function PublicOnlineOrder() {
         : info.deliveryFee
       : 0;
   const total = subtotal + deliveryFee;
+  const minOrderAmount = info?.onlineOrdersMinOrderAmount ?? null;
+  const meetsMinOrder = minOrderAmount == null || subtotal >= minOrderAmount;
 
   const today = new Date().toISOString().slice(0, 10);
   const selectedDaySchedule = date
@@ -749,242 +745,72 @@ export function PublicOnlineOrder() {
     );
   }
 
-  const hasContacts = info.menuAddress || info.city || info.menuPhone || info.menuInstagramUrl || info.menuFacebookUrl || info.menuWebsiteUrl;
-
-  return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
-      {info.menuCoverUrl ? (
-        <Box
-          onClick={() => setLightbox(info.menuCoverUrl!)}
-          sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220, md: 320 }, cursor: 'zoom-in' }}
-        >
-          <Box
-            component="img"
-            src={info.menuCoverUrl}
-            alt={info.name}
-            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-              background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0) 60%)',
-            }}
-          >
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              textAlign="center"
-              sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
-            >
-              {info.name}
-            </Typography>
-          </Box>
-        </Box>
-      ) : (
-        <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
-          {info.name}
-        </Typography>
-      )}
-
+  /** Intestazione copertina+nome, identica a quella della pagina normale — riusata anche a pagina intera negli step 2/3. */
+  const coverHeader = info.menuCoverUrl ? (
+    <Box
+      onClick={() => setLightbox(info.menuCoverUrl!)}
+      sx={{ position: 'relative', width: '100%', height: { xs: 160, sm: 220, md: 320 }, cursor: 'zoom-in' }}
+    >
+      <Box
+        component="img"
+        src={info.menuCoverUrl}
+        alt={info.name}
+        sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
       <Box
         sx={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 2,
-          bgcolor: 'background.default',
-          px: 2,
-          py: 1.5,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0) 60%)',
         }}
       >
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Cerca nel menù..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
-      <Box sx={{ p: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
-        {menuQuery.isLoading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-            <CircularProgress />
-          </Box>
-        )}
-
-        {filteredCategories.map((category) => (
-          <Accordion
-            key={category.id}
-            expanded={isSearching || openCategory === category.id}
-            onChange={(_e, expanded) => setOpenCategory(expanded ? category.id : false)}
-            disableGutters
-            TransitionProps={{ unmountOnExit: true }}
-          >
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="h6" fontWeight={700}>
-                {category.name}
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
-                  gap: 2,
-                }}
-              >
-                {category.items.map((item) => (
-                  <MenuItemRow
-                    key={item.id}
-                    item={item}
-                    onOpen={() => setAddingItem(item)}
-                    onQuickAdd={() => quickAddToCart(item)}
-                    onImageClick={setLightbox}
-                  />
-                ))}
-              </Box>
-            </AccordionDetails>
-          </Accordion>
-        ))}
-
-        {filteredCategories.length === 0 && !menuQuery.isLoading && (
-          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 4 }}>
-            Nessun piatto trovato.
-          </Typography>
-        )}
-
-        {hasContacts && (
-          <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="subtitle2" fontWeight={700}>
-              {info.name}
-            </Typography>
-            {(info.menuAddress || info.city) && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {[info.menuAddress, info.city].filter(Boolean).join(' — ')}
-              </Typography>
-            )}
-            <Stack direction="row" spacing={1} justifyContent="center">
-              {info.menuPhone && (
-                <IconButton component="a" href={`tel:${info.menuPhone}`} title="Chiama">
-                  <PhoneIcon />
-                </IconButton>
-              )}
-              {info.menuInstagramUrl && (
-                <IconButton component="a" href={info.menuInstagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram">
-                  <InstagramIcon />
-                </IconButton>
-              )}
-              {info.menuFacebookUrl && (
-                <IconButton component="a" href={info.menuFacebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook">
-                  <FacebookIcon />
-                </IconButton>
-              )}
-              {info.menuWebsiteUrl && (
-                <IconButton component="a" href={info.menuWebsiteUrl} target="_blank" rel="noopener noreferrer" title="Sito web">
-                  <LanguageIcon />
-                </IconButton>
-              )}
-            </Stack>
-          </Box>
-        )}
-      </Box>
-
-      {addingItem && (
-        <AddToCartDialog
-          item={addingItem}
-          onClose={() => setAddingItem(null)}
-          onAdd={(line) => {
-            setCart((prev) => [...prev, { ...line, key: `${Date.now()}-${Math.random()}` }]);
-            setAddingItem(null);
-          }}
-        />
-      )}
-
-      {cart.length > 0 && (
-        <Fab
-          color="primary"
-          onClick={openCheckout}
-          sx={{ position: 'fixed', bottom: { xs: 16, md: 24 }, right: { xs: 16, md: 24 }, zIndex: 10 }}
+        <Typography
+          variant="h4"
+          fontWeight={700}
+          textAlign="center"
+          sx={{ color: 'white', px: 2, py: 1.5, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
         >
-          <Badge badgeContent={cartItemCount} color="error">
-            <ShoppingCartIcon />
-          </Badge>
-        </Fab>
-      )}
+          {info.name}
+        </Typography>
+      </Box>
+    </Box>
+  ) : (
+    <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>
+      {info.name}
+    </Typography>
+  );
 
-      <Dialog open={checkoutOpen} onClose={() => setCheckoutOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Il tuo ordine</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2 }}>
-          <Stepper activeStep={checkoutStep} sx={{ mb: 1 }}>
+  const backToMenu = () => {
+    setCheckoutStep(0);
+    setCheckoutOpen(false);
+  };
+
+  /**
+   * Step "Ritiro o consegna" e "I tuoi dati" (2 e 3): pagina intera con la
+   * stessa intestazione della navigazione normale, non più il Dialog
+   * compatto — solo il primo step (Carrello) resta un piccolo dialog
+   * apribile dal FAB (§5.10, richiesta esplicita dell'utente: gli ultimi
+   * due step erano troppo compressi in un modale).
+   */
+  if (checkoutStep > 0) {
+    return (
+      <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+        {coverHeader}
+        <Box sx={{ maxWidth: 480, mx: 'auto', px: 2, py: 3 }}>
+          <Button startIcon={<ArrowBackIcon />} onClick={backToMenu} sx={{ mb: 2 }}>
+            Torna al menù
+          </Button>
+
+          <Stepper activeStep={checkoutStep} sx={{ mb: 3 }}>
             {CHECKOUT_STEPS.map((label) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>
               </Step>
             ))}
           </Stepper>
-
-          {checkoutStep === 0 && (
-            <Box sx={{ display: 'grid', gap: 1.5 }}>
-              {cart.map((line) => (
-                <Box key={line.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>
-                      {line.quantity}× {line.itemName}
-                      {line.variantName ? ` (${line.variantName})` : ''}
-                    </Typography>
-                    {line.modifiers.length > 0 && (
-                      <Typography variant="caption" color="text.secondary">
-                        {line.modifiers.map((m) => m.name).join(', ')}
-                      </Typography>
-                    )}
-                    {line.note && (
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Nota: {line.note}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2">€ {lineTotal(line).toFixed(2)}</Typography>
-                    <IconButton size="small" onClick={() => setCart((prev) => prev.filter((l) => l.key !== line.key))}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                </Box>
-              ))}
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2">Subtotale</Typography>
-                <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
-              </Box>
-              {fulfillment === 'DELIVERY' && (
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Consegna</Typography>
-                  <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
-                </Box>
-              )}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="subtitle1" fontWeight={700}>
-                  Totale
-                </Typography>
-                <Typography variant="subtitle1" fontWeight={700}>
-                  € {total.toFixed(2)}
-                </Typography>
-              </Box>
-            </Box>
-          )}
 
           {checkoutStep === 1 && (
             <Box sx={{ display: 'grid', gap: 2 }}>
@@ -1131,52 +957,285 @@ export function PublicOnlineOrder() {
               )}
             </Box>
           )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          {checkoutStep > 0 && <Button onClick={() => setCheckoutStep((s) => s - 1)}>Indietro</Button>}
-          <Box sx={{ flex: 1 }} />
-          {checkoutStep < CHECKOUT_STEPS.length - 1 && (
-            <Button
-              variant="contained"
-              disabled={checkoutStep === 1 && !canProceedFulfillment}
-              onClick={() => setCheckoutStep((s) => s + 1)}
-            >
-              Continua
-            </Button>
-          )}
-          {checkoutStep === CHECKOUT_STEPS.length - 1 && (
-            <Button
-              variant="contained"
-              size="large"
-              disabled={!canSubmit || finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending}
-              onClick={startCheckout}
-            >
-              {finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending
-                ? 'Invio in corso…'
-                : fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE'
-                  ? `Paga e conferma ordine — € ${total.toFixed(2)}`
-                  : `Conferma ordine — € ${total.toFixed(2)}`}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
 
-      {sumupCheckout && (
-        <SumUpCardDialog
-          checkoutId={sumupCheckout.checkoutId}
-          total={sumupCheckout.total}
-          onSuccess={() => {
-            // Chiude subito il dialog di pagamento: il widget ha già dato
-            // esito positivo, da qui in avanti un eventuale errore
-            // riguarda solo la creazione dell'ordine (mostrato dall'Alert
-            // sotto il pulsante principale), non il pagamento in sé.
-            const checkoutId = sumupCheckout.checkoutId;
-            setSumupCheckout(null);
-            finalizeOrderMutation.mutate(checkoutId);
+          <Divider sx={{ my: 3 }} />
+          <Stack direction="row" justifyContent="space-between">
+            <Button
+              onClick={() => {
+                if (checkoutStep === 1) {
+                  setCheckoutStep(0);
+                  setCheckoutOpen(true);
+                } else {
+                  setCheckoutStep((s) => s - 1);
+                }
+              }}
+            >
+              Indietro
+            </Button>
+            {checkoutStep < CHECKOUT_STEPS.length - 1 ? (
+              <Button
+                variant="contained"
+                disabled={!canProceedFulfillment}
+                onClick={() => setCheckoutStep((s) => s + 1)}
+              >
+                Continua
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                size="large"
+                disabled={!canSubmit || finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending}
+                onClick={startCheckout}
+              >
+                {finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending
+                  ? 'Invio in corso…'
+                  : fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE'
+                    ? `Paga e conferma ordine — € ${total.toFixed(2)}`
+                    : `Conferma ordine — € ${total.toFixed(2)}`}
+              </Button>
+            )}
+          </Stack>
+        </Box>
+
+        {sumupCheckout && (
+          <SumUpCardDialog
+            checkoutId={sumupCheckout.checkoutId}
+            total={sumupCheckout.total}
+            onSuccess={() => {
+              const checkoutId = sumupCheckout.checkoutId;
+              setSumupCheckout(null);
+              finalizeOrderMutation.mutate(checkoutId);
+            }}
+            onCancel={() => setSumupCheckout(null)}
+          />
+        )}
+      </Box>
+    );
+  }
+
+  const hasContacts = info.menuAddress || info.city || info.menuPhone || info.menuInstagramUrl || info.menuFacebookUrl || info.menuWebsiteUrl;
+
+  return (
+    <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+      {coverHeader}
+
+      <Box
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          bgcolor: 'background.default',
+          px: 2,
+          py: 1.5,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Cerca nel menù..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
           }}
-          onCancel={() => setSumupCheckout(null)}
+        />
+      </Box>
+
+      <Box sx={{ p: { xs: 2, md: 4 }, pb: { xs: 10, md: 4 } }}>
+        {menuQuery.isLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <CircularProgress />
+          </Box>
+        )}
+
+        {filteredCategories.map((category) => (
+          <Accordion
+            key={category.id}
+            expanded={isSearching || openCategory === category.id}
+            onChange={(_e, expanded) => setOpenCategory(expanded ? category.id : false)}
+            disableGutters
+            TransitionProps={{ unmountOnExit: true }}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="h6" fontWeight={700}>
+                {category.name}
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                {category.items.map((item) => (
+                  <MenuItemRow
+                    key={item.id}
+                    item={item}
+                    onOpen={() => setAddingItem(item)}
+                    onQuickAdd={() => quickAddToCart(item)}
+                    onImageClick={setLightbox}
+                  />
+                ))}
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+
+        {filteredCategories.length === 0 && !menuQuery.isLoading && (
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 4 }}>
+            Nessun piatto trovato.
+          </Typography>
+        )}
+
+        {hasContacts && (
+          <Box sx={{ textAlign: 'center', mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="subtitle2" fontWeight={700}>
+              {info.name}
+            </Typography>
+            {(info.menuAddress || info.city) && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {[info.menuAddress, info.city].filter(Boolean).join(' — ')}
+              </Typography>
+            )}
+            <Stack direction="row" spacing={1} justifyContent="center">
+              {info.menuPhone && (
+                <IconButton component="a" href={`tel:${info.menuPhone}`} title="Chiama">
+                  <PhoneIcon />
+                </IconButton>
+              )}
+              {info.menuInstagramUrl && (
+                <IconButton component="a" href={info.menuInstagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram">
+                  <InstagramIcon />
+                </IconButton>
+              )}
+              {info.menuFacebookUrl && (
+                <IconButton component="a" href={info.menuFacebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook">
+                  <FacebookIcon />
+                </IconButton>
+              )}
+              {info.menuWebsiteUrl && (
+                <IconButton component="a" href={info.menuWebsiteUrl} target="_blank" rel="noopener noreferrer" title="Sito web">
+                  <LanguageIcon />
+                </IconButton>
+              )}
+            </Stack>
+          </Box>
+        )}
+      </Box>
+
+      {addingItem && (
+        <AddToCartDialog
+          item={addingItem}
+          onClose={() => setAddingItem(null)}
+          onAdd={(line) => {
+            setCart((prev) => [...prev, { ...line, key: `${Date.now()}-${Math.random()}` }]);
+            setAddingItem(null);
+          }}
         />
       )}
+
+      {cart.length > 0 && !checkoutOpen && (
+        <Fab
+          color="primary"
+          onClick={openCheckout}
+          sx={{ position: 'fixed', bottom: { xs: 16, md: 24 }, right: { xs: 16, md: 24 }, zIndex: 10 }}
+        >
+          <Badge badgeContent={cartItemCount} color="error">
+            <ShoppingCartIcon />
+          </Badge>
+        </Fab>
+      )}
+
+      {/* Solo lo step Carrello resta un dialog compatto: gli step successivi
+          (Ritiro o consegna, I tuoi dati) si aprono a pagina intera, v. sopra. */}
+      <Dialog open={checkoutOpen} onClose={() => setCheckoutOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Il tuo ordine</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2 }}>
+          <Stepper activeStep={checkoutStep} sx={{ mb: 1 }}>
+            {CHECKOUT_STEPS.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          <Box sx={{ display: 'grid', gap: 1.5 }}>
+            {cart.map((line) => (
+              <Box key={line.key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>
+                    {line.quantity}× {line.itemName}
+                    {line.variantName ? ` (${line.variantName})` : ''}
+                  </Typography>
+                  {line.modifiers.length > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      {line.modifiers.map((m) => m.name).join(', ')}
+                    </Typography>
+                  )}
+                  {line.note && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Nota: {line.note}
+                    </Typography>
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">€ {lineTotal(line).toFixed(2)}</Typography>
+                  <IconButton size="small" onClick={() => setCart((prev) => prev.filter((l) => l.key !== line.key))}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Box>
+            ))}
+            <Divider />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2">Subtotale</Typography>
+              <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
+            </Box>
+            {fulfillment === 'DELIVERY' && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2">Consegna</Typography>
+                <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
+              </Box>
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Totale
+              </Typography>
+              <Typography variant="subtitle1" fontWeight={700}>
+                € {total.toFixed(2)}
+              </Typography>
+            </Box>
+            {!meetsMinOrder && (
+              <Alert severity="warning">
+                Ordine minimo € {minOrderAmount!.toFixed(2)}: aggiungi altri € {(minOrderAmount! - subtotal).toFixed(2)} per procedere.
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          {cart.length > 0 && (
+            <Button color="error" onClick={() => setCart([])}>
+              Svuota
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button
+            variant="contained"
+            disabled={!meetsMinOrder}
+            onClick={() => { setCheckoutOpen(false); setCheckoutStep(1); }}
+          >
+            Continua
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />
     </Box>

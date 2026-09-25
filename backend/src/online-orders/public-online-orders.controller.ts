@@ -43,6 +43,7 @@ export class PublicOnlineOrdersController {
         onlineOrdersOpeningHours: true,
         openingHours: true,
         onlineOrdersMinLeadMinutes: true,
+        onlineOrdersMinOrderAmount: true,
         deliveryRadiusMeters: true,
         deliveryFee: true,
         deliveryFreeAboveAmount: true,
