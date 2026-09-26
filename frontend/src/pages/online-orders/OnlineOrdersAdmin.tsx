@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonGroup,
   Card,
   CardContent,
   Chip,
@@ -71,15 +72,17 @@ interface OrderRow {
   lines: OrderLine[];
 }
 
-const QUEUE_TABS: OnlineOrderStatus[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'REJECTED', 'CANCELLED'];
+/** Tab visibili nel pannello (REJECTED e CANCELLED accorpati in CLOSED). */
+const QUEUE_TABS: (OnlineOrderStatus | 'CLOSED')[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CLOSED'];
 
-const tabLabels: Record<OnlineOrderStatus, string> = {
+const tabLabels: Record<OnlineOrderStatus | 'CLOSED', string> = {
   PENDING: 'Da confermare',
   CONFIRMED: 'In preparazione',
   READY: 'Pronti',
   COMPLETED: 'Completati',
   REJECTED: 'Rifiutati',
   CANCELLED: 'Annullati',
+  CLOSED: 'Rifiutati / Annullati',
 };
 
 const statusColors: Record<OnlineOrderStatus, 'warning' | 'success' | 'default'> = {
@@ -139,7 +142,7 @@ const QUEUE_POLL_MS = 15000;
 export function OnlineOrdersAdmin() {
   const queryClient = useQueryClient();
   const showToast = useToast();
-  const [tab, setTab] = useState<OnlineOrderStatus>('PENDING');
+  const [tab, setTab] = useState<OnlineOrderStatus | 'CLOSED'>('PENDING');
 
   const [rejecting, setRejecting] = useState<OrderRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -158,8 +161,13 @@ export function OnlineOrdersAdmin() {
   });
 
   const ordersByTab = useMemo(() => {
-    const grouped: Record<OnlineOrderStatus, OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [] };
-    for (const order of queueQuery.data ?? []) grouped[order.status]?.push(order);
+    const grouped: Record<OnlineOrderStatus | 'CLOSED', OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [], CLOSED: [] };
+    for (const order of queueQuery.data ?? []) {
+      grouped[order.status]?.push(order);
+      if (order.status === 'REJECTED' || order.status === 'CANCELLED') {
+        grouped.CLOSED.push(order);
+      }
+    }
     return grouped;
   }, [queueQuery.data]);
 
@@ -272,7 +280,7 @@ export function OnlineOrdersAdmin() {
               />
             </Stack>
 
-            {/* Data e Telefono con touch target comodo */}
+            {/* Riga 1: ora + telefono affiancato */}
             <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 1, gap: 1 }}>
               <Typography variant="body2" color="text.secondary" fontWeight={500}>
                 🕒 {formatWhen(order.requestedAt)}
@@ -298,9 +306,9 @@ export function OnlineOrdersAdmin() {
               </Button>
             </Stack>
 
-            {/* Indirizzo e Navigazione con touch target comodo */}
+            {/* Riga 2 (solo DELIVERY): indirizzo + navigazione affiancato */}
             {order.fulfillment === 'DELIVERY' && (
-              <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 0.75, gap: 1 }}>
                 <Typography variant="body2" color="text.secondary" fontWeight={500}>
                   📍 {order.deliveryAddress || 'Consegna a domicilio'}
                 </Typography>
@@ -326,7 +334,7 @@ export function OnlineOrdersAdmin() {
                     Raggiungi il luogo
                   </Button>
                 )}
-              </Box>
+              </Stack>
             )}
           </Box>
 
@@ -441,84 +449,120 @@ export function OnlineOrdersAdmin() {
 
         {/* Barra azioni sul fondo della card — bottoni ampi touch-friendly */}
         {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
-          <Stack
-            direction="row"
-            spacing={1.5}
-            flexWrap="wrap"
-            alignItems="center"
-            sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider', gap: 1.25 }}
-          >
+          <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+
+            {/* PENDING: Accetta (verde) | Proponi orario (arancione) | Rifiuta (rosso) */}
             {order.status === 'PENDING' && (
-              <Button
-                size="medium"
-                variant="contained"
-                color="success"
-                onClick={() => acceptMutation.mutate(order.id)}
-                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
-              >
-                Accetta
-              </Button>
+              <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center" sx={{ gap: 1.25 }}>
+                <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                  <Button
+                    color="success"
+                    onClick={() => acceptMutation.mutate(order.id)}
+                    sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
+                  >
+                    Accetta
+                  </Button>
+                  <Button
+                    sx={{
+                      minHeight: 44,
+                      px: 2.5,
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      bgcolor: 'warning.main',
+                      color: 'warning.contrastText',
+                      '&:hover': { bgcolor: 'warning.dark' },
+                    }}
+                    onClick={() => {
+                      setChangingTime(order);
+                      setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
+                    }}
+                  >
+                    Proponi orario
+                  </Button>
+                  <Button
+                    color="error"
+                    onClick={() => setRejecting(order)}
+                    sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
+                  >
+                    Rifiuta
+                  </Button>
+                </ButtonGroup>
+                <Button
+                  size="medium"
+                  color="error"
+                  variant="text"
+                  onClick={() => setCancelling(order)}
+                  sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
+                >
+                  Annulla ordine
+                </Button>
+              </Stack>
             )}
+
+            {/* CONFIRMED: Segna come pronto (verde) | Proponi orario (arancione) | Annulla ordine (rosso) */}
             {order.status === 'CONFIRMED' && (
-              <Button
-                size="medium"
-                variant="contained"
-                color="primary"
-                onClick={() => readyMutation.mutate(order.id)}
-                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
-              >
-                Segna come pronto
-              </Button>
+              <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Button
+                  color="success"
+                  onClick={() => readyMutation.mutate(order.id)}
+                  sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
+                >
+                  Segna come pronto
+                </Button>
+                <Button
+                  sx={{
+                    minHeight: 44,
+                    px: 2.5,
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    bgcolor: 'warning.main',
+                    color: 'warning.contrastText',
+                    '&:hover': { bgcolor: 'warning.dark' },
+                  }}
+                  onClick={() => {
+                    setChangingTime(order);
+                    setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
+                  }}
+                >
+                  Proponi orario
+                </Button>
+                <Button
+                  color="error"
+                  onClick={() => setCancelling(order)}
+                  sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  Annulla ordine
+                </Button>
+              </ButtonGroup>
             )}
+
+            {/* READY: Completa (verde) | Annulla ordine (rosso) — proponi orario non necessario */}
             {order.status === 'READY' && (
-              <Button
-                size="medium"
-                variant="contained"
-                color="success"
-                onClick={() => {
-                  if (order.fulfillment === 'DELIVERY') {
-                    completeMutation.mutate({ id: order.id });
-                  } else {
-                    setCompleting(order);
-                    setCompletePaymentMethod('CASH');
-                  }
-                }}
-                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
-              >
-                Completa
-              </Button>
+              <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Button
+                  color="success"
+                  onClick={() => {
+                    if (order.fulfillment === 'DELIVERY') {
+                      completeMutation.mutate({ id: order.id });
+                    } else {
+                      setCompleting(order);
+                      setCompletePaymentMethod('CASH');
+                    }
+                  }}
+                  sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
+                >
+                  Completa
+                </Button>
+                <Button
+                  color="error"
+                  onClick={() => setCancelling(order)}
+                  sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  Annulla ordine
+                </Button>
+              </ButtonGroup>
             )}
-            <Button
-              size="medium"
-              variant="outlined"
-              onClick={() => {
-                setChangingTime(order);
-                setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
-              }}
-              sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
-            >
-              Proponi orario
-            </Button>
-            {order.status === 'PENDING' && (
-              <Button
-                size="medium"
-                variant="outlined"
-                color="error"
-                onClick={() => setRejecting(order)}
-                sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
-              >
-                Rifiuta
-              </Button>
-            )}
-            <Button
-              size="medium"
-              color="error"
-              onClick={() => setCancelling(order)}
-              sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none', ml: { sm: 'auto' } }}
-            >
-              Annulla ordine
-            </Button>
-          </Stack>
+          </Box>
         )}
       </CardContent>
     </Card>
@@ -560,7 +604,7 @@ export function OnlineOrdersAdmin() {
 
       <Tabs
         value={tab}
-        onChange={(_e, v) => setTab(v)}
+        onChange={(_e, v) => setTab(v as OnlineOrderStatus | 'CLOSED')}
         variant="scrollable"
         scrollButtons="auto"
         sx={{
