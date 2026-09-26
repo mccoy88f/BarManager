@@ -411,53 +411,53 @@ export function OnlineOrdersAdmin() {
             </Stack>
 
             {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
-              <Button
-                size="small"
-                onClick={() => {
-                  setChangingTime(order);
-                  setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
-                }}
-              >
-                Proponi orario
-              </Button>
-            )}
-
-            {order.status === 'PENDING' && (
-              <Stack direction="row" spacing={1}>
-                <Button size="small" variant="contained" color="success" onClick={() => acceptMutation.mutate(order.id)}>
-                  Accetta
+              <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end" alignItems="center">
+                {order.status === 'PENDING' && (
+                  <Button size="small" variant="contained" color="success" onClick={() => acceptMutation.mutate(order.id)}>
+                    Accetta
+                  </Button>
+                )}
+                {order.status === 'CONFIRMED' && (
+                  <Button size="small" variant="contained" onClick={() => readyMutation.mutate(order.id)}>
+                    Segna come pronto
+                  </Button>
+                )}
+                {order.status === 'READY' && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    onClick={() => {
+                      if (order.fulfillment === 'DELIVERY') {
+                        completeMutation.mutate({ id: order.id });
+                      } else {
+                        setCompleting(order);
+                        setCompletePaymentMethod('CASH');
+                      }
+                    }}
+                  >
+                    Completa
+                  </Button>
+                )}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setChangingTime(order);
+                    setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
+                  }}
+                >
+                  Proponi orario
                 </Button>
-                <Button size="small" variant="outlined" color="error" onClick={() => setRejecting(order)}>
-                  Rifiuta
+                {order.status === 'PENDING' && (
+                  <Button size="small" variant="outlined" color="error" onClick={() => setRejecting(order)}>
+                    Rifiuta
+                  </Button>
+                )}
+                <Button size="small" color="error" onClick={() => setCancelling(order)}>
+                  Annulla ordine
                 </Button>
               </Stack>
-            )}
-            {order.status === 'CONFIRMED' && (
-              <Button size="small" variant="contained" onClick={() => readyMutation.mutate(order.id)}>
-                Segna come pronto
-              </Button>
-            )}
-            {order.status === 'READY' && (
-              <Button
-                size="small"
-                variant="contained"
-                color="success"
-                onClick={() => {
-                  if (order.fulfillment === 'DELIVERY') {
-                    completeMutation.mutate({ id: order.id });
-                  } else {
-                    setCompleting(order);
-                    setCompletePaymentMethod('CASH');
-                  }
-                }}
-              >
-                Completa
-              </Button>
-            )}
-            {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
-              <Button size="small" color="error" onClick={() => setCancelling(order)}>
-                Annulla ordine
-              </Button>
             )}
           </Stack>
         </Box>
