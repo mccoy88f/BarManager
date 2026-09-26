@@ -18,6 +18,7 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -231,9 +232,10 @@ export function OnlineOrdersAdmin() {
   const renderOrderCard = (order: OrderRow) => (
     <Card key={order.id} variant="outlined">
       <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+        {/* Intestazione card: Dati cliente e chip a sinistra, pulsanti di stampa in alto a destra */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
               <Typography variant="subtitle1" fontWeight={600}>
                 {order.firstName} {order.lastName}
               </Typography>
@@ -255,13 +257,29 @@ export function OnlineOrdersAdmin() {
                 }
               />
             </Stack>
-            <Typography variant="body2" color="text.secondary">
-              {formatWhen(order.requestedAt)}
-              {' — '}
-              <a href={`tel:${order.phone}`} style={{ color: 'inherit' }}>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+              <span>{formatWhen(order.requestedAt)}</span>
+              <span>—</span>
+              <Box
+                component="a"
+                href={`tel:${order.phone}`}
+                sx={{
+                  color: 'primary.main',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+                title="Chiama cliente"
+              >
+                <PhoneIcon sx={{ fontSize: 16 }} />
                 {order.phone}
-              </a>
+              </Box>
             </Typography>
+
             {order.fulfillment === 'DELIVERY' && (
               <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">
@@ -284,132 +302,129 @@ export function OnlineOrdersAdmin() {
                 )}
               </Box>
             )}
-            {order.proposedRequestedAt && (
-              <Chip
-                size="small"
-                color="warning"
-                sx={{ mt: 0.5 }}
-                label={`In attesa di conferma nuovo orario: ${formatWhen(order.proposedRequestedAt)}`}
-              />
-            )}
-            {isAwaitingOpening(order) && (
-              <Chip
-                size="small"
-                color="warning"
-                sx={{ mt: 0.5, ml: order.proposedRequestedAt ? 0.5 : 0 }}
-                label={`In attesa di apertura (${formatWhen(order.requestedAt)})`}
-              />
-            )}
-            <Box sx={{ mt: 1 }}>
-              {order.lines.map((line) => (
-                <Box key={line.id} sx={{ mb: 0.5 }}>
-                  <Typography variant="body2" fontWeight={500}>
-                    {line.quantity}× {line.itemName}
-                    {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
-                  </Typography>
-                  {line.modifiers.map((m, idx) => (
-                    <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
-                      + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
-                    </Typography>
-                  ))}
-                  {line.note?.trim() && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1, fontStyle: 'italic' }}>
-                      nota: {line.note.trim()}
-                    </Typography>
-                  )}
-                </Box>
-              ))}
-            </Box>
-            <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.5 }}>
-              Totale € {order.total.toFixed(2)}
-            </Typography>
           </Box>
 
-          <Stack spacing={1} alignItems="flex-end">
-            <Stack direction="row" spacing={1}>
-              <IconButton size="small" component="a" href={`tel:${order.phone}`} title="Chiama">
-                <PhoneIcon fontSize="small" />
-              </IconButton>
-              {order.fulfillment === 'DELIVERY' && navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
-                <IconButton
-                  size="small"
-                  color="primary"
-                  component="a"
-                  href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Raggiungi il luogo (Google Maps)"
-                >
-                  <DirectionsIcon fontSize="small" />
-                </IconButton>
-              )}
+          {/* In alto a destra: stampe comanda cucina e scontrino */}
+          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+            <Tooltip title="Stampa comanda cucina">
               <IconButton
                 size="small"
-                title="Stampa comanda cucina"
                 onClick={() => printMutation.mutate({ id: order.id, kind: 'kitchen-ticket' })}
               >
                 <SoupKitchenIcon fontSize="small" />
               </IconButton>
+            </Tooltip>
+            <Tooltip title="Stampa scontrino completo">
               <IconButton
                 size="small"
-                title="Stampa scontrino completo"
                 onClick={() => printMutation.mutate({ id: order.id, kind: 'receipt' })}
               >
                 <ReceiptLongIcon fontSize="small" />
               </IconButton>
-            </Stack>
-
-            {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
-              <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end" alignItems="center">
-                {order.status === 'PENDING' && (
-                  <Button size="small" variant="contained" color="success" onClick={() => acceptMutation.mutate(order.id)}>
-                    Accetta
-                  </Button>
-                )}
-                {order.status === 'CONFIRMED' && (
-                  <Button size="small" variant="contained" onClick={() => readyMutation.mutate(order.id)}>
-                    Segna come pronto
-                  </Button>
-                )}
-                {order.status === 'READY' && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    onClick={() => {
-                      if (order.fulfillment === 'DELIVERY') {
-                        completeMutation.mutate({ id: order.id });
-                      } else {
-                        setCompleting(order);
-                        setCompletePaymentMethod('CASH');
-                      }
-                    }}
-                  >
-                    Completa
-                  </Button>
-                )}
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    setChangingTime(order);
-                    setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
-                  }}
-                >
-                  Proponi orario
-                </Button>
-                {order.status === 'PENDING' && (
-                  <Button size="small" variant="outlined" color="error" onClick={() => setRejecting(order)}>
-                    Rifiuta
-                  </Button>
-                )}
-                <Button size="small" color="error" onClick={() => setCancelling(order)}>
-                  Annulla ordine
-                </Button>
-              </Stack>
-            )}
+            </Tooltip>
           </Stack>
         </Box>
+
+        {order.proposedRequestedAt && (
+          <Box sx={{ mt: 1 }}>
+            <Chip
+              size="small"
+              color="warning"
+              label={`In attesa di conferma nuovo orario: ${formatWhen(order.proposedRequestedAt)}`}
+            />
+          </Box>
+        )}
+        {isAwaitingOpening(order) && (
+          <Box sx={{ mt: 0.5 }}>
+            <Chip
+              size="small"
+              color="warning"
+              label={`In attesa di apertura (${formatWhen(order.requestedAt)})`}
+            />
+          </Box>
+        )}
+
+        <Box sx={{ mt: 1.5 }}>
+          {order.lines.map((line) => (
+            <Box key={line.id} sx={{ mb: 0.5 }}>
+              <Typography variant="body2" fontWeight={500}>
+                {line.quantity}× {line.itemName}
+                {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
+              </Typography>
+              {line.modifiers.map((m, idx) => (
+                <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
+                  + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                </Typography>
+              ))}
+              {line.note?.trim() && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1, fontStyle: 'italic' }}>
+                  nota: {line.note.trim()}
+                </Typography>
+              )}
+            </Box>
+          ))}
+        </Box>
+
+        <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.5 }}>
+          Totale € {order.total.toFixed(2)}
+        </Typography>
+
+        {/* Barra azioni sul fondo della card */}
+        {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
+          <Stack
+            direction="row"
+            spacing={1}
+            flexWrap="wrap"
+            alignItems="center"
+            sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+          >
+            {order.status === 'PENDING' && (
+              <Button size="small" variant="contained" color="success" onClick={() => acceptMutation.mutate(order.id)}>
+                Accetta
+              </Button>
+            )}
+            {order.status === 'CONFIRMED' && (
+              <Button size="small" variant="contained" onClick={() => readyMutation.mutate(order.id)}>
+                Segna come pronto
+              </Button>
+            )}
+            {order.status === 'READY' && (
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                onClick={() => {
+                  if (order.fulfillment === 'DELIVERY') {
+                    completeMutation.mutate({ id: order.id });
+                  } else {
+                    setCompleting(order);
+                    setCompletePaymentMethod('CASH');
+                  }
+                }}
+              >
+                Completa
+              </Button>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                setChangingTime(order);
+                setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
+              }}
+            >
+              Proponi orario
+            </Button>
+            {order.status === 'PENDING' && (
+              <Button size="small" variant="outlined" color="error" onClick={() => setRejecting(order)}>
+                Rifiuta
+              </Button>
+            )}
+            <Button size="small" color="error" onClick={() => setCancelling(order)}>
+              Annulla ordine
+            </Button>
+          </Stack>
+        )}
       </CardContent>
     </Card>
   );
