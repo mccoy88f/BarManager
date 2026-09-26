@@ -47,7 +47,19 @@ async function callSumUp<T>(apiKey: string, path: string, init?: RequestInit): P
     throw new SumUpApiError('Limite di richieste SumUp superato: riprova tra qualche minuto.', res.status);
   }
   if (!res.ok) {
-    throw new SumUpApiError(`SumUp ha risposto con errore ${res.status}.`, res.status);
+    // Il corpo della risposta di SumUp (es. {"message": "...", "error_code": "..."})
+    // è l'unico modo per capire *perché* un 400 viene rifiutato (account non
+    // abilitato ai pagamenti online, campo mancante, valuta non supportata,
+    // ...): senza includerlo qui il log resta un 400 muto e indiagnosticabile.
+    const bodyText = await res.text().catch(() => '');
+    let detail = bodyText;
+    try {
+      const parsed = JSON.parse(bodyText);
+      detail = parsed.message || parsed.error_message || parsed.error_code || bodyText;
+    } catch {
+      // corpo non JSON: teniamo il testo grezzo
+    }
+    throw new SumUpApiError(`SumUp ha risposto con errore ${res.status}${detail ? `: ${detail}` : '.'}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
