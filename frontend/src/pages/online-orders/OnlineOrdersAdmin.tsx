@@ -33,6 +33,7 @@ import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { useOrderNotification } from '../../context/OrderNotificationContext';
 
 type OnlineOrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 type Fulfillment = 'PICKUP' | 'DELIVERY';
@@ -130,47 +131,6 @@ function isAwaitingOpening(order: OrderRow): boolean {
 const QUEUE_POLL_MS = 15000;
 
 /**
- * Beep sintetizzato via Web Audio API per la notifica sonora di un nuovo
- * ordine (§5.10): niente file audio da distribuire, un semplice oscillatore
- * breve basta. Richiede un `AudioContext` già creato/ripreso da
- * un'interazione dell'utente (v. `enableSound` sotto) — i browser bloccano
- * altrimenti l'audio non ancora "sbloccato" da un gesto.
- */
-function playOrderAlertBeep(ctx: AudioContext) {
-  try {
-    if (ctx.state === 'suspended') {
-      void ctx.resume();
-    }
-    const now = ctx.currentTime;
-    // Primo squillo: 880 Hz (A5)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now);
-    gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.22);
-
-    // Secondo squillo armonico: 1174.66 Hz (D6) dopo 120ms
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1174.66, now + 0.12);
-    gain2.gain.setValueAtTime(0.25, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.4);
-  } catch {
-    // Context audio chiuso o non disponibile
-  }
-}
-
-/**
  * Coda ordini online (§5.10 di DEVELOPMENT.md): tre schede — Da
  * confermare, In preparazione, Pronti — stesso schema a tab della coda
  * prenotazioni.
@@ -188,69 +148,13 @@ export function OnlineOrdersAdmin() {
   const [changingTime, setChangingTime] = useState<OrderRow | null>(null);
   const [timeForm, setTimeForm] = useState({ date: '', time: '' });
 
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const [handledPendingIds, setHandledPendingIds] = useState<Set<string>>(new Set());
-
-  const toggleSound = () => {
-    if (soundEnabled) {
-      setSoundEnabled(false);
-    } else {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      }
-      if (audioCtxRef.current.state === 'suspended') {
-        void audioCtxRef.current.resume();
-      }
-      setSoundEnabled(true);
-      playOrderAlertBeep(audioCtxRef.current);
-    }
-  };
+  const { soundEnabled, toggleSound, markOrderHandled } = useOrderNotification();
 
   const queueQuery = useQuery({
     queryKey: ['online-orders-queue'],
     queryFn: async () => (await api.get<OrderRow[]>('/online-orders')).data,
     refetchInterval: QUEUE_POLL_MS,
   });
-
-  // Ordini in stato PENDING che richiedono l'intervento dello staff (non ancora accettati/rifiutati e negozio già aperto)
-  const hasActivePendingOrders = useMemo(() => {
-    return (queueQuery.data ?? []).some(
-      (o) => o.status === 'PENDING' && !isAwaitingOpening(o) && !handledPendingIds.has(o.id),
-    );
-  }, [queueQuery.data, handledPendingIds]);
-
-  // Se i dati del server si aggiornano, ripulisci gli handledPendingIds che non sono più PENDING
-  useEffect(() => {
-    if (!queueQuery.data) return;
-    const serverPendingIds = new Set(queueQuery.data.filter((o) => o.status === 'PENDING').map((o) => o.id));
-    setHandledPendingIds((prev) => {
-      let changed = false;
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (serverPendingIds.has(id)) next.add(id);
-        else changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }, [queueQuery.data]);
-
-  // Riproduzione continua finché ci sono ordini PENDING attivi o finché lo staff non disattiva il suono
-  useEffect(() => {
-    if (!soundEnabled || !hasActivePendingOrders) return;
-
-    if (audioCtxRef.current) {
-      playOrderAlertBeep(audioCtxRef.current);
-    }
-
-    const interval = setInterval(() => {
-      if (audioCtxRef.current) {
-        playOrderAlertBeep(audioCtxRef.current);
-      }
-    }, 3500);
-
-    return () => clearInterval(interval);
-  }, [soundEnabled, hasActivePendingOrders]);
 
   const ordersByTab = useMemo(() => {
     const grouped: Record<OnlineOrderStatus, OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [] };
@@ -262,24 +166,16 @@ export function OnlineOrdersAdmin() {
 
   const acceptMutation = useMutation({
     mutationFn: async (id: string) => {
-      setHandledPendingIds((prev) => new Set(prev).add(id));
+      markOrderHandled(id);
       return (await api.patch(`/online-orders/${id}/accept`)).data;
     },
     onSuccess: () => { invalidate(); showToast('Ordine confermato'); },
-    onError: (error, id) => {
-      setHandledPendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      invalidate();
-      showToast(extractErrorMessage(error));
-    },
+    onError: (error) => { invalidate(); showToast(extractErrorMessage(error)); },
   });
 
   const rejectMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      setHandledPendingIds((prev) => new Set(prev).add(id));
+      markOrderHandled(id);
       return (await api.patch(`/online-orders/${id}/reject`, { reason })).data;
     },
     onSuccess: () => {
@@ -288,14 +184,7 @@ export function OnlineOrdersAdmin() {
       setRejectReason('');
       showToast('Ordine rifiutato');
     },
-    onError: (error, { id }) => {
-      setHandledPendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      showToast(extractErrorMessage(error));
-    },
+    onError: (error) => showToast(extractErrorMessage(error)),
   });
 
   const readyMutation = useMutation({

@@ -17,6 +17,8 @@ import {
   Menu,
   MenuItem,
   Divider,
+  Badge,
+  Tooltip,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
@@ -27,11 +29,15 @@ import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 import { Outlet, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
+import { canAccessModule } from '../config/modules';
+import { useOrderNotification } from '../context/OrderNotificationContext';
 import { APP_VERSION } from '../version';
 
 const DRAWER_WIDTH = 260;
@@ -61,6 +67,11 @@ export function AppShell() {
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(
     navigation.find((item) => location.pathname.startsWith(item.path))?.key ?? null,
+  );
+
+  const { soundEnabled, toggleSound, activePendingCount } = useOrderNotification();
+  const hasOnlineOrdersAccess = Boolean(
+    user && user.role !== 'SUPER_ADMIN' && canAccessModule(user, 'onlineOrders'),
   );
 
   const visibleItems = navigation.filter((item) => canSeeNavItem(user, item));
@@ -171,6 +182,26 @@ export function AppShell() {
           </Typography>
           {user && (
             <>
+              {hasOnlineOrdersAccess && (
+                <Tooltip
+                  title={
+                    soundEnabled
+                      ? 'Notifiche sonore ordini attive (clicca per disattivare)'
+                      : 'Attiva notifiche sonore ordini'
+                  }
+                >
+                  <IconButton
+                    color="inherit"
+                    onClick={toggleSound}
+                    aria-label="Notifiche sonore ordini"
+                    sx={{ mr: 1 }}
+                  >
+                    <Badge badgeContent={activePendingCount} color="error">
+                      {soundEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              )}
               <IconButton
                 color="inherit"
                 onClick={(e) => setUserMenuAnchor(e.currentTarget)}

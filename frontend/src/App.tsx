@@ -50,6 +50,7 @@ import { OnlineOrdersAdmin } from './pages/online-orders/OnlineOrdersAdmin';
 import { OnlineOrdersHistory } from './pages/online-orders/OnlineOrdersHistory';
 import { OnlineOrdersSettings } from './pages/online-orders/OnlineOrdersSettings';
 import { OnlineOrdersPublicLink } from './pages/online-orders/OnlineOrdersPublicLink';
+import { OrderNotificationProvider } from './context/OrderNotificationContext';
 
 export default function App() {
   return (
@@ -68,7 +69,13 @@ export default function App() {
       <Route path="/login" element={<Login />} />
 
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppShell />}>
+        <Route
+          element={
+            <OrderNotificationProvider>
+              <AppShell />
+            </OrderNotificationProvider>
+          }
+        >
           <Route path="/" element={<Dashboard />} />
           <Route path="/account" element={<MyAccount />} />
           <Route path="/clock/:token" element={<ClockPage />} />
