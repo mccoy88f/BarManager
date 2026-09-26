@@ -186,7 +186,7 @@ export function AppShell() {
                 <Tooltip
                   title={
                     soundEnabled
-                      ? 'Notifiche sonore ordini attive (clicca per disattivare)'
+                      ? 'Notifiche sonore ordini attive'
                       : 'Attiva notifiche sonore ordini'
                   }
                 >

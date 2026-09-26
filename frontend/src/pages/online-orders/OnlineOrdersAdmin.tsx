@@ -71,7 +71,7 @@ interface OrderRow {
   lines: OrderLine[];
 }
 
-const QUEUE_TABS: OnlineOrderStatus[] = ['PENDING', 'CONFIRMED', 'READY'];
+const QUEUE_TABS: OnlineOrderStatus[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'REJECTED', 'CANCELLED'];
 
 const tabLabels: Record<OnlineOrderStatus, string> = {
   PENDING: 'Da confermare',
@@ -230,17 +230,30 @@ export function OnlineOrdersAdmin() {
   });
 
   const renderOrderCard = (order: OrderRow) => (
-    <Card key={order.id} variant="outlined">
-      <CardContent>
+    <Card
+      key={order.id}
+      variant="outlined"
+      sx={{
+        borderRadius: 2.5,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        borderColor: order.status === 'PENDING' ? 'warning.main' : 'divider',
+        borderWidth: order.status === 'PENDING' ? 2 : 1,
+        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+        '&:hover': {
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        },
+      }}
+    >
+      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
         {/* Intestazione card: Dati cliente e chip a sinistra, pulsanti di stampa in alto a destra */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1.5 }}>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-              <Typography variant="subtitle1" fontWeight={600}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.75 }}>
+              <Typography variant="h6" fontWeight={700} sx={{ fontSize: { xs: '1.05rem', sm: '1.15rem' } }}>
                 {order.firstName} {order.lastName}
               </Typography>
-              <Chip size="small" color={statusColors[order.status]} label={tabLabels[order.status]} />
-              <Chip size="small" variant="outlined" label={order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'} />
+              <Chip size="small" color={statusColors[order.status]} label={tabLabels[order.status]} sx={{ fontWeight: 600 }} />
+              <Chip size="small" variant="outlined" label={order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'} sx={{ fontWeight: 500 }} />
               <Chip
                 size="small"
                 variant="outlined"
@@ -255,47 +268,60 @@ export function OnlineOrdersAdmin() {
                           ? 'Al ritiro'
                           : 'Non indicato'
                 }
+                sx={{ fontWeight: 500 }}
               />
             </Stack>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
-              <span>{formatWhen(order.requestedAt)}</span>
-              <span>—</span>
-              <Box
+            {/* Data e Telefono con touch target comodo */}
+            <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 1, gap: 1 }}>
+              <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                🕒 {formatWhen(order.requestedAt)}
+              </Typography>
+              <Button
                 component="a"
                 href={`tel:${order.phone}`}
+                size="small"
+                variant="outlined"
+                color="primary"
+                startIcon={<PhoneIcon sx={{ fontSize: 18 }} />}
                 sx={{
-                  color: 'primary.main',
-                  textDecoration: 'none',
+                  minHeight: 38,
+                  px: 1.75,
+                  py: 0.5,
                   fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  '&:hover': { textDecoration: 'underline' },
+                  textTransform: 'none',
+                  borderRadius: 2,
                 }}
                 title="Chiama cliente"
               >
-                <PhoneIcon sx={{ fontSize: 16 }} />
                 {order.phone}
-              </Box>
-            </Typography>
+              </Button>
+            </Stack>
 
+            {/* Indirizzo e Navigazione con touch target comodo */}
             {order.fulfillment === 'DELIVERY' && (
-              <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                <Typography variant="body2" color="text.secondary">
+              <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary" fontWeight={500}>
                   📍 {order.deliveryAddress || 'Consegna a domicilio'}
                 </Typography>
                 {navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
                   <Button
                     size="small"
                     variant="outlined"
-                    color="primary"
-                    startIcon={<DirectionsIcon fontSize="small" />}
+                    color="secondary"
+                    startIcon={<DirectionsIcon sx={{ fontSize: 18 }} />}
                     component="a"
                     href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    sx={{ textTransform: 'none', py: 0.2, px: 1, fontSize: '0.8125rem' }}
+                    sx={{
+                      minHeight: 38,
+                      px: 1.75,
+                      py: 0.5,
+                      fontWeight: 600,
+                      textTransform: 'none',
+                      borderRadius: 2,
+                    }}
                   >
                     Raggiungi il luogo
                   </Button>
@@ -304,93 +330,149 @@ export function OnlineOrdersAdmin() {
             )}
           </Box>
 
-          {/* In alto a destra: stampe comanda cucina e scontrino */}
-          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+          {/* In alto a destra: stampe comanda cucina e scontrino (touch target 44x44px) */}
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
             <Tooltip title="Stampa comanda cucina">
               <IconButton
-                size="small"
                 onClick={() => printMutation.mutate({ id: order.id, kind: 'kitchen-ticket' })}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  bgcolor: 'background.paper',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+                aria-label="Stampa comanda cucina"
               >
-                <SoupKitchenIcon fontSize="small" />
+                <SoupKitchenIcon />
               </IconButton>
             </Tooltip>
             <Tooltip title="Stampa scontrino completo">
               <IconButton
-                size="small"
                 onClick={() => printMutation.mutate({ id: order.id, kind: 'receipt' })}
+                sx={{
+                  width: 44,
+                  height: 44,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  bgcolor: 'background.paper',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+                aria-label="Stampa scontrino completo"
               >
-                <ReceiptLongIcon fontSize="small" />
+                <ReceiptLongIcon />
               </IconButton>
             </Tooltip>
           </Stack>
         </Box>
 
         {order.proposedRequestedAt && (
-          <Box sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1.5 }}>
             <Chip
-              size="small"
+              size="medium"
               color="warning"
               label={`In attesa di conferma nuovo orario: ${formatWhen(order.proposedRequestedAt)}`}
+              sx={{ fontWeight: 600 }}
             />
           </Box>
         )}
         {isAwaitingOpening(order) && (
-          <Box sx={{ mt: 0.5 }}>
+          <Box sx={{ mt: 1 }}>
             <Chip
-              size="small"
+              size="medium"
               color="warning"
               label={`In attesa di apertura (${formatWhen(order.requestedAt)})`}
+              sx={{ fontWeight: 600 }}
             />
           </Box>
         )}
 
-        <Box sx={{ mt: 1.5 }}>
+        {/* Box Prodotti ordinati */}
+        <Box
+          sx={{
+            mt: 2,
+            p: 1.75,
+            bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'grey.50'),
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
           {order.lines.map((line) => (
-            <Box key={line.id} sx={{ mb: 0.5 }}>
-              <Typography variant="body2" fontWeight={500}>
+            <Box key={line.id} sx={{ mb: 1, '&:last-child': { mb: 0 } }}>
+              <Typography variant="body1" fontWeight={600}>
                 {line.quantity}× {line.itemName}
                 {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
               </Typography>
               {line.modifiers.map((m, idx) => (
-                <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
+                <Typography key={idx} variant="body2" color="text.secondary" sx={{ display: 'block', pl: 1.5, mt: 0.25, fontWeight: 500 }}>
                   + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
                 </Typography>
               ))}
               {line.note?.trim() && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1, fontStyle: 'italic' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ display: 'block', pl: 1.5, mt: 0.25, fontStyle: 'italic' }}>
                   nota: {line.note.trim()}
                 </Typography>
               )}
             </Box>
           ))}
+          <Box
+            sx={{
+              mt: 1.5,
+              pt: 1.25,
+              borderTop: '1px dashed',
+              borderColor: 'divider',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              {order.fulfillment === 'DELIVERY' && order.deliveryFee > 0 ? `Consegna: € ${order.deliveryFee.toFixed(2)}` : ''}
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Totale € {order.total.toFixed(2)}
+            </Typography>
+          </Box>
         </Box>
 
-        <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.5 }}>
-          Totale € {order.total.toFixed(2)}
-        </Typography>
-
-        {/* Barra azioni sul fondo della card */}
+        {/* Barra azioni sul fondo della card — bottoni ampi touch-friendly */}
         {(order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'READY') && (
           <Stack
             direction="row"
-            spacing={1}
+            spacing={1.5}
             flexWrap="wrap"
             alignItems="center"
-            sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+            sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider', gap: 1.25 }}
           >
             {order.status === 'PENDING' && (
-              <Button size="small" variant="contained" color="success" onClick={() => acceptMutation.mutate(order.id)}>
+              <Button
+                size="medium"
+                variant="contained"
+                color="success"
+                onClick={() => acceptMutation.mutate(order.id)}
+                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
+              >
                 Accetta
               </Button>
             )}
             {order.status === 'CONFIRMED' && (
-              <Button size="small" variant="contained" onClick={() => readyMutation.mutate(order.id)}>
+              <Button
+                size="medium"
+                variant="contained"
+                color="primary"
+                onClick={() => readyMutation.mutate(order.id)}
+                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
+              >
                 Segna come pronto
               </Button>
             )}
             {order.status === 'READY' && (
               <Button
-                size="small"
+                size="medium"
                 variant="contained"
                 color="success"
                 onClick={() => {
@@ -401,26 +483,39 @@ export function OnlineOrdersAdmin() {
                     setCompletePaymentMethod('CASH');
                   }
                 }}
+                sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem', borderRadius: 2 }}
               >
                 Completa
               </Button>
             )}
             <Button
-              size="small"
+              size="medium"
               variant="outlined"
               onClick={() => {
                 setChangingTime(order);
                 setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
               }}
+              sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
             >
               Proponi orario
             </Button>
             {order.status === 'PENDING' && (
-              <Button size="small" variant="outlined" color="error" onClick={() => setRejecting(order)}>
+              <Button
+                size="medium"
+                variant="outlined"
+                color="error"
+                onClick={() => setRejecting(order)}
+                sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
+              >
                 Rifiuta
               </Button>
             )}
-            <Button size="small" color="error" onClick={() => setCancelling(order)}>
+            <Button
+              size="medium"
+              color="error"
+              onClick={() => setCancelling(order)}
+              sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none', ml: { sm: 'auto' } }}
+            >
               Annulla ordine
             </Button>
           </Stack>
@@ -431,26 +526,82 @@ export function OnlineOrdersAdmin() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h6">Ordini online</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography variant="h5" fontWeight={700}>
+            Ordini online
+          </Typography>
+          {ordersByTab.PENDING.length > 0 && (
+            <Chip
+              label={`${ordersByTab.PENDING.length} in attesa`}
+              color="error"
+              size="medium"
+              sx={{ fontWeight: 700 }}
+            />
+          )}
+        </Box>
         <Button
-          size="small"
           variant={soundEnabled ? 'contained' : 'outlined'}
           color={soundEnabled ? 'primary' : 'inherit'}
           startIcon={soundEnabled ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
           onClick={toggleSound}
+          sx={{
+            minHeight: 42,
+            px: 2,
+            py: 1,
+            fontWeight: 600,
+            borderRadius: 2,
+            textTransform: 'none',
+          }}
         >
-          {soundEnabled ? 'Notifiche sonore attive (clicca per disattivare)' : 'Attiva notifiche sonore'}
+          {soundEnabled ? 'Notifiche sonore attive' : 'Attiva notifiche sonore'}
         </Button>
       </Box>
 
-      <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ minHeight: 0 }} variant="scrollable" scrollButtons="auto">
+      <Tabs
+        value={tab}
+        onChange={(_e, v) => setTab(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{
+          minHeight: 48,
+          borderBottom: 1,
+          borderColor: 'divider',
+          '& .MuiTab-root': {
+            minHeight: 48,
+            minWidth: { xs: 'auto', sm: 120 },
+            px: { xs: 1.5, sm: 2.5 },
+            py: 1.25,
+            fontWeight: 600,
+            fontSize: '0.9rem',
+            textTransform: 'none',
+          },
+        }}
+      >
         {QUEUE_TABS.map((s) => (
-          <Tab key={s} value={s} label={`${tabLabels[s]} (${ordersByTab[s].length})`} sx={{ minHeight: 0 }} />
+          <Tab
+            key={s}
+            value={s}
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <span>{tabLabels[s]}</span>
+                <Chip
+                  size="small"
+                  label={ordersByTab[s].length}
+                  color={s === 'PENDING' && ordersByTab[s].length > 0 ? 'error' : tab === s ? 'primary' : 'default'}
+                  sx={{
+                    height: 22,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                  }}
+                />
+              </Box>
+            }
+          />
         ))}
       </Tabs>
 
-      <Stack spacing={2}>
+      <Stack spacing={2.5}>
         {ordersByTab[tab].map(renderOrderCard)}
         {ordersByTab[tab].length === 0 && (
           <Typography variant="body2" color="text.secondary">
