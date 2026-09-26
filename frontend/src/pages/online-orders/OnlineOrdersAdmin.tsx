@@ -11,10 +11,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   FormControlLabel,
   IconButton,
+  InputLabel,
+  MenuItem,
   Radio,
   RadioGroup,
+  Select,
   Stack,
   Tab,
   Tabs,
@@ -151,6 +155,8 @@ export function OnlineOrdersAdmin() {
   const [completePaymentMethod, setCompletePaymentMethod] = useState<'CASH' | 'CARD_IN_STORE'>('CASH');
   const [changingTime, setChangingTime] = useState<OrderRow | null>(null);
   const [timeForm, setTimeForm] = useState({ date: '', time: '' });
+  const [delayingOrder, setDelayingOrder] = useState<OrderRow | null>(null);
+  const [delayMinutes, setDelayMinutes] = useState(10);
 
   const { soundEnabled, toggleSound, markOrderHandled } = useOrderNotification();
 
@@ -224,7 +230,8 @@ export function OnlineOrdersAdmin() {
     onSuccess: () => {
       invalidate();
       setChangingTime(null);
-      showToast('Nuovo orario proposto: in attesa di conferma del cliente');
+      setDelayingOrder(null);
+      showToast('Ritardo comunicato: in attesa di conferma del cliente');
     },
   });
 
@@ -499,7 +506,7 @@ export function OnlineOrdersAdmin() {
               </Stack>
             )}
 
-            {/* CONFIRMED: Segna come pronto (verde) | Proponi orario (arancione) | Annulla ordine (rosso) */}
+            {/* CONFIRMED: Segna come pronto (verde) | Ritardo (arancione) | Annulla ordine (rosso) */}
             {order.status === 'CONFIRMED' && (
               <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Button
@@ -519,12 +526,9 @@ export function OnlineOrdersAdmin() {
                     color: 'warning.contrastText',
                     '&:hover': { bgcolor: 'warning.dark' },
                   }}
-                  onClick={() => {
-                    setChangingTime(order);
-                    setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
-                  }}
+                  onClick={() => { setDelayingOrder(order); setDelayMinutes(10); }}
                 >
-                  Proponi orario
+                  Ritardo
                 </Button>
                 <Button
                   color="error"
@@ -763,6 +767,92 @@ export function OnlineOrdersAdmin() {
             }
           >
             Proponi
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Dialog ritardo (solo CONFIRMED): aggiunge N minuti all'orario corrente e notifica il cliente */}
+      <Dialog open={!!delayingOrder} onClose={() => setDelayingOrder(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Comunica ritardo</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2.5, pt: '20px !important' }}>
+          <Typography variant="body2" color="text.secondary">
+            Seleziona il ritardo da comunicare a{' '}
+            <strong>{delayingOrder?.firstName} {delayingOrder?.lastName}</strong>.
+            Il nuovo orario previsto verrà inviato via email.
+          </Typography>
+
+          {/* Orario attuale */}
+          {delayingOrder && (
+            <Box sx={{ display: 'grid', gap: 0.5 }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Orario attuale
+              </Typography>
+              <Typography variant="body1" fontWeight={600}>
+                {formatWhen(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt)}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Selettore ritardo a passi di 5 min */}
+          <FormControl fullWidth size="medium">
+            <InputLabel id="delay-select-label">Ritardo</InputLabel>
+            <Select
+              labelId="delay-select-label"
+              value={delayMinutes}
+              label="Ritardo"
+              onChange={(e) => setDelayMinutes(Number(e.target.value))}
+            >
+              {[5, 10, 15, 20, 25, 30, 40, 45, 60, 75, 90].map((m) => (
+                <MenuItem key={m} value={m}>
+                  +{m} {m === 1 ? 'minuto' : 'minuti'}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Anteprima nuovo orario */}
+          {delayingOrder && (
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: 'warning.light',
+                color: 'warning.contrastText',
+                border: '1px solid',
+                borderColor: 'warning.main',
+              }}
+            >
+              <Typography variant="body2" fontWeight={700}>
+                Nuovo orario:{' '}
+                {formatWhen(
+                  new Date(
+                    new Date(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt).getTime() +
+                      delayMinutes * 60 * 1000,
+                  ).toISOString(),
+                )}
+              </Typography>
+            </Box>
+          )}
+
+          {proposeTimeMutation.isError && (
+            <Alert severity="error">{extractErrorMessage(proposeTimeMutation.error)}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setDelayingOrder(null)}>Annulla</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={proposeTimeMutation.isPending}
+            onClick={() => {
+              if (!delayingOrder) return;
+              const base = new Date(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt);
+              proposeTimeMutation.mutate({
+                id: delayingOrder.id,
+                requestedAt: new Date(base.getTime() + delayMinutes * 60 * 1000).toISOString(),
+              });
+            }}
+          >
+            Comunica ritardo
           </Button>
         </DialogActions>
       </Dialog>
