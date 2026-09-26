@@ -1,4 +1,4 @@
-# BarManager
+# Bar Management
 
 Piattaforma **multi-tenant** (web, PWA, containerizzata con Docker) per la gestione operativa di bar/ristoranti — un sotto-dominio per locale, pensata per il deploy su **Portainer** o **Coolify**:
 

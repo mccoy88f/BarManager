@@ -37,7 +37,7 @@ export function Login() {
       <Card sx={{ maxWidth: 380, width: '100%' }}>
         <CardContent sx={{ p: 4 }}>
           <Typography variant="h5" fontWeight={700} gutterBottom>
-            BarManager
+            Bar Management
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Accedi con le credenziali fornite dall'amministratore

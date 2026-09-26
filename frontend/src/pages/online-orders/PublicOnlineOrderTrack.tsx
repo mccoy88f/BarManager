@@ -18,6 +18,8 @@ interface TrackedOrder {
   id: string;
   status: OnlineOrderStatus;
   fulfillment: 'PICKUP' | 'DELIVERY';
+  paymentMethod: 'CASH' | 'CARD_ONLINE' | 'CARD_IN_STORE' | null;
+  paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
   requestedAt: string;
   proposedRequestedAt: string | null;
   deliveryAddress: string | null;
@@ -36,6 +38,14 @@ const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
   REJECTED: 'Rifiutato',
   CANCELLED: 'Annullato',
 };
+
+function paymentMethodLabel(method: string | null, fulfillment: string): string {
+  if (method === 'CARD_ONLINE') return 'Carta (online)';
+  if (method === 'CASH') return fulfillment === 'DELIVERY' ? 'Contanti alla consegna' : 'Contanti';
+  if (method === 'CARD_IN_STORE') return 'Carta in negozio';
+  if (fulfillment === 'PICKUP') return 'In negozio al ritiro (contanti o carta)';
+  return 'Non specificato';
+}
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -117,6 +127,12 @@ export function PublicOnlineOrderTrack() {
             </Typography>
           )}
 
+          {order.status === 'REJECTED' && order.paymentMethod === 'CARD_ONLINE' && (
+            <Alert severity="info">
+              I soldi sono stati stornati e torneranno sul metodo di pagamento originale secondo i tempi previsti dall'emittente della carta.
+            </Alert>
+          )}
+
           {order.proposedRequestedAt && (
             <Alert
               severity="warning"
@@ -189,6 +205,12 @@ export function PublicOnlineOrderTrack() {
             </Typography>
             <Typography variant="subtitle1" fontWeight={700}>
               € {order.total.toFixed(2)}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2">Metodo di pagamento</Typography>
+            <Typography variant="body2" fontWeight={600}>
+              {paymentMethodLabel(order.paymentMethod, order.fulfillment)}
             </Typography>
           </Box>
 

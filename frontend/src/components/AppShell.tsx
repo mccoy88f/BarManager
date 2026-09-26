@@ -167,7 +167,7 @@ export function AppShell() {
             sx={{ flexGrow: 1, cursor: 'pointer' }}
             onClick={() => navigate('/')}
           >
-            {displayVenueName || 'BarManager'}
+            {displayVenueName || 'Bar Management'}
           </Typography>
           {user && (
             <>

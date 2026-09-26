@@ -31,6 +31,7 @@ interface OrderRow {
   email: string;
   phone: string;
   total: number;
+  paymentMethod: 'CASH' | 'CARD_ONLINE' | 'CARD_IN_STORE' | null;
   loyverseReceiptId: string | null;
   loyverseSyncError: string | null;
 }
@@ -124,6 +125,7 @@ export function OnlineOrdersHistory() {
               <TableCell>Cliente</TableCell>
               <TableCell>Telefono</TableCell>
               <TableCell>Modalità</TableCell>
+              <TableCell>Pagamento</TableCell>
               <TableCell>Orario</TableCell>
               <TableCell align="right">Totale</TableCell>
               <TableCell>Stato</TableCell>
@@ -145,6 +147,17 @@ export function OnlineOrdersHistory() {
                   </a>
                 </TableCell>
                 <TableCell>{order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'}</TableCell>
+                <TableCell>
+                  {order.paymentMethod === 'CARD_ONLINE'
+                    ? 'Carta online'
+                    : order.paymentMethod === 'CASH'
+                      ? (order.fulfillment === 'DELIVERY' ? 'Contanti alla consegna' : 'Contanti')
+                      : order.paymentMethod === 'CARD_IN_STORE'
+                        ? 'Carta in negozio'
+                        : order.fulfillment === 'PICKUP'
+                          ? 'Al ritiro'
+                          : '—'}
+                </TableCell>
                 <TableCell>{formatWhen(order.requestedAt)}</TableCell>
                 <TableCell align="right">€ {order.total.toFixed(2)}</TableCell>
                 <TableCell>
@@ -163,7 +176,7 @@ export function OnlineOrdersHistory() {
             ))}
             {paginated.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <Typography variant="body2" color="text.secondary" textAlign="center">
                     Nessun ordine trovato.
                   </Typography>

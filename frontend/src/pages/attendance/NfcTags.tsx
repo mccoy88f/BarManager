@@ -40,7 +40,7 @@ function extractErrorMessage(error: unknown): string {
 
 /**
  * Tag NFC per la timbratura: ogni tag va scritto con un'app di scrittura NFC
- * (es. NFC Tools) col testo mostrato qui — BarManager non scrive sui tag,
+ * (es. NFC Tools) col testo mostrato qui — Bar Management non scrive sui tag,
  * solo li legge al momento della timbratura.
  */
 export function NfcTags() {

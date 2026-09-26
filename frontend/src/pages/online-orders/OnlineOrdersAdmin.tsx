@@ -51,6 +51,8 @@ interface OrderRow {
   id: string;
   status: OnlineOrderStatus;
   fulfillment: Fulfillment;
+  paymentMethod: 'CASH' | 'CARD_ONLINE' | 'CARD_IN_STORE' | null;
+  paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
   requestedAt: string;
   awaitingShopOpening: boolean;
   proposedRequestedAt: string | null;
@@ -292,6 +294,21 @@ export function OnlineOrdersAdmin() {
               </Typography>
               <Chip size="small" color={statusColors[order.status]} label={tabLabels[order.status]} />
               <Chip size="small" variant="outlined" label={order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'} />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={
+                  order.paymentMethod === 'CARD_ONLINE'
+                    ? 'Carta online'
+                    : order.paymentMethod === 'CASH'
+                      ? (order.fulfillment === 'DELIVERY' ? 'Contanti alla consegna' : 'Contanti')
+                      : order.paymentMethod === 'CARD_IN_STORE'
+                        ? 'Carta in negozio'
+                        : order.fulfillment === 'PICKUP'
+                          ? 'Al ritiro'
+                          : 'Non indicato'
+                }
+              />
             </Stack>
             <Typography variant="body2" color="text.secondary">
               {formatWhen(order.requestedAt)}

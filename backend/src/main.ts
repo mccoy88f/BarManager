@@ -55,7 +55,7 @@ async function bootstrap() {
   // regolarmente avviata — sintomo: log puliti ma container "unhealthy".
   await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
-  console.log(`BarManager API listening on 0.0.0.0:${port}`);
+  console.log(`Bar Management API listening on 0.0.0.0:${port}`);
 }
 
 bootstrap();

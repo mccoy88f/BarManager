@@ -12,8 +12,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
       manifest: {
-        name: 'BarManager',
-        short_name: 'BarManager',
+        name: 'Bar Management',
+        short_name: 'Bar Management',
         description: 'Gestione presenze, HACCP e inventario per bar/ristoranti',
         theme_color: '#1E5F74',
         background_color: '#ffffff',

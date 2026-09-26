@@ -22,6 +22,16 @@ export class OnlineOrdersMailService {
     return order.fulfillment === 'DELIVERY' ? 'consegna a domicilio' : 'ritiro in negozio';
   }
 
+  private paymentMethodLabel(order: OrderWithLines): string {
+    if (order.paymentMethod === 'CARD_ONLINE') return 'Carta (online)';
+    if (order.paymentMethod === 'CASH') {
+      return order.fulfillment === 'DELIVERY' ? 'Contanti alla consegna' : 'Contanti';
+    }
+    if (order.paymentMethod === 'CARD_IN_STORE') return 'Carta in negozio';
+    if (order.fulfillment === 'PICKUP') return 'In negozio al ritiro (contanti o carta)';
+    return 'Non specificato';
+  }
+
   private when(requestedAt: Date): string {
     return `${requestedAt.toLocaleDateString('it-IT')} alle ${requestedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
   }
@@ -55,6 +65,7 @@ export class OnlineOrdersMailService {
       this.when(order.requestedAt),
       `Email: ${order.email} — Telefono: ${order.phone}`,
       ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [`Indirizzo: ${order.deliveryAddress}`] : []),
+      `Metodo di pagamento: ${this.paymentMethodLabel(order)}`,
       ...order.lines.map((l) => this.lineText(l)),
       `Totale: € ${order.total.toFixed(2)}`,
     ];
@@ -68,6 +79,7 @@ export class OnlineOrdersMailService {
       ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress
         ? [`<p>Indirizzo: ${escapeHtml(order.deliveryAddress)}</p>`]
         : []),
+      `<p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>`,
       `<ul>${order.lines.map((l) => `<li>${escapeHtml(this.lineText(l))}</li>`).join('')}</ul>`,
       `<p><strong>Totale: € ${order.total.toFixed(2)}</strong></p>`,
     ].join('\n');
@@ -177,10 +189,11 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ${order.fulfillment === 'DELIVERY' ? 'ordine in consegna' : 'ordine pronto'}`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine ${readyText}.${block.text}${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Il tuo ordine ${escapeHtml(readyText)}.</p>
+            <p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>
             ${block.html}
             ${footer.html}
           </div>`,
@@ -199,14 +212,23 @@ export class OnlineOrdersMailService {
     logoUrl?: string | null,
   ) {
     const footer = this.privacyFooter(privacyUrl);
+    const isCardPaid = order.paymentMethod === 'CARD_ONLINE';
+    const refundNoticeText = isCardPaid
+      ? `\n\nI soldi sono stati stornati e torneranno sul metodo di pagamento originale secondo i tempi previsti dall'emittente della carta.`
+      : '';
+    const refundNoticeHtml = isCardPaid
+      ? `<p>I soldi sono stati stornati e torneranno sul metodo di pagamento originale secondo i tempi previsti dall'emittente della carta.</p>`
+      : '';
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ordine non confermato`,
-      text: `Ciao ${order.firstName},\n\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Non possiamo confermare il tuo ordine per ${escapeHtml(this.when(order.requestedAt))}.</p>
             <p>Motivo: ${escapeHtml(reason)}</p>
+            <p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>
+            ${refundNoticeHtml}
             ${footer.html}
           </div>`,
       venueName,

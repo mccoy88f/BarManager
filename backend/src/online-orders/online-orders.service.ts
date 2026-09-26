@@ -769,6 +769,7 @@ export class OnlineOrdersService {
         try {
           await sumupClient.refund(decryptSecret(venue.sumupApiKeyEnc), order.sumupTransactionId);
           await this.prisma.onlineOrder.update({ where: { id }, data: { paymentStatus: 'REFUNDED' } });
+          updated.paymentStatus = 'REFUNDED';
         } catch (err) {
           throw new BadRequestException(
             `Ordine rifiutato, ma il rimborso automatico su SumUp non è riuscito: rimborsa manualmente dal Dashboard SumUp. Dettaglio: ${(err as Error).message}`,
@@ -1045,11 +1046,15 @@ export class OnlineOrdersService {
     return order.fulfillment === 'DELIVERY' ? 'Consegna a domicilio' : 'Ritiro in negozio';
   }
 
-  private paymentMethodLabel(method: OnlineOrderPaymentMethod | null): string {
-    if (method === 'CASH') return 'Contanti';
+  private paymentMethodLabel(
+    method: OnlineOrderPaymentMethod | null,
+    fulfillment?: OnlineOrderFulfillment,
+  ): string {
+    if (method === 'CASH') return fulfillment === 'DELIVERY' ? 'Contanti alla consegna' : 'Contanti';
     if (method === 'CARD_ONLINE') return 'Carta (pagata online)';
     if (method === 'CARD_IN_STORE') return 'Carta in negozio';
-    return 'Non ancora indicato';
+    if (fulfillment === 'PICKUP') return 'In negozio al ritiro (contanti o carta)';
+    return 'Non specificato';
   }
 
   /**
@@ -1095,6 +1100,7 @@ export class OnlineOrdersService {
       `${order.firstName} ${order.lastName} — ${order.phone}`,
       this.fulfillmentLabel(order),
       ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [order.deliveryAddress] : []),
+      `Metodo di pagamento: ${this.paymentMethodLabel(order.paymentMethod, order.fulfillment)}`,
       '',
     ];
 
@@ -1112,7 +1118,7 @@ export class OnlineOrdersService {
       `Subtotale: €${order.subtotal.toFixed(2)}`,
       ...(order.deliveryFee > 0 ? [`Consegna: €${order.deliveryFee.toFixed(2)}`] : []),
       `TOTALE: €${order.total.toFixed(2)}`,
-      `Pagamento: ${this.paymentMethodLabel(order.paymentMethod)} (${order.paymentStatus})`,
+      `Pagamento: ${this.paymentMethodLabel(order.paymentMethod, order.fulfillment)} (${order.paymentStatus})`,
     ];
 
     return {

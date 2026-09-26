@@ -944,7 +944,7 @@ describe('OnlineOrdersService', () => {
       const fullText = [...section.letterhead, section.title, ...section.lines, ...section.footer].join('\n');
       expect(fullText).toContain('Via Roma 1');
       expect(fullText).toContain('€22.00');
-      expect(fullText).toContain('Contanti');
+      expect(fullText).toContain('Metodo di pagamento: Contanti alla consegna');
       expect(fullText).toContain('Via Milano 5');
     });
   });

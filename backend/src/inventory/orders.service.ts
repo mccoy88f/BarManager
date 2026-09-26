@@ -203,7 +203,7 @@ export class OrdersService {
     const emailResult = await this.mail.send({
       to: order.supplier.email,
       cc,
-      subject: `Ordine BarManager — ${new Date().toLocaleDateString('it-IT')}`,
+      subject: `Ordine Bar Management — ${new Date().toLocaleDateString('it-IT')}`,
       text: `${letterhead}\n\nBuongiorno,\n\nsi richiede l'invio dei seguenti prodotti:\n\n${bodyLines.join('\n')}\n\nGrazie.`,
       html: `<div>${letterheadLines.map((line) => `<p style="margin:0;">${escapeHtml(line)}</p>`).join('')}</div>
         <p>Buongiorno,</p>
