@@ -5,12 +5,15 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Badge,
   Box,
   Button,
   Card,
   CardContent,
   CardMedia,
+  Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -270,21 +273,6 @@ function AddToCartDialog({
 
   const missingRequired = groups.some((g) => (selectedOptions[g.id]?.length ?? 0) < g.minSelections);
 
-  const toggleOption = (group: ModifierGroup, optionId: string) => {
-    setSelectedOptions((prev) => {
-      const current = prev[group.id] ?? [];
-      if (group.selectionType === 'SINGLE') {
-        return { ...prev, [group.id]: current.includes(optionId) ? [] : [optionId] };
-      }
-      const max = group.maxSelections ?? Infinity;
-      if (current.includes(optionId)) {
-        return { ...prev, [group.id]: current.filter((id) => id !== optionId) };
-      }
-      if (current.length >= max) return prev;
-      return { ...prev, [group.id]: [...current, optionId] };
-    });
-  };
-
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{item.name}</DialogTitle>
@@ -313,34 +301,122 @@ function AddToCartDialog({
           </Box>
         )}
 
-        {groups.map((group) => (
-          <Box key={group.id}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              {group.name}
-              {group.minSelections > 0 && (
-                <Typography component="span" variant="caption" color="text.secondary">
-                  {' '}
-                  (obbligatorio)
-                </Typography>
-              )}
-            </Typography>
-            <Stack spacing={0.5}>
-              {group.options.map((option) => (
-                <FormControlLabel
-                  key={option.id}
-                  control={
-                    <Switch
-                      size="small"
-                      checked={(selectedOptions[group.id] ?? []).includes(option.id)}
-                      onChange={() => toggleOption(group, option.id)}
+        {groups.map((group) => {
+          const isMultiple = group.selectionType === 'MULTIPLE';
+          const selectedIds = selectedOptions[group.id] ?? [];
+
+          if (isMultiple) {
+            const currentSelectedOptions = group.options.filter((opt) => selectedIds.includes(opt.id));
+            const hasError = group.minSelections > 0 && selectedIds.length < group.minSelections;
+            return (
+              <Box key={group.id}>
+                <Autocomplete
+                  multiple
+                  disableCloseOnSelect
+                  options={group.options}
+                  value={currentSelectedOptions}
+                  getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  onChange={(_, newValue) => {
+                    const max = group.maxSelections ?? Infinity;
+                    if (newValue.length > max) return;
+                    setSelectedOptions((prev) => ({
+                      ...prev,
+                      [group.id]: newValue.map((opt) => opt.id),
+                    }));
+                  }}
+                  renderOption={(props, option, { selected }) => {
+                    const { key, ...restProps } = props;
+                    return (
+                      <li key={key} {...restProps}>
+                        <Checkbox size="small" sx={{ mr: 1 }} checked={selected} />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                          <Typography variant="body2">{option.name}</Typography>
+                          {option.price > 0 && (
+                            <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ ml: 1 }}>
+                              +€ {option.price.toFixed(2)}
+                            </Typography>
+                          )}
+                        </Box>
+                      </li>
+                    );
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={group.name}
+                      placeholder={currentSelectedOptions.length === 0 ? 'Cerca modificatori...' : ''}
+                      helperText={
+                        group.minSelections > 0
+                          ? `Obbligatorio (minimo ${group.minSelections}${group.maxSelections ? `, massimo ${group.maxSelections}` : ''})`
+                          : group.maxSelections
+                          ? `Massimo ${group.maxSelections} scelte`
+                          : undefined
+                      }
+                      error={hasError}
                     />
+                  )}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => {
+                      const { key, ...tagProps } = getTagProps({ index });
+                      return (
+                        <Chip
+                          key={key}
+                          size="small"
+                          label={`${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                          {...tagProps}
+                        />
+                      );
+                    })
                   }
-                  label={`${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
                 />
-              ))}
-            </Stack>
-          </Box>
-        ))}
+              </Box>
+            );
+          }
+
+          const selectedOption = group.options.find((opt) => selectedIds[0] === opt.id) ?? null;
+          const hasError = group.minSelections > 0 && !selectedOption;
+          return (
+            <Box key={group.id}>
+              <Autocomplete
+                options={group.options}
+                value={selectedOption}
+                getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                onChange={(_, newValue) => {
+                  setSelectedOptions((prev) => ({
+                    ...prev,
+                    [group.id]: newValue ? [newValue.id] : [],
+                  }));
+                }}
+                renderOption={(props, option) => {
+                  const { key, ...restProps } = props;
+                  return (
+                    <li key={key} {...restProps}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <Typography variant="body2">{option.name}</Typography>
+                        {option.price > 0 && (
+                          <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ ml: 1 }}>
+                            +€ {option.price.toFixed(2)}
+                          </Typography>
+                        )}
+                      </Box>
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={group.name}
+                    placeholder="Cerca e seleziona..."
+                    helperText={group.minSelections > 0 ? 'Obbligatorio (seleziona 1 opzione)' : undefined}
+                    error={hasError}
+                  />
+                )}
+              />
+            </Box>
+          );
+        })}
 
         <TextField
           label="Note (opzionale, es. senza ghiaccio)"
