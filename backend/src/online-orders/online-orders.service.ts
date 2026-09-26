@@ -1098,11 +1098,14 @@ export class OnlineOrdersService {
     venueName: string,
     order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
   ): ReceiptSection {
-    const lines = order.lines.flatMap((line) => [
-      `${line.quantity}x ${line.itemName}${line.variantName ? ` (${line.variantName})` : ''}`,
-      ...line.modifiers.map((m) => `  + ${m.optionName}`),
-      ...(line.note ? [`  nota: ${line.note}`] : []),
-    ]);
+    const lines = order.lines.flatMap((line) => {
+      const variant = line.variantName?.trim();
+      return [
+        `${line.quantity}x ${line.itemName}${variant ? ` (${variant})` : ''}`,
+        ...line.modifiers.map((m) => `  + ${m.optionName}`),
+        ...(line.note?.trim() ? [`  nota: ${line.note.trim()}`] : []),
+      ];
+    });
     return {
       title: `Comanda ${this.fulfillmentLabel(order).toLowerCase()} — ${order.firstName} ${order.lastName}`,
       lines,
@@ -1137,11 +1140,15 @@ export class OnlineOrdersService {
 
     const productLines = order.lines.flatMap((line) => {
       const lineTotal = line.quantity * (line.unitPrice + line.modifiers.reduce((sum, m) => sum + m.price, 0));
-      const base = `${line.quantity}x ${line.itemName}${line.variantName ? ` (${line.variantName})` : ''}`;
+      const variant = line.variantName?.trim();
+      const base = `${line.quantity}x ${line.itemName}${variant ? ` (${variant})` : ''}`;
       return [
         `${base}  €${lineTotal.toFixed(2)}`,
-        ...line.modifiers.map((m) => `  + ${m.optionName}  €${m.price.toFixed(2)}`),
-        ...(line.note ? [`  nota: ${line.note}`] : []),
+        ...line.modifiers.map((m) => {
+          const pricePart = m.price && m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : '';
+          return `  + ${m.optionName}${pricePart}`;
+        }),
+        ...(line.note?.trim() ? [`  nota: ${line.note.trim()}`] : []),
       ];
     });
 

@@ -961,6 +961,7 @@ describe('OnlineOrdersService', () => {
       const section = pdf.buildReceiptDocument.mock.calls[0][0][0];
       const fullText = [section.title, ...section.lines].join('\n');
       expect(fullText).toContain('Pizza Margherita');
+      expect(fullText).not.toContain('()');
       expect(fullText).toContain('Formaggio extra');
       expect(fullText).toContain('senza basilico');
       expect(fullText).not.toMatch(/€|Via Roma/);
@@ -970,6 +971,9 @@ describe('OnlineOrdersService', () => {
       await service.exportFullReceiptPdf('venue-1', 'order-1');
       const section = pdf.buildReceiptDocument.mock.calls[0][0][0];
       const fullText = [...section.letterhead, section.title, ...section.lines, ...section.footer].join('\n');
+      expect(fullText).toContain('Pizza Margherita');
+      expect(fullText).not.toContain('()');
+      expect(fullText).toContain('+ Formaggio extra (+€ 1.00)');
       expect(fullText).toContain('Via Roma 1');
       expect(fullText).toContain('€22.00');
       expect(fullText).toContain('Metodo di pagamento: Contanti alla consegna');

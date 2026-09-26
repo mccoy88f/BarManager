@@ -103,4 +103,51 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
     expect(call.text).not.toContain('stornati');
     expect(call.html).not.toContain('stornati');
   });
+
+  it('nessuna parentesi vuota () se il prodotto non ha variante, modificatori uno per riga con prezzo', () => {
+    const orderWithoutVariant = {
+      ...order,
+      lines: [
+        {
+          itemName: 'Pizza Diavola',
+          variantName: '',
+          quantity: 1,
+          note: 'ben cotta',
+          modifiers: [
+            { optionName: 'Doppia mozzarella', price: 1.5 },
+            { optionName: 'Senza origano', price: 0 },
+          ],
+        },
+      ],
+    };
+
+    service.sendVenueNotification(
+      orderWithoutVariant as never,
+      'Bar Test',
+      'admin@example.com',
+      'https://example.com/admin/online-orders',
+      true,
+    );
+    const call = mail.send.mock.calls[0][0];
+
+    // Verifica che non compaiano parentesi vuote
+    expect(call.text).not.toContain('()');
+    expect(call.html).not.toContain('()');
+
+    // Verifica nome articolo pulito
+    expect(call.text).toContain('1x Pizza Diavola');
+    expect(call.html).toContain('1x <strong>Pizza Diavola</strong>');
+
+    // Verifica modificatori uno per riga con eventuale prezzo
+    expect(call.text).toContain('+ Doppia mozzarella (+€ 1.50)');
+    expect(call.text).toContain('+ Senza origano');
+    expect(call.text).not.toContain('+ Senza origano (+€');
+    expect(call.text).toContain('[nota: ben cotta]');
+
+    // In HTML modificatori separati con prezzi formattati
+    expect(call.html).toContain('+ Doppia mozzarella');
+    expect(call.html).toContain('(+€ 1.50)');
+    expect(call.html).toContain('+ Senza origano');
+    expect(call.html).toContain('nota: ben cotta');
+  });
 });

@@ -302,12 +302,22 @@ export function OnlineOrdersAdmin() {
             )}
             <Box sx={{ mt: 1 }}>
               {order.lines.map((line) => (
-                <Typography key={line.id} variant="body2">
-                  {line.quantity}× {line.itemName}
-                  {line.variantName ? ` (${line.variantName})` : ''}
-                  {line.modifiers.length > 0 && ` — ${line.modifiers.map((m) => m.optionName).join(', ')}`}
-                  {line.note && ` — nota: ${line.note}`}
-                </Typography>
+                <Box key={line.id} sx={{ mb: 0.5 }}>
+                  <Typography variant="body2" fontWeight={500}>
+                    {line.quantity}× {line.itemName}
+                    {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
+                  </Typography>
+                  {line.modifiers.map((m, idx) => (
+                    <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
+                      + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                    </Typography>
+                  ))}
+                  {line.note?.trim() && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1, fontStyle: 'italic' }}>
+                      nota: {line.note.trim()}
+                    </Typography>
+                  )}
+                </Box>
               ))}
             </Box>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.5 }}>

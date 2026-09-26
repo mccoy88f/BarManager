@@ -1284,16 +1284,16 @@ export function PublicOnlineOrder() {
                 <Box>
                   <Typography variant="body2" fontWeight={600}>
                     {line.quantity}× {line.itemName}
-                    {line.variantName ? ` (${line.variantName})` : ''}
+                    {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
                   </Typography>
-                  {line.modifiers.length > 0 && (
-                    <Typography variant="caption" color="text.secondary">
-                      {line.modifiers.map((m) => m.name).join(', ')}
+                  {line.modifiers.map((m, idx) => (
+                    <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 0.5 }}>
+                      + {m.name}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
                     </Typography>
-                  )}
-                  {line.note && (
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      Nota: {line.note}
+                  ))}
+                  {line.note?.trim() && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 0.5, fontStyle: 'italic' }}>
+                      Nota: {line.note.trim()}
                     </Typography>
                   )}
                 </Box>

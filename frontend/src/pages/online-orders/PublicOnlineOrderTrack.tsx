@@ -11,6 +11,7 @@ interface TrackedLine {
   variantName: string;
   quantity: number;
   unitPrice: number;
+  note?: string | null;
   modifiers: { optionName: string; price: number }[];
 }
 
@@ -198,15 +199,20 @@ export function PublicOnlineOrderTrack() {
 
           <Stack spacing={1}>
             {order.lines.map((line) => (
-              <Box key={line.id} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Box key={line.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Box>
-                  <Typography variant="body2">
+                  <Typography variant="body2" fontWeight={500}>
                     {line.quantity}× {line.itemName}
-                    {line.variantName ? ` (${line.variantName})` : ''}
+                    {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
                   </Typography>
-                  {line.modifiers.length > 0 && (
-                    <Typography variant="caption" color="text.secondary">
-                      {line.modifiers.map((m) => m.optionName).join(', ')}
+                  {line.modifiers.map((m, idx) => (
+                    <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
+                      + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                    </Typography>
+                  ))}
+                  {line.note?.trim() && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1, fontStyle: 'italic' }}>
+                      nota: {line.note.trim()}
                     </Typography>
                   )}
                 </Box>

@@ -54,9 +54,29 @@ export class OnlineOrdersMailService {
     };
   }
 
+  private formatItemTitle(line: OrderWithLines['lines'][number]): string {
+    const variant = line.variantName?.trim();
+    return `${line.quantity}x ${line.itemName}${variant ? ` (${variant})` : ''}`;
+  }
+
+  private formatModifierText(m: OnlineOrderLineModifier): string {
+    const priceStr = m.price && m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : '';
+    return `   + ${m.optionName}${priceStr}`;
+  }
+
+  private lineTextLines(line: OrderWithLines['lines'][number]): string[] {
+    const lines = [this.formatItemTitle(line)];
+    for (const m of line.modifiers || []) {
+      lines.push(this.formatModifierText(m));
+    }
+    if (line.note?.trim()) {
+      lines.push(`   [nota: ${line.note.trim()}]`);
+    }
+    return lines;
+  }
+
   private lineText(line: OrderWithLines['lines'][number]): string {
-    const modifiers = line.modifiers.map((m) => m.optionName).join(', ');
-    return `${line.quantity}x ${line.itemName} (${line.variantName})${modifiers ? ` — ${modifiers}` : ''}${line.note ? ` [${line.note}]` : ''}`;
+    return this.lineTextLines(line).join('\n');
   }
 
   private orderLines(order: OrderWithLines): string[] {
@@ -66,9 +86,34 @@ export class OnlineOrdersMailService {
       `Email: ${order.email} — Telefono: ${order.phone}`,
       ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [`Indirizzo: ${order.deliveryAddress}`] : []),
       `Metodo di pagamento: ${this.paymentMethodLabel(order)}`,
-      ...order.lines.map((l) => this.lineText(l)),
+      '',
+      ...order.lines.flatMap((l) => this.lineTextLines(l)),
+      '',
       `Totale: € ${order.total.toFixed(2)}`,
     ];
+  }
+
+  private lineHtml(line: OrderWithLines['lines'][number]): string {
+    const variant = line.variantName?.trim();
+    const title = `${escapeHtml(line.quantity.toString())}x <strong>${escapeHtml(line.itemName)}</strong>${
+      variant ? ` <em>(${escapeHtml(variant)})</em>` : ''
+    }`;
+    const modifierItems = (line.modifiers || []).map((m) => {
+      const priceStr = m.price && m.price > 0 ? ` <span style="color:#666;">(+€ ${m.price.toFixed(2)})</span>` : '';
+      return `<li style="list-style-type:none;margin-left:16px;color:#444;font-size:0.95em;">+ ${escapeHtml(m.optionName)}${priceStr}</li>`;
+    });
+    const noteItem = line.note?.trim()
+      ? [`<li style="list-style-type:none;margin-left:16px;color:#777;font-style:italic;font-size:0.9em;">nota: ${escapeHtml(line.note.trim())}</li>`]
+      : [];
+
+    return [
+      `<li style="margin-bottom:8px;">`,
+      `  <div>${title}</div>`,
+      ...(modifierItems.length > 0 || noteItem.length > 0
+        ? [`  <ul style="margin:2px 0 0 0;padding:0;">`, ...modifierItems, ...noteItem, `  </ul>`]
+        : []),
+      `</li>`,
+    ].join('\n');
   }
 
   private orderHtml(order: OrderWithLines): string {
@@ -80,7 +125,7 @@ export class OnlineOrdersMailService {
         ? [`<p>Indirizzo: ${escapeHtml(order.deliveryAddress)}</p>`]
         : []),
       `<p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>`,
-      `<ul>${order.lines.map((l) => `<li>${escapeHtml(this.lineText(l))}</li>`).join('')}</ul>`,
+      `<ul style="padding-left:20px;">${order.lines.map((l) => this.lineHtml(l)).join('\n')}</ul>`,
       `<p><strong>Totale: € ${order.total.toFixed(2)}</strong></p>`,
     ].join('\n');
   }
