@@ -58,8 +58,6 @@ const LocationPicker = lazy(() =>
   import('../../components/LocationPicker').then((m) => ({ default: m.LocationPicker })),
 );
 
-/** Margine fisso di preparazione cucina (§5.10 di DEVELOPMENT.md), non configurabile: v. anche KITCHEN_MARGIN_MINUTES nel backend. */
-const KITCHEN_MARGIN_MINUTES = 30;
 
 interface OpeningHoursDay {
   dayOfWeek: number;
@@ -134,14 +132,14 @@ function minutesToLabel(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** Come quarterHourOptionsForDay del widget prenotazioni, ma con la fascia ristretta del margine cucina fisso (§5.10). */
+/** Come quarterHourOptionsForDay del widget prenotazioni, genera slot ai 15 minuti per gli orari aperti. */
 function quarterHourOptionsForDay(day: OpeningHoursDay | undefined): string[] {
   if (!day || day.closed) return [];
   const options: string[] = [];
   const addSlot = (start: string | null, end: string | null) => {
     if (!start || !end) return;
-    const from = toMinutes(start) + KITCHEN_MARGIN_MINUTES;
-    const to = toMinutes(end) - KITCHEN_MARGIN_MINUTES;
+    const from = toMinutes(start);
+    const to = toMinutes(end);
     for (let m = from; m <= to; m += 15) options.push(minutesToLabel(m));
   };
   addSlot(day.slot1Start, day.slot1End);

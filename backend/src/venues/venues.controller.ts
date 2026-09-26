@@ -197,6 +197,13 @@ export class VenuesController {
     return this.venuesService.updateOnlineOrdersOpeningHours(requireVenueId(user), dto);
   }
 
+  /** Reimposta gli orari degli ordini online su quelli generali del locale. */
+  @Delete('me/online-orders-opening-hours')
+  @Roles(Role.ADMIN)
+  resetOwnOnlineOrdersOpeningHours(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.resetOnlineOrdersOpeningHours(requireVenueId(user));
+  }
+
   /** Credenziali SumUp del locale (Online Payments API), cifrate come il token Loyverse. */
   @Patch('me/sumup-settings')
   @Roles(Role.ADMIN)

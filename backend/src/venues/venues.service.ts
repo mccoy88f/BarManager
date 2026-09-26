@@ -199,6 +199,14 @@ export class VenuesService {
     return { onlineOrdersOpeningHours: dto.days };
   }
 
+  async resetOnlineOrdersOpeningHours(venueId: string) {
+    await this.prisma.venue.update({
+      where: { id: venueId },
+      data: { onlineOrdersOpeningHours: null },
+    });
+    return { onlineOrdersOpeningHours: null };
+  }
+
   async updateSumUpSettings(venueId: string, dto: UpdateSumUpSettingsDto) {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) throw new NotFoundException('Locale non trovato');

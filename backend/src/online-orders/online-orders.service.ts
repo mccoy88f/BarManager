@@ -22,7 +22,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import {
   applyDayOverride,
   DayOverride,
-  findOpenSlotWithMargin,
+  findOpenSlot,
   hhmmToMinutes,
   minutesToHhmm,
   resolveOpeningHours,
@@ -48,9 +48,6 @@ import { CartDto } from './dto/cart-line.dto';
 import { RejectOnlineOrderDto } from './dto/reject-online-order.dto';
 import { ProposeOrderTimeChangeDto } from './dto/propose-order-time-change.dto';
 import { CompleteOnlineOrderDto } from './dto/complete-online-order.dto';
-
-/** Margine fisso (non configurabile) di preparazione ad apertura/chiusura di ciascuna fascia cucina — v. §5.10 di DEVELOPMENT.md. */
-const KITCHEN_MARGIN_MINUTES = 30;
 
 const VENUE_SELECT = {
   id: true,
@@ -196,8 +193,7 @@ export class OnlineOrdersService {
   }
 
   /**
-   * Come validateRequestedTime delle Prenotazioni (§5.7), ma con la
-   * fascia ristretta di KITCHEN_MARGIN_MINUTES su ciascun lato (§5.10):
+   * Valida l'orario richiesto per gli ordini programmati:
    * usa Venue.onlineOrdersOpeningHours se impostato, altrimenti ricade
    * sugli orari generali del locale — e un'eventuale apertura speciale
    * per quella data specifica sovrascrive il giorno della settimana.
@@ -224,23 +220,20 @@ export class OnlineOrdersService {
       throw new BadRequestException("L'orario deve essere ai 15 minuti (es. 20:00, 20:15, 20:30, 20:45)");
     }
     const day = await this.resolveRealHoursDay(venue, requestedAt);
-    if (findOpenSlotWithMargin(day, minutesOfDay, KITCHEN_MARGIN_MINUTES) === null) {
+    if (findOpenSlot(day, minutesOfDay) === null) {
       throw new BadRequestException(
         day.closed
           ? 'Il locale è chiuso in questo giorno della settimana'
-          : 'Orario non disponibile per gli ordini online (troppo presto, troppo tardi, o fuori orario di apertura)',
+          : 'Orario non disponibile per gli ordini online (fuori orario di apertura)',
       );
     }
     return requestedAt;
   }
 
   /**
-   * Cerca il prossimo istante richiedibile (inizio fascia + margine
-   * cucina) a partire da "from", scandendo fino a 14 giorni in avanti e
-   * tenendo conto di eventuali aperture speciali (§5.10 di
-   * DEVELOPMENT.md) — usato solo quando un ordine "il prima possibile"
-   * arriva mentre il negozio è chiuso in questo momento (v.
-   * resolveAsapRequestedAt sotto).
+   * Cerca il prossimo orario di apertura del locale a partire da "from",
+   * scandendo fino a 14 giorni in avanti e tenendo conto di eventuali
+   * aperture speciali (§5.10 di DEVELOPMENT.md).
    */
   private async nextOpeningMoment(venue: OnlineOrdersVenueSettings, from: Date): Promise<Date> {
     for (let offset = 0; offset <= 14; offset++) {
@@ -252,10 +245,10 @@ export class OnlineOrdersService {
         [day.slot2Start, day.slot2End],
       ] as const) {
         if (!start || !end) continue;
-        const marginStart = hhmmToMinutes(start) + KITCHEN_MARGIN_MINUTES;
-        const marginEnd = hhmmToMinutes(end) - KITCHEN_MARGIN_MINUTES;
-        if (marginStart > marginEnd) continue; // fascia troppo corta per il margine di cucina
-        const candidateStart = dateAtTimeInZone(from, offset, minutesToHhmm(marginStart), venue.timezone);
+        const slotStart = hhmmToMinutes(start);
+        const slotEnd = hhmmToMinutes(end);
+        if (slotStart >= slotEnd) continue;
+        const candidateStart = dateAtTimeInZone(from, offset, minutesToHhmm(slotStart), venue.timezone);
         if (candidateStart.getTime() >= from.getTime()) return candidateStart;
       }
     }
@@ -263,16 +256,14 @@ export class OnlineOrdersService {
   }
 
   /**
-   * Un ordine "il prima possibile" (checkout senza data/ora scelta a
-   * mano): se il negozio è aperto adesso (con lo stesso margine cucina
-   * degli ordini programmati), l'ordine parte per subito, arrotondato al
-   * quarto d'ora successivo — stessa granularità degli ordini
-   * programmati, per la stessa logica di occupazione/accettazione
-   * automatica per fascia. Se invece il negozio è chiuso in questo
-   * momento, l'ordine nasce comunque (non viene bloccato, §5.10 su
-   * richiesta esplicita dell'utente): "requestedAt" diventa il prossimo
-   * istante di apertura utile e "awaitingShopOpening" true, così lo staff
-   * lo saprà solo da lì in poi (v. accept/createPublicOrder).
+   * Un ordine "il prima possibile" (checkout senza data/ora scelta a mano):
+   * se il locale è attualmente aperto e l'orario stimato di preparazione
+   * (now + onlineOrdersMinLeadMinutes arrotondato al quarto d'ora) rientra
+   * prima della chiusura della fascia, l'ordine parte subito con
+   * awaitingShopOpening = false.
+   * Se invece il locale è chiuso in questo momento, o se l'ordine non può
+   * essere pronto prima della chiusura, requestedAt diventa il prossimo
+   * istante di riapertura e awaitingShopOpening = true (§5.10).
    */
   private async resolveAsapRequestedAt(
     venue: OnlineOrdersVenueSettings,
@@ -280,10 +271,22 @@ export class OnlineOrdersService {
     const now = new Date();
     const day = await this.resolveRealHoursDay(venue, now);
     const minutesOfDay = minutesOfDayInZone(now, venue.timezone);
-    if (findOpenSlotWithMargin(day, minutesOfDay, KITCHEN_MARGIN_MINUTES) !== null) {
+    const openSlot = findOpenSlot(day, minutesOfDay);
+
+    if (openSlot !== null) {
+      const slotEndStr = openSlot === 1 ? day.slot1End : day.slot2End;
+      const slotEndMinutes = slotEndStr ? hhmmToMinutes(slotEndStr) : 24 * 60;
+      const leadMinutes = Math.max(0, venue.onlineOrdersMinLeadMinutes || 0);
+      const readyAtTime = now.getTime() + leadMinutes * 60 * 1000;
       const quarterMs = 15 * 60 * 1000;
-      return { requestedAt: new Date(Math.ceil(now.getTime() / quarterMs) * quarterMs), awaitingShopOpening: false };
+      const roundedReadyAt = new Date(Math.ceil(readyAtTime / quarterMs) * quarterMs);
+      const readyMinutesOfDay = minutesOfDayInZone(roundedReadyAt, venue.timezone);
+
+      if (readyMinutesOfDay <= slotEndMinutes) {
+        return { requestedAt: roundedReadyAt, awaitingShopOpening: false };
+      }
     }
+
     return { requestedAt: await this.nextOpeningMoment(venue, now), awaitingShopOpening: true };
   }
 

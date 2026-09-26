@@ -239,24 +239,18 @@ describe('OnlineOrdersService', () => {
       );
     });
 
-    it('rifiuta un orario troppo vicino all\'apertura (dentro il margine di 30 minuti)', async () => {
-      const tooEarly = nextLunchSlot();
-      tooEarly.setHours(12, 15, 0, 0); // apertura 12:00, margine 30' -> primo slot valido 12:30
-      await expect(service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: tooEarly.toISOString() }))).rejects.toThrow(
-        BadRequestException,
-      );
+    it('accetta un orario all\'apertura (12:00)', async () => {
+      const atOpening = nextLunchSlot();
+      atOpening.setHours(12, 0, 0, 0);
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: atOpening.toISOString() }));
+      expect(order).toBeDefined();
+      expect(prisma.onlineOrder.create).toHaveBeenCalled();
     });
 
-    it('rifiuta un orario troppo vicino alla chiusura (dentro il margine di 30 minuti)', async () => {
-      const tooLate = nextLunchSlot();
-      tooLate.setHours(14, 45, 0, 0); // chiusura 15:00, margine 30' -> ultimo slot valido 14:30
-      await expect(service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: tooLate.toISOString() }))).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    it('accetta un orario esattamente al limite del margine (apertura+30)', async () => {
-      const order = await service.createPublicOrder('venue-1', baseOrderDto());
+    it('accetta un orario alla chiusura (15:00)', async () => {
+      const atClosing = nextLunchSlot();
+      atClosing.setHours(15, 0, 0, 0);
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ requestedAt: atClosing.toISOString() }));
       expect(order).toBeDefined();
       expect(prisma.onlineOrder.create).toHaveBeenCalled();
     });
@@ -334,25 +328,24 @@ describe('OnlineOrdersService', () => {
       jest.useRealTimers();
     });
 
-    it('con il negozio aperto: parte per subito (arrotondato al quarto d\'ora), niente awaitingShopOpening', async () => {
-      // Lunedì 1/1/2024, 12:45 a Roma: dentro la fascia pranzo di default
-      // (12:00-15:00) con margine di 30' (12:30-14:30) — già su un quarto
-      // d'ora esatto, quindi l'arrotondamento non lo sposta.
-      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:45:00.000Z'));
+    it('con il negozio aperto (anche nella prima mezz\'ora): parte per subito (arrotondato al quarto d\'ora), niente awaitingShopOpening', async () => {
+      // Lunedì 1/1/2024, 12:15 a Roma: dentro la prima mezz'ora di apertura (12:00-15:00)
+      // Prima falliva a causa del KITCHEN_MARGIN_MINUTES, ora parte subito regolarmente.
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:15:00.000Z'));
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, timezone: 'Europe/Rome' });
 
       const order = await service.createPublicOrder('venue-1', baseOrderDto({ asap: true, requestedAt: undefined }));
 
       expect(order.awaitingShopOpening).toBe(false);
-      expect(order.requestedAt.toISOString()).toBe('2024-01-01T11:45:00.000Z');
+      expect(order.requestedAt.toISOString()).toBe('2024-01-01T11:15:00.000Z');
       expect(mail.sendReceivedAwaitingOpening).not.toHaveBeenCalled();
       expect(mail.sendReceived).toHaveBeenCalled();
     });
 
     it('con il negozio chiuso: l\'ordine nasce comunque PENDING, awaitingShopOpening=true, mai auto-accettato, email dedicata', async () => {
       // Stesso istante di sopra, ma lunedì è chiuso: il prossimo orario
-      // utile è martedì 12:30 (apertura 12:00 + margine 30').
-      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:45:00.000Z'));
+      // utile è martedì 12:00 (apertura 12:00).
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-01T11:15:00.000Z'));
       prisma.venue.findUnique.mockResolvedValue({
         ...baseVenue,
         timezone: 'Europe/Rome',
@@ -368,7 +361,7 @@ describe('OnlineOrdersService', () => {
 
       expect(order.status).toBe('PENDING');
       expect(order.awaitingShopOpening).toBe(true);
-      expect(order.requestedAt.toISOString()).toBe('2024-01-02T11:30:00.000Z');
+      expect(order.requestedAt.toISOString()).toBe('2024-01-02T11:00:00.000Z');
       expect(mail.sendReceivedAwaitingOpening).toHaveBeenCalled();
       expect(mail.sendReceived).not.toHaveBeenCalled();
       expect(mail.sendConfirmed).not.toHaveBeenCalled();

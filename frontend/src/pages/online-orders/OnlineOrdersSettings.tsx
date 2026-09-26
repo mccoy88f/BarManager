@@ -151,6 +151,14 @@ export function OnlineOrdersSettings() {
     onSuccess: () => { invalidateVenue(); showToast('Orari ordini online salvati'); },
   });
 
+  const resetOpeningHoursMutation = useMutation({
+    mutationFn: async () => (await api.delete('/venues/me/online-orders-opening-hours')).data,
+    onSuccess: () => {
+      invalidateVenue();
+      showToast('Orari ordini online reimpostati su quelli generali del locale');
+    },
+  });
+
   const saveDeliveryMutation = useMutation({
     mutationFn: async () =>
       (
@@ -289,14 +297,29 @@ export function OnlineOrdersSettings() {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Orari ordini online
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Se non ancora personalizzati, qui sono mostrati gli stessi orari generali del locale.
-            Il primo/ultimo orario richiedibile dal cliente è comunque sempre ristretto di 30 minuti
-            su ciascun lato della fascia (margine fisso di preparazione, non modificabile qui).
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Orari ordini online
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                {venueQuery.data?.onlineOrdersOpeningHours
+                  ? 'Orari personalizzati attivi per gli ordini online.'
+                  : 'Attualmente vengono usati automaticamente gli orari generali del locale.'}
+              </Typography>
+            </Box>
+            {venueQuery.data?.onlineOrdersOpeningHours && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                size="small"
+                disabled={resetOpeningHoursMutation.isPending}
+                onClick={() => resetOpeningHoursMutation.mutate()}
+              >
+                Usa orari generali del locale
+              </Button>
+            )}
+          </Box>
           <Box sx={{ mt: 2 }}>
             <OpeningHoursWeekEditor days={openingHours} onChangeDay={updateDay} />
           </Box>
@@ -306,7 +329,7 @@ export function OnlineOrdersSettings() {
             disabled={saveOpeningHoursMutation.isPending || openingHours.length === 0}
             onClick={() => saveOpeningHoursMutation.mutate()}
           >
-            Salva
+            Salva orari personalizzati
           </Button>
         </CardContent>
       </Card>
