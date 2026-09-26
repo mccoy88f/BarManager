@@ -51,15 +51,12 @@ async function callSumUp<T>(apiKey: string, path: string, init?: RequestInit): P
     // è l'unico modo per capire *perché* un 400 viene rifiutato (account non
     // abilitato ai pagamenti online, campo mancante, valuta non supportata,
     // ...): senza includerlo qui il log resta un 400 muto e indiagnosticabile.
+    // Il body va loggato per intero: il campo "message" di SumUp è spesso
+    // solo un'etichetta generica ("Validation error") mentre il motivo vero
+    // sta in "error_code"/"param"/altri campi che variano per endpoint —
+    // scegliere un singolo campo qui aveva già nascosto l'informazione utile.
     const bodyText = await res.text().catch(() => '');
-    let detail = bodyText;
-    try {
-      const parsed = JSON.parse(bodyText);
-      detail = parsed.message || parsed.error_message || parsed.error_code || bodyText;
-    } catch {
-      // corpo non JSON: teniamo il testo grezzo
-    }
-    throw new SumUpApiError(`SumUp ha risposto con errore ${res.status}${detail ? `: ${detail}` : '.'}`, res.status);
+    throw new SumUpApiError(`SumUp ha risposto con errore ${res.status}${bodyText ? `: ${bodyText}` : '.'}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
