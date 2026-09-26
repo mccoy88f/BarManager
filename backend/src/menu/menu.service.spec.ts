@@ -294,6 +294,64 @@ describe('MenuService.setVisibility', () => {
   });
 });
 
+describe('MenuService.setOrderableOnline', () => {
+  let prisma: {
+    menuItem: { findUnique: jest.Mock; update: jest.Mock };
+    menuCategory: { update: jest.Mock };
+  };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = {
+      menuItem: { findUnique: jest.fn(), update: jest.fn() },
+      menuCategory: { update: jest.fn() },
+    };
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
+  });
+
+  it('abilitando una voce la cui categoria non è ordinabile online, abilita anche la categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', orderableOnline: false },
+    });
+
+    await service.setOrderableOnline('venue-1', 'item-1', true);
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({
+      where: { id: 'cat-1' },
+      data: { orderableOnline: true },
+    });
+  });
+
+  it('abilitando una voce la cui categoria è già ordinabile online, non tocca la categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', orderableOnline: true },
+    });
+
+    await service.setOrderableOnline('venue-1', 'item-1', true);
+
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+  });
+
+  it('disabilitando una voce non tocca orderableOnline della categoria', async () => {
+    prisma.menuItem.findUnique.mockResolvedValue({ id: 'item-1', venueId: 'venue-1' });
+    prisma.menuItem.update.mockResolvedValue({
+      id: 'item-1',
+      categoryId: 'cat-1',
+      category: { id: 'cat-1', orderableOnline: true },
+    });
+
+    await service.setOrderableOnline('venue-1', 'item-1', false);
+
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('MenuService.getPublicMenu', () => {
   let prisma: {
     venue: { findUnique: jest.Mock };

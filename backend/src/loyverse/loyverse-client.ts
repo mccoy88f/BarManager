@@ -28,11 +28,16 @@ export interface LoyverseCategory {
 
 export interface LoyverseVariant {
   variant_id: string;
+  variant_name?: string;
+  name?: string;
+  sku?: string;
   default_pricing_type?: 'FIXED' | 'VARIABLE';
   default_price?: number | null;
   option1_value?: string;
   option2_value?: string;
   option3_value?: string;
+  modifier_ids?: string[];
+  modifiers_ids?: string[];
 }
 
 export interface LoyverseItem {
@@ -43,15 +48,24 @@ export interface LoyverseItem {
   variants?: LoyverseVariant[];
   deleted_at?: string | null;
   image_url?: string;
-  /** Modificatori assegnati a questo articolo (verificato contro la documentazione ufficiale incollata dall'utente). */
+  /**
+   * Modificatori assegnati a questo articolo.
+   * L'API ufficiale Loyverse (developer.loyverse.com/docs) usa `modifier_ids`.
+   * Supportiamo anche `modifiers_ids` o `modifiers` per massima compatibilità.
+   */
+  modifier_ids?: string[];
   modifiers_ids?: string[];
+  modifiers?: (string | { id?: string; modifier_id?: string })[];
 }
 
-/** Nome variante per BarManager: i valori delle opzioni Loyverse uniti (es. "Piccola" o "Piccola, Rosso"). */
+/** Nome variante per BarManager: i valori delle opzioni Loyverse uniti (es. "Piccola" o "Piccola, Rosso"), con fallback su variant_name/name. */
 export function variantDisplayName(variant: LoyverseVariant): string {
-  return [variant.option1_value, variant.option2_value, variant.option3_value]
-    .filter((v): v is string => !!v)
+  const options = [variant.option1_value, variant.option2_value, variant.option3_value]
+    .filter((v): v is string => !!v && v.trim() !== '')
     .join(', ');
+  if (options) return options;
+  const fallback = variant.variant_name || variant.name || variant.sku;
+  return fallback ? String(fallback).trim() : '';
 }
 
 export interface LoyversePaymentType {
@@ -62,8 +76,13 @@ export interface LoyversePaymentType {
 
 export interface LoyverseModifierOption {
   id: string;
-  name: string;
+  name?: string;
+  option_name?: string;
   price?: number;
+  price_delta?: number;
+  default_price?: number;
+  ordering?: number;
+  sort_order?: number;
 }
 
 export interface LoyverseStore {
@@ -95,13 +114,15 @@ export interface LoyverseReceipt {
   [key: string]: unknown;
 }
 
-/// Struttura verificata contro la documentazione ufficiale incollata
-/// dall'utente (developer.loyverse.com/docs/#tag/Modifiers), come
-/// LoyverseItem/LoyverseVariant sopra.
+/// Struttura verificata contro la documentazione ufficiale
+/// (developer.loyverse.com/docs/#tag/Modifiers), come LoyverseItem/LoyverseVariant sopra.
 export interface LoyverseModifier {
   id: string;
   name: string;
   modifier_options?: LoyverseModifierOption[];
+  options?: LoyverseModifierOption[];
+  item_ids?: string[];
+  items?: (string | { id?: string; item_id?: string })[];
   deleted_at?: string | null;
 }
 

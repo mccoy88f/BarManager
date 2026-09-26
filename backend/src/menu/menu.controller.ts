@@ -157,6 +157,15 @@ export class MenuController {
     return this.menuService.setVisibility(requireVenueId(user), id, visible);
   }
 
+  @Patch('items/:id/orderable-online')
+  setOrderableOnline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('orderableOnline') orderableOnline: boolean,
+  ) {
+    return this.menuService.setOrderableOnline(requireVenueId(user), id, orderableOnline);
+  }
+
   @Patch('items/:id/featured')
   setFeatured(
     @CurrentUser() user: AuthenticatedUser,

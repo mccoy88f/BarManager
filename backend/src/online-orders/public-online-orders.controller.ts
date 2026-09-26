@@ -37,6 +37,7 @@ export class PublicOnlineOrdersController {
       where: { id: venueId },
       select: {
         name: true,
+        logoUrl: true,
         onlineOrdersEnabled: true,
         onlineOrdersPickupEnabled: true,
         onlineOrdersDeliveryEnabled: true,

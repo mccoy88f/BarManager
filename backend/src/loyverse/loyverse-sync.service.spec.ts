@@ -403,7 +403,7 @@ describe('LoyverseSyncService', () => {
           id: 'item-ext-1',
           item_name: 'Margherita',
           category_id: 'cat-ext-1',
-          modifiers_ids: ['mod-ext-1'],
+          modifier_ids: ['mod-ext-1'],
           variants: [{ variant_id: 'var-ext-1', default_pricing_type: 'FIXED', default_price: 6 }],
         },
       ]);
@@ -421,6 +421,47 @@ describe('LoyverseSyncService', () => {
       });
       expect(prisma.menuItemModifierGroup.create).toHaveBeenCalledWith({
         data: { menuItemId: 'item-local-1', modifierGroupId: 'group-local-1' },
+      });
+      expect(summary.modifierGroups).toBe(1);
+    });
+
+    it('supporta sia modifier_ids che modifiers_ids e opzioni con option_name / price_delta', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        id: 'venue-1',
+        loyverseIntegrationEnabled: true,
+        loyverseAccessTokenEnc: encryptSecret('token-123'),
+      });
+      (loyverseClient.listCategories as jest.Mock).mockResolvedValue([{ id: 'cat-ext-1', name: 'Pizze' }]);
+      (loyverseClient.listModifiers as jest.Mock).mockResolvedValue([
+        {
+          id: 'mod-ext-2',
+          name: 'Impasto',
+          options: [{ id: 'opt-ext-2', option_name: 'Integrale', price_delta: 1.0 }],
+        },
+      ]);
+      (loyverseClient.listItems as jest.Mock).mockResolvedValue([
+        {
+          id: 'item-ext-2',
+          item_name: 'Diavola',
+          category_id: 'cat-ext-1',
+          modifier_ids: ['mod-ext-2'],
+          variants: [{ variant_id: 'var-ext-2', default_pricing_type: 'FIXED', default_price: 7 }],
+        },
+      ]);
+      prisma.menuCategory.create.mockResolvedValue({ id: 'cat-local-1' });
+      prisma.menuModifierGroup.create.mockResolvedValue({ id: 'group-local-2' });
+      prisma.menuItem.create.mockResolvedValue({ id: 'item-local-2' });
+
+      const summary = await service.sync('venue-1');
+
+      expect(prisma.menuModifierGroup.create).toHaveBeenCalledWith({
+        data: { venueId: 'venue-1', name: 'Impasto', loyverseModifierId: 'mod-ext-2', selectionType: 'MULTIPLE', minSelections: 0 },
+      });
+      expect(prisma.menuModifierOption.create).toHaveBeenCalledWith({
+        data: { name: 'Integrale', price: 1.0, sortOrder: 0, groupId: 'group-local-2', loyverseModifierOptionId: 'opt-ext-2' },
+      });
+      expect(prisma.menuItemModifierGroup.create).toHaveBeenCalledWith({
+        data: { menuItemId: 'item-local-2', modifierGroupId: 'group-local-2' },
       });
       expect(summary.modifierGroups).toBe(1);
     });

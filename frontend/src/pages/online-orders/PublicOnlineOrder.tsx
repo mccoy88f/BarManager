@@ -86,6 +86,7 @@ interface OnlineOrdersInfo {
   city?: string;
   menuPhone?: string;
   menuCoverUrl?: string;
+  logoUrl?: string;
   menuInstagramUrl?: string;
   menuFacebookUrl?: string;
   menuWebsiteUrl?: string;
@@ -727,8 +728,22 @@ export function PublicOnlineOrder() {
       hour: '2-digit',
       minute: '2-digit',
     });
+    const logo = info.logoUrl || info.menuCoverUrl;
     return (
       <Box sx={{ maxWidth: 480, mx: 'auto', mt: 6, px: 2 }}>
+        {logo && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <Box
+              component="img"
+              src={logo}
+              alt={info.name}
+              sx={{ maxHeight: 80, maxWidth: 240, objectFit: 'contain', borderRadius: 1 }}
+            />
+          </Box>
+        )}
+        <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
+          {info.name}
+        </Typography>
         {orderResult.awaitingShopOpening ? (
           <Alert severity="warning">
             Ordine ricevuto, ma il locale è al momento chiuso: non potrà essere confermato prima
@@ -776,6 +791,18 @@ export function PublicOnlineOrder() {
           {info.name}
         </Typography>
       </Box>
+    </Box>
+  ) : info.logoUrl ? (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 3, mb: 2, px: 2 }}>
+      <Box
+        component="img"
+        src={info.logoUrl}
+        alt={info.name}
+        sx={{ maxHeight: 80, maxWidth: 240, objectFit: 'contain', mb: 1, borderRadius: 1 }}
+      />
+      <Typography variant="h4" fontWeight={700} textAlign="center">
+        {info.name}
+      </Typography>
     </Box>
   ) : (
     <Typography variant="h4" fontWeight={700} textAlign="center" sx={{ mt: 3, mb: 2, px: 2 }}>

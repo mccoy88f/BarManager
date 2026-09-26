@@ -1022,7 +1022,16 @@ export class OnlineOrdersService {
   async getForManage(id: string, token: string) {
     const order = await this.prisma.onlineOrder.findUnique({
       where: { id },
-      include: { lines: { include: { modifiers: true } } },
+      include: {
+        lines: { include: { modifiers: true } },
+        venue: {
+          select: {
+            name: true,
+            logoUrl: true,
+            menuCoverUrl: true,
+          },
+        },
+      },
     });
     if (!order || order.manageToken !== token) throw new NotFoundException('Ordine non trovato');
     return order;
@@ -1038,7 +1047,16 @@ export class OnlineOrdersService {
     return this.prisma.onlineOrder.update({
       where: { id },
       data: { requestedAt: order.proposedRequestedAt, proposedRequestedAt: null },
-      include: { lines: { include: { modifiers: true } } },
+      include: {
+        lines: { include: { modifiers: true } },
+        venue: {
+          select: {
+            name: true,
+            logoUrl: true,
+            menuCoverUrl: true,
+          },
+        },
+      },
     });
   }
 

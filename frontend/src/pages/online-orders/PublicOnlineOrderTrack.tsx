@@ -28,6 +28,11 @@ interface TrackedOrder {
   deliveryFee: number;
   total: number;
   lines: TrackedLine[];
+  venue?: {
+    name: string;
+    logoUrl: string | null;
+    menuCoverUrl?: string | null;
+  };
 }
 
 const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
@@ -108,9 +113,32 @@ export function PublicOnlineOrderTrack() {
   }
 
   const order = orderQuery.data;
+  const logo = order.venue?.logoUrl || order.venue?.menuCoverUrl;
 
   return (
     <Box sx={{ maxWidth: 480, mx: 'auto', px: 2, py: 4 }}>
+      {logo && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <Box
+            component="img"
+            src={logo}
+            alt={order.venue?.name || 'Logo del locale'}
+            sx={{
+              maxHeight: 80,
+              maxWidth: 240,
+              objectFit: 'contain',
+              borderRadius: 1,
+            }}
+          />
+        </Box>
+      )}
+
+      {order.venue?.name && (
+        <Typography variant="subtitle1" color="text.secondary" textAlign="center" fontWeight={600}>
+          {order.venue.name}
+        </Typography>
+      )}
+
       <Typography variant="h5" fontWeight={700} textAlign="center" gutterBottom>
         Il tuo ordine
       </Typography>

@@ -82,6 +82,7 @@ export class LoyverseSyncService {
       );
 
       const modifierGroupIdMap = await this.syncModifierGroups(venueId, remoteModifiers);
+      const modifierItemMap = this.buildModifierItemMap(remoteModifiers);
 
       let imagesDownloaded = 0;
       let itemsSynced = 0;
@@ -94,7 +95,15 @@ export class LoyverseSyncService {
       const fallbackCategory: { id?: string } = {};
 
       for (const item of remoteItems.filter((i) => !i.deleted_at)) {
-        const result = await this.syncItem(venueId, item, categoryIdMap, fallbackCategory, warnings, modifierGroupIdMap);
+        const result = await this.syncItem(
+          venueId,
+          item,
+          categoryIdMap,
+          fallbackCategory,
+          warnings,
+          modifierGroupIdMap,
+          modifierItemMap,
+        );
         if (result.synced) itemsSynced++;
         if (result.downloadedImage) imagesDownloaded++;
       }
@@ -224,7 +233,8 @@ export class LoyverseSyncService {
         groupId = created.id;
       }
 
-      await this.syncModifierOptions(groupId, remote.modifier_options ?? [], found?.options ?? []);
+      const remoteOptions = remote.modifier_options ?? remote.options ?? [];
+      await this.syncModifierOptions(groupId, remoteOptions, found?.options ?? []);
       idMap.set(remote.id, groupId);
     }
 
@@ -247,7 +257,11 @@ export class LoyverseSyncService {
   ) {
     for (const [index, remote] of remoteOptions.entries()) {
       const found = existingOptions.find((o) => o.loyverseModifierOptionId === remote.id);
-      const data = { name: remote.name, price: remote.price ?? 0, sortOrder: index };
+      const name = remote.name || remote.option_name || '';
+      const rawPrice =
+        remote.price ?? remote.price_delta ?? remote.default_price ?? 0;
+      const price = typeof rawPrice === 'number' ? rawPrice : Number(rawPrice) || 0;
+      const data = { name, price, sortOrder: index };
       if (found) {
         await this.prisma.menuModifierOption.update({ where: { id: found.id }, data });
       } else {
@@ -320,6 +334,83 @@ export class LoyverseSyncService {
     return removed;
   }
 
+  private buildModifierItemMap(remoteModifiers: LoyverseModifier[]): Map<string, Set<string>> {
+    const map = new Map<string, Set<string>>();
+    for (const mod of remoteModifiers) {
+      if (mod.deleted_at) continue;
+      const directItemIds = mod.item_ids ?? [];
+      const nestedItemIds = Array.isArray(mod.items)
+        ? mod.items
+            .map((it) => (typeof it === 'string' ? it : it?.id || it?.item_id))
+            .filter((id): id is string => !!id && typeof id === 'string')
+        : [];
+      const allItemIds = new Set([...directItemIds, ...nestedItemIds]);
+      for (const itemId of allItemIds) {
+        if (!map.has(itemId)) {
+          map.set(itemId, new Set());
+        }
+        map.get(itemId)!.add(mod.id);
+      }
+    }
+    return map;
+  }
+
+  private extractRemoteModifierIds(
+    remote: LoyverseItem,
+    modifierItemMap?: Map<string, Set<string>>,
+  ): string[] {
+    const ids = new Set<string>();
+
+    // 1. modifier_ids (API ufficiale Loyverse GET /v1.0/items)
+    if (Array.isArray(remote.modifier_ids)) {
+      for (const id of remote.modifier_ids) {
+        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+      }
+    }
+
+    // 2. modifiers_ids (variante ortografica con s)
+    if (Array.isArray(remote.modifiers_ids)) {
+      for (const id of remote.modifiers_ids) {
+        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+      }
+    }
+
+    // 3. modifiers (array di ID o oggetti { id } / { modifier_id })
+    if (Array.isArray(remote.modifiers)) {
+      for (const m of remote.modifiers) {
+        if (typeof m === 'string' && m.trim()) {
+          ids.add(m.trim());
+        } else if (m && typeof m === 'object') {
+          const modId =
+            (m as { id?: string; modifier_id?: string }).id ||
+            (m as { id?: string; modifier_id?: string }).modifier_id;
+          if (typeof modId === 'string' && modId.trim()) ids.add(modId.trim());
+        }
+      }
+    }
+
+    // 4. Modificatori assegnati a livello di varianti
+    if (Array.isArray(remote.variants)) {
+      for (const v of remote.variants) {
+        const vModIds = (v as any).modifier_ids || (v as any).modifiers_ids;
+        if (Array.isArray(vModIds)) {
+          for (const id of vModIds) {
+            if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+          }
+        }
+      }
+    }
+
+    // 5. Associazioni inverse dal lato modificatore
+    if (modifierItemMap && modifierItemMap.has(remote.id)) {
+      for (const id of modifierItemMap.get(remote.id)!) {
+        ids.add(id);
+      }
+    }
+
+    return Array.from(ids);
+  }
+
   /** Una voce Loyverse (con le sue varianti) → un MenuItem con le sue MenuItemVariant. */
   private async syncItem(
     venueId: string,
@@ -328,6 +419,7 @@ export class LoyverseSyncService {
     fallbackCategory: { id?: string },
     warnings: string[],
     modifierGroupIdMap: Map<string, string>,
+    modifierItemMap?: Map<string, Set<string>>,
   ): Promise<{ synced: boolean; downloadedImage: boolean }> {
     let categoryId = remote.category_id ? categoryIdMap.get(remote.category_id) : undefined;
     if (!categoryId) {
@@ -379,7 +471,8 @@ export class LoyverseSyncService {
     }
 
     await this.syncVariants(menuItemId, remoteVariants, existing?.variants ?? []);
-    await this.syncItemModifierGroups(menuItemId, remote.modifiers_ids ?? [], modifierGroupIdMap);
+    const remoteModifierIds = this.extractRemoteModifierIds(remote, modifierItemMap);
+    await this.syncItemModifierGroups(menuItemId, remoteModifierIds, modifierGroupIdMap);
 
     let downloadedImage = false;
     if (!existing?.photoUrl) {
@@ -417,6 +510,7 @@ export class LoyverseSyncService {
         name: remoteVariants.length > 1 ? variantDisplayName(remote) : '',
         price,
         sortOrder: index,
+        active: true,
       };
       if (found) {
         await this.prisma.menuItemVariant.update({ where: { id: found.id }, data });
@@ -439,7 +533,7 @@ export class LoyverseSyncService {
   }
 
   /**
-   * Item.modifiers_ids (Loyverse) → MenuItemModifierGroup per questa voce.
+   * Item.modifier_ids (Loyverse) → MenuItemModifierGroup per questa voce.
    * Tocca solo i link verso gruppi con origine Loyverse (risolti tramite
    * modifierGroupIdMap, popolata solo da syncModifierGroups): un gruppo
    * nativo assegnato a mano dall'admin non viene mai toccato dal sync,

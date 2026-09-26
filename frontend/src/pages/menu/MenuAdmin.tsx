@@ -449,6 +449,7 @@ export function MenuAdmin() {
     },
     onSuccess: () => {
       invalidate();
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
       showToast(editingItem ? 'Voce di menù aggiornata' : 'Voce di menù creata');
       setNewItem({ name: '', categoryId: '', description: '', availability: 'ALL_DAY', orderableOnline: false });
       setVariantForms([emptyVariant]);
@@ -486,8 +487,13 @@ export function MenuAdmin() {
 
   const toggleItemOrderableOnlineMutation = useMutation({
     mutationFn: async ({ id, orderableOnline }: { id: string; orderableOnline: boolean }) =>
-      (await api.patch(`/menu/items/${id}`, { orderableOnline })).data,
-    onSuccess: invalidate,
+      (await api.patch(`/menu/items/${id}/orderable-online`, { orderableOnline })).data,
+    // Abilitare una voce per gli ordini online può abilitare anche la sua categoria
+    // (se non lo era), quindi va aggiornata anche quella lista.
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['menu-categories'] });
+    },
   });
 
   const setUnavailableMutation = useMutation({

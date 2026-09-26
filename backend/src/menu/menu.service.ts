@@ -232,7 +232,7 @@ export class MenuService {
       });
       sortOrder = (last?.sortOrder ?? -1) + 1;
     }
-    return this.prisma.menuItem.create({
+    const created = await this.prisma.menuItem.create({
       data: {
         ...item,
         sortOrder,
@@ -242,8 +242,21 @@ export class MenuService {
           modifierGroups: { create: modifierGroupIds.map((modifierGroupId) => ({ modifierGroupId })) },
         }),
       },
-      include: { variants: true, modifierGroups: { include: { modifierGroup: { include: { options: true } } } } },
+      include: {
+        category: true,
+        variants: true,
+        modifierGroups: { include: { modifierGroup: { include: { options: true } } } },
+      },
     });
+    // Abilitando una voce per gli ordini online la cui categoria non lo è,
+    // la categoria si abilita di conseguenza (come per il menù).
+    if (created.orderableOnline && !created.category.orderableOnline) {
+      await this.prisma.menuCategory.update({
+        where: { id: created.categoryId },
+        data: { orderableOnline: true },
+      });
+    }
+    return created;
   }
 
   listItems(venueId: string, categoryId?: string) {
@@ -280,7 +293,7 @@ export class MenuService {
       if (modifierGroupIds) {
         await tx.menuItemModifierGroup.deleteMany({ where: { menuItemId: itemId } });
       }
-      return tx.menuItem.update({
+      const updated = await tx.menuItem.update({
         where: { id: itemId },
         data: {
           ...item,
@@ -291,8 +304,23 @@ export class MenuService {
             modifierGroups: { create: modifierGroupIds.map((modifierGroupId) => ({ modifierGroupId })) },
           }),
         },
-        include: { variants: true, modifierGroups: { include: { modifierGroup: { include: { options: true } } } } },
+        include: {
+          category: true,
+          variants: true,
+          modifierGroups: { include: { modifierGroup: { include: { options: true } } } },
+        },
       });
+
+      // Se la voce diventa ordinabile online e la sua categoria non lo è,
+      // la categoria viene abilitata di conseguenza (esattamente come per la visibilità).
+      if (updated.orderableOnline && !updated.category.orderableOnline) {
+        await tx.menuCategory.update({
+          where: { id: updated.categoryId },
+          data: { orderableOnline: true },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -310,6 +338,24 @@ export class MenuService {
       await this.prisma.menuCategory.update({
         where: { id: item.categoryId },
         data: { visible: true },
+      });
+    }
+    return item;
+  }
+
+  async setOrderableOnline(venueId: string, itemId: string, orderableOnline: boolean) {
+    await this.assertOwnership(venueId, itemId);
+    const item = await this.prisma.menuItem.update({
+      where: { id: itemId },
+      data: { orderableOnline },
+      include: { category: true },
+    });
+    // Abilitando una voce per gli ordini online la cui categoria non lo è,
+    // la categoria si abilita di conseguenza (esattamente come per la visibilità del menù).
+    if (orderableOnline && !item.category.orderableOnline) {
+      await this.prisma.menuCategory.update({
+        where: { id: item.categoryId },
+        data: { orderableOnline: true },
       });
     }
     return item;
