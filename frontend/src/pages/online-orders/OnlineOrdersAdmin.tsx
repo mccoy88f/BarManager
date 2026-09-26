@@ -111,8 +111,14 @@ function extractErrorMessage(error: unknown): string {
   return "Errore durante l'aggiornamento dell'ordine.";
 }
 
-function navigateUrl(lat: number, lng: number): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+function navigateUrl(lat?: number | null, lng?: number | null, address?: string | null): string {
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
+  if (address) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  }
+  return '';
 }
 
 /** Ordine "il prima possibile" arrivato mentre il negozio era chiuso (§5.10), la cui apertura non è ancora passata. */
@@ -317,10 +323,27 @@ export function OnlineOrdersAdmin() {
                 {order.phone}
               </a>
             </Typography>
-            {order.deliveryAddress && (
-              <Typography variant="body2" color="text.secondary">
-                {order.deliveryAddress}
-              </Typography>
+            {order.fulfillment === 'DELIVERY' && (
+              <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  📍 {order.deliveryAddress || 'Consegna a domicilio'}
+                </Typography>
+                {navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<DirectionsIcon fontSize="small" />}
+                    component="a"
+                    href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ textTransform: 'none', py: 0.2, px: 1, fontSize: '0.8125rem' }}
+                  >
+                    Raggiungi il luogo
+                  </Button>
+                )}
+              </Box>
             )}
             {order.proposedRequestedAt && (
               <Chip
@@ -358,14 +381,15 @@ export function OnlineOrdersAdmin() {
               <IconButton size="small" component="a" href={`tel:${order.phone}`} title="Chiama">
                 <PhoneIcon fontSize="small" />
               </IconButton>
-              {order.fulfillment === 'DELIVERY' && order.status === 'READY' && order.deliveryLat != null && order.deliveryLng != null && (
+              {order.fulfillment === 'DELIVERY' && navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
                 <IconButton
                   size="small"
+                  color="primary"
                   component="a"
-                  href={navigateUrl(order.deliveryLat, order.deliveryLng)}
+                  href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="Naviga"
+                  title="Raggiungi il luogo (Google Maps)"
                 >
                   <DirectionsIcon fontSize="small" />
                 </IconButton>

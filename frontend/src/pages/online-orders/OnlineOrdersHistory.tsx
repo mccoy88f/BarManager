@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Box,
+  Button,
   Chip,
   InputAdornment,
   MenuItem,
@@ -16,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import DirectionsIcon from '@mui/icons-material/Directions';
 import { api } from '../../api/client';
 import { NEUTRAL_CHIP_COLOR, SUCCESS_CHIP_COLOR } from '../../config/statusChip';
 
@@ -34,6 +36,9 @@ interface OrderRow {
   paymentMethod: 'CASH' | 'CARD_ONLINE' | 'CARD_IN_STORE' | null;
   loyverseReceiptId: string | null;
   loyverseSyncError: string | null;
+  deliveryAddress?: string | null;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
 }
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
@@ -53,6 +58,16 @@ const statusColors: Record<HistoryStatus, 'success' | 'default'> = {
 function formatWhen(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString('it-IT')} ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function navigateUrl(lat?: number | null, lng?: number | null, address?: string | null): string {
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
+  if (address) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  }
+  return '';
 }
 
 /** Storico ordini online (§5.10): stesso schema di paginazione/ricerca client-side già in uso in CustomersAdmin.tsx (§204). */
@@ -146,7 +161,36 @@ export function OnlineOrdersHistory() {
                     {order.phone}
                   </a>
                 </TableCell>
-                <TableCell>{order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'}</TableCell>
+                <TableCell>
+                  {order.fulfillment === 'PICKUP' ? (
+                    'Ritiro'
+                  ) : (
+                    <Box>
+                      <Typography variant="body2" fontWeight={500}>
+                        Consegna
+                      </Typography>
+                      {order.deliveryAddress && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {order.deliveryAddress}
+                        </Typography>
+                      )}
+                      {navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<DirectionsIcon sx={{ fontSize: '0.9rem' }} />}
+                          component="a"
+                          href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ p: 0, minWidth: 'auto', textTransform: 'none', fontSize: '0.75rem' }}
+                        >
+                          Raggiungi il luogo
+                        </Button>
+                      )}
+                    </Box>
+                  )}
+                </TableCell>
                 <TableCell>
                   {order.paymentMethod === 'CARD_ONLINE'
                     ? 'Carta online'
