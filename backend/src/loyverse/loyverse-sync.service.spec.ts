@@ -121,7 +121,7 @@ describe('LoyverseSyncService', () => {
       }),
     );
     expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
-      data: { name: '', price: 4.5, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-ext-1' },
+      data: { active: true, name: '', price: 4.5, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-ext-1' },
     });
     expect(summary.categories).toBe(1);
     expect(summary.items).toBe(1);
@@ -325,10 +325,10 @@ describe('LoyverseSyncService', () => {
     await service.sync('venue-1');
 
     expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
-      data: { name: 'Piccola', price: 6, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-s' },
+      data: { active: true, name: 'Piccola', price: 6, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-s' },
     });
     expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
-      data: { name: 'Grande', price: 9, sortOrder: 1, menuItemId: 'item-local-1', loyverseVariantId: 'var-l' },
+      data: { active: true, name: 'Grande', price: 9, sortOrder: 1, menuItemId: 'item-local-1', loyverseVariantId: 'var-l' },
     });
   });
 
@@ -356,7 +356,7 @@ describe('LoyverseSyncService', () => {
       expect.objectContaining({ data: expect.objectContaining({ categoryId: 'cat-local-1' }) }),
     );
     expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
-      data: { name: '', price: null, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-ext-1' },
+      data: { active: true, name: '', price: null, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: 'var-ext-1' },
     });
     expect(summary.items).toBe(1);
     expect(summary.warnings).toEqual([]);
@@ -378,7 +378,7 @@ describe('LoyverseSyncService', () => {
     const summary = await service.sync('venue-1');
 
     expect(prisma.menuItemVariant.create).toHaveBeenCalledWith({
-      data: { name: '', price: null, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: '' },
+      data: { active: true, name: '', price: null, sortOrder: 0, menuItemId: 'item-local-1', loyverseVariantId: '' },
     });
     expect(summary.items).toBe(1);
   });

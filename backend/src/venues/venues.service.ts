@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
@@ -202,7 +202,7 @@ export class VenuesService {
   async resetOnlineOrdersOpeningHours(venueId: string) {
     await this.prisma.venue.update({
       where: { id: venueId },
-      data: { onlineOrdersOpeningHours: null },
+      data: { onlineOrdersOpeningHours: Prisma.DbNull },
     });
     return { onlineOrdersOpeningHours: null };
   }

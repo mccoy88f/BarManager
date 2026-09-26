@@ -31,7 +31,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
         modifiers: [{ optionName: 'Formaggio extra' }],
       },
     ],
-  } as never;
+  } as unknown as Parameters<OnlineOrdersMailService['sendReceived']>[0];
 
   beforeEach(() => {
     mail = { send: jest.fn() };
@@ -39,7 +39,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReceived include articoli, indirizzo, totale e metodo di pagamento', () => {
-    service.sendReceived(order, 'Bar Test', 'https://example.com/traccia');
+    service.sendReceived(order as never, 'Bar Test', 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -53,7 +53,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReceivedAwaitingOpening include lo stesso riepilogo e metodo di pagamento', () => {
-    service.sendReceivedAwaitingOpening(order, 'Bar Test', 'https://example.com/traccia');
+    service.sendReceivedAwaitingOpening(order as never, 'Bar Test', 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -65,7 +65,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendConfirmed include lo stesso riepilogo e metodo di pagamento', () => {
-    service.sendConfirmed(order, 'Bar Test', 'https://example.com/traccia');
+    service.sendConfirmed(order as never, 'Bar Test', 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -77,7 +77,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReady include il metodo di pagamento', () => {
-    service.sendReady(order, 'Bar Test', 'https://example.com/traccia');
+    service.sendReady(order as never, 'Bar Test', 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Metodo di pagamento: Contanti alla consegna');
