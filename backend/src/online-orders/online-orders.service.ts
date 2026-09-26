@@ -245,9 +245,8 @@ export class OnlineOrdersService {
         [day.slot2Start, day.slot2End],
       ] as const) {
         if (!start || !end) continue;
+        if (start === end) continue;
         const slotStart = hhmmToMinutes(start);
-        const slotEnd = hhmmToMinutes(end);
-        if (slotStart >= slotEnd) continue;
         const candidateStart = dateAtTimeInZone(from, offset, minutesToHhmm(slotStart), venue.timezone);
         if (candidateStart.getTime() >= from.getTime()) return candidateStart;
       }
@@ -274,13 +273,24 @@ export class OnlineOrdersService {
     const openSlot = findOpenSlot(day, minutesOfDay);
 
     if (openSlot !== null) {
+      const slotStartStr = openSlot === 1 ? day.slot1Start : day.slot2Start;
       const slotEndStr = openSlot === 1 ? day.slot1End : day.slot2End;
-      const slotEndMinutes = slotEndStr ? hhmmToMinutes(slotEndStr) : 24 * 60;
+      let slotEndMinutes = slotEndStr ? hhmmToMinutes(slotEndStr) : 24 * 60;
+      if (slotEndStr === '00:00') {
+        slotEndMinutes = 24 * 60;
+      }
+      const slotStartMinutes = slotStartStr ? hhmmToMinutes(slotStartStr) : 0;
+      if (slotEndMinutes < slotStartMinutes) {
+        slotEndMinutes += 24 * 60;
+      }
       const leadMinutes = Math.max(0, venue.onlineOrdersMinLeadMinutes || 0);
       const readyAtTime = now.getTime() + leadMinutes * 60 * 1000;
       const quarterMs = 15 * 60 * 1000;
       const roundedReadyAt = new Date(Math.ceil(readyAtTime / quarterMs) * quarterMs);
-      const readyMinutesOfDay = minutesOfDayInZone(roundedReadyAt, venue.timezone);
+      let readyMinutesOfDay = minutesOfDayInZone(roundedReadyAt, venue.timezone);
+      if (readyMinutesOfDay < minutesOfDay) {
+        readyMinutesOfDay += 24 * 60;
+      }
 
       if (readyMinutesOfDay <= slotEndMinutes) {
         return { requestedAt: roundedReadyAt, awaitingShopOpening: false };

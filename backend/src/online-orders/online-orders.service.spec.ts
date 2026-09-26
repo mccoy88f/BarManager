@@ -342,6 +342,41 @@ describe('OnlineOrdersService', () => {
       expect(mail.sendReceived).toHaveBeenCalled();
     });
 
+    it('con il negozio aperto che chiude a 00:00 (es. sabato 17:46): non viene considerato chiuso né salta al giorno dopo', async () => {
+      // Sabato 26 settembre 2026, 17:46 a Roma (UTC+2 in estate = 15:46 UTC)
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-26T15:46:00.000Z'));
+      prisma.venue.findUnique.mockResolvedValue({
+        ...baseVenue,
+        timezone: 'Europe/Rome',
+        onlineOrdersOpeningHours: [
+          {
+            dayOfWeek: 6, // sabato
+            closed: false,
+            slot1Start: '08:00',
+            slot1End: '14:00',
+            slot2Start: '17:00',
+            slot2End: '00:00',
+          },
+          {
+            dayOfWeek: 0, // domenica
+            closed: false,
+            slot1Start: '08:00',
+            slot1End: '14:00',
+            slot2Start: null,
+            slot2End: null,
+          },
+        ],
+      });
+
+      const order = await service.createPublicOrder('venue-1', baseOrderDto({ asap: true, requestedAt: undefined }));
+
+      expect(order.awaitingShopOpening).toBe(false);
+      // Arrotondato al quarto d'ora: 17:46 -> 18:00 a Roma (16:00 UTC)
+      expect(order.requestedAt.toISOString()).toBe('2026-09-26T16:00:00.000Z');
+      expect(mail.sendReceivedAwaitingOpening).not.toHaveBeenCalled();
+      expect(mail.sendReceived).toHaveBeenCalled();
+    });
+
     it('con il negozio chiuso: l\'ordine nasce comunque PENDING, awaitingShopOpening=true, mai auto-accettato, email dedicata', async () => {
       // Stesso istante di sopra, ma lunedì è chiuso: il prossimo orario
       // utile è martedì 12:00 (apertura 12:00).

@@ -74,22 +74,37 @@ export function minutesToHhmm(minutes: number): string {
 
 const toMinutes = hhmmToMinutes;
 
+/** Verifica se i minuti della giornata cadono nella fascia indicata da start e end ("HH:mm"), gestendo correttamente chiusure a mezzanotte (00:00) o orari notturni oltre la mezzanotte (es. 18:00 - 02:00). */
+export function isTimeInSlot(startHhmm: string, endHhmm: string, minutesOfDay: number): boolean {
+  const start = hhmmToMinutes(startHhmm);
+  let end = hhmmToMinutes(endHhmm);
+  if (endHhmm === '00:00') {
+    end = 24 * 60; // Mezzanotte al termine della giornata
+  }
+  if (end > start) {
+    return minutesOfDay >= start && minutesOfDay <= end;
+  }
+  if (end < start) {
+    // Fascia che scavalca la mezzanotte nel giorno successivo (es. 18:00 - 02:00)
+    return minutesOfDay >= start || minutesOfDay <= end;
+  }
+  return false;
+}
+
 /** In quale fascia (1 o 2) cade l'orario dato per quel giorno, o null se chiuso/fuori orario. */
 export function findOpenSlot(day: OpeningHoursDay, minutesOfDay: number): 1 | 2 | null {
   if (day.closed) return null;
   if (
     day.slot1Start &&
     day.slot1End &&
-    minutesOfDay >= toMinutes(day.slot1Start) &&
-    minutesOfDay <= toMinutes(day.slot1End)
+    isTimeInSlot(day.slot1Start, day.slot1End, minutesOfDay)
   ) {
     return 1;
   }
   if (
     day.slot2Start &&
     day.slot2End &&
-    minutesOfDay >= toMinutes(day.slot2Start) &&
-    minutesOfDay <= toMinutes(day.slot2End)
+    isTimeInSlot(day.slot2Start, day.slot2End, minutesOfDay)
   ) {
     return 2;
   }
@@ -111,21 +126,24 @@ export function findOpenSlotWithMargin(
   marginMinutes: number,
 ): 1 | 2 | null {
   if (day.closed) return null;
-  if (
-    day.slot1Start &&
-    day.slot1End &&
-    minutesOfDay >= toMinutes(day.slot1Start) + marginMinutes &&
-    minutesOfDay <= toMinutes(day.slot1End) - marginMinutes
-  ) {
+  const inSlotWithMargin = (startStr: string, endStr: string): boolean => {
+    const start = hhmmToMinutes(startStr);
+    let end = hhmmToMinutes(endStr);
+    if (endStr === '00:00') end = 24 * 60;
+    else if (end < start) end += 24 * 60;
+    const effectiveStart = start + marginMinutes;
+    const effectiveEnd = end - marginMinutes;
+    if (effectiveStart > effectiveEnd) return false;
+    let m = minutesOfDay;
+    if (end > 24 * 60 && m < start) m += 24 * 60;
+    return m >= effectiveStart && m <= effectiveEnd;
+  };
+  if (day.slot1Start && day.slot1End && inSlotWithMargin(day.slot1Start, day.slot1End)) {
     return 1;
   }
-  if (
-    day.slot2Start &&
-    day.slot2End &&
-    minutesOfDay >= toMinutes(day.slot2Start) + marginMinutes &&
-    minutesOfDay <= toMinutes(day.slot2End) - marginMinutes
-  ) {
+  if (day.slot2Start && day.slot2End && inSlotWithMargin(day.slot2Start, day.slot2End)) {
     return 2;
   }
   return null;
 }
+

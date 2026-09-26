@@ -68,7 +68,13 @@ function quarterHourOptionsForDay(day: OpeningHoursDay | undefined): string[] {
   const options: string[] = [];
   const addSlot = (start: string | null, end: string | null) => {
     if (!start || !end) return;
-    for (let m = toMinutes(start); m <= toMinutes(end); m += 15) options.push(minutesToLabel(m));
+    const from = toMinutes(start);
+    let to = toMinutes(end);
+    if (end === '00:00' || to < from) {
+      to = 24 * 60;
+    }
+    const maxMinute = Math.min(to, 24 * 60 - 15);
+    for (let m = from; m <= maxMinute; m += 15) options.push(minutesToLabel(m));
   };
   addSlot(day.slot1Start, day.slot1End);
   addSlot(day.slot2Start, day.slot2End);

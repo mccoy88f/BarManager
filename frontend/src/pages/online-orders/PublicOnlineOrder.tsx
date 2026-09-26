@@ -139,8 +139,12 @@ function quarterHourOptionsForDay(day: OpeningHoursDay | undefined): string[] {
   const addSlot = (start: string | null, end: string | null) => {
     if (!start || !end) return;
     const from = toMinutes(start);
-    const to = toMinutes(end);
-    for (let m = from; m <= to; m += 15) options.push(minutesToLabel(m));
+    let to = toMinutes(end);
+    if (end === '00:00' || to < from) {
+      to = 24 * 60;
+    }
+    const maxMinute = Math.min(to, 24 * 60 - 15);
+    for (let m = from; m <= maxMinute; m += 15) options.push(minutesToLabel(m));
   };
   addSlot(day.slot1Start, day.slot1End);
   addSlot(day.slot2Start, day.slot2End);
@@ -892,6 +896,12 @@ export function PublicOnlineOrder() {
                       fullWidth
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && address.trim() && !geocodeMutation.isPending) {
+                          e.preventDefault();
+                          geocodeMutation.mutate();
+                        }
+                      }}
                     />
                     <Button
                       variant="outlined"

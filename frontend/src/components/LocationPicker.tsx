@@ -29,11 +29,10 @@ function ClickToMove({ onChange }: { onChange: (lat: number, lng: number) => voi
 }
 
 /**
- * Ricentra la mappa (mantenendo lo zoom corrente) quando la posizione
- * cambia da fuori il componente (es. bottone "posizione attuale"), ma
- * non quando l'utente ha appena cliccato/trascinato sulla mappa stessa:
- * in quel caso il punto scelto è già visibile, ricentrare sposterebbe la
- * vista sotto al dito/cursore in modo spiazzante.
+ * Ricentra e zooma la mappa sul puntatore quando la posizione cambia da
+ * fuori il componente (es. geocodifica indirizzo inserito dal cliente),
+ * portandosi a livello strada (zoom 17). Non interviene se l'utente ha
+ * appena cliccato/trascinato sulla mappa stessa.
  */
 function RecenterOnChange({
   lat,
@@ -45,20 +44,34 @@ function RecenterOnChange({
   skipNextRef: MutableRefObject<boolean>;
 }) {
   const map = useMap();
-  const isFirstRun = useRef(true);
   useEffect(() => {
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      return;
-    }
     if (skipNextRef.current) {
       skipNextRef.current = false;
       return;
     }
-    map.setView([lat, lng], map.getZoom());
+    const currentCenter = map.getCenter();
+    const currentZoom = map.getZoom();
+    const targetZoom = Math.max(currentZoom, 17);
+    const dist = Math.hypot(currentCenter.lat - lat, currentCenter.lng - lng);
+    if (dist < 0.00005 && currentZoom >= 17) {
+      return;
+    }
+    map.flyTo([lat, lng], targetZoom, { duration: 1.2 });
   }, [lat, lng, map, skipNextRef]);
   return null;
 }
+
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [map]);
+  return null;
+}
+
 
 interface LocationPickerProps {
   lat: number | null;
@@ -105,6 +118,7 @@ export function LocationPicker({ lat, lng, radiusMeters, onChange, height = 280 
           zoom={hasPosition ? 17 : 5}
           style={{ height: '100%', width: '100%' }}
         >
+          <InvalidateSize />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
