@@ -6,15 +6,21 @@ import { CustomersService } from '../customers/customers.service';
 import { OnlineOrdersMailService } from './online-orders-mail.service';
 import { PdfService } from '../reports/pdf.service';
 import { encryptSecret } from '../common/crypto/secret-crypto';
-import { sumupClient } from '../common/payments/sumup-client';
+import { sumupClient, SumUpApiError } from '../common/payments/sumup-client';
 import { loyverseClient } from '../loyverse/loyverse-client';
 import { locationIqClient } from '../common/geo/locationiq-client';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 jest.mock('../common/payments/sumup-client', () => ({
+  // Serve requireActual per mantenere la vera classe SumUpApiError: senza,
+  // il codice del service (`err instanceof SumUpApiError`) confronterebbe
+  // con `undefined` e lancerebbe un TypeError invece del comportamento
+  // atteso, mascherando la traduzione dell'errore in BadRequestException.
+  ...jest.requireActual('../common/payments/sumup-client'),
   sumupClient: {
     createCheckout: jest.fn(),
     getCheckout: jest.fn(),
+    getMerchantCode: jest.fn(),
     verifyApiKey: jest.fn(),
     refund: jest.fn(),
   },
@@ -522,6 +528,50 @@ describe('OnlineOrdersService', () => {
     it('rifiuta la consegna se onlineOrdersDeliveryEnabled è false', async () => {
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, onlineOrdersDeliveryEnabled: false });
       await expect(service.createPublicOrder('venue-1', deliveryDto())).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('initiateSumUpCheckout (§5.10)', () => {
+    const delivery = { address: 'Via Roma 1', lat: 45.001, lng: 9.001 };
+
+    it('crea il checkout usando il merchant_code letto dal profilo SumUp (POST /checkouts lo richiede)', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, sumupEnabled: true, sumupApiKeyEnc: encryptSecret('sumup-key') });
+      (sumupClient.getMerchantCode as jest.Mock).mockResolvedValue('MC123');
+      (sumupClient.createCheckout as jest.Mock).mockResolvedValue({
+        id: 'checkout-1',
+        status: 'PENDING',
+        checkout_reference: 'ref-1',
+        amount: 22,
+        currency: 'EUR',
+      });
+
+      const result = await service.initiateSumUpCheckout('venue-1', cartDto(), nextLunchSlot().toISOString(), false, delivery);
+
+      expect(sumupClient.getMerchantCode).toHaveBeenCalledWith('sumup-key');
+      expect(sumupClient.createCheckout).toHaveBeenCalledWith(
+        'sumup-key',
+        expect.objectContaining({ merchantCode: 'MC123', amount: 22, currency: 'EUR' }),
+      );
+      expect(result).toEqual({ checkoutId: 'checkout-1', total: 22 });
+    });
+
+    it('rifiuta se SumUp non è abilitato per il locale', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, sumupEnabled: false });
+      await expect(
+        service.initiateSumUpCheckout('venue-1', cartDto(), nextLunchSlot().toISOString(), false, delivery),
+      ).rejects.toThrow(BadRequestException);
+      expect(sumupClient.getMerchantCode).not.toHaveBeenCalled();
+    });
+
+    it('traduce un errore SumUp (es. merchant_code non trovato) in un messaggio generico per il cliente', async () => {
+      prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, sumupEnabled: true, sumupApiKeyEnc: encryptSecret('sumup-key') });
+      (sumupClient.getMerchantCode as jest.Mock).mockRejectedValue(
+        new SumUpApiError('Il profilo SumUp non contiene un merchant_code: contatta il supporto SumUp.'),
+      );
+      await expect(
+        service.initiateSumUpCheckout('venue-1', cartDto(), nextLunchSlot().toISOString(), false, delivery),
+      ).rejects.toThrow(/non è al momento disponibile/);
+      expect(sumupClient.createCheckout).not.toHaveBeenCalled();
     });
   });
 

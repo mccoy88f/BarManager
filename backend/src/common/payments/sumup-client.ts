@@ -63,10 +63,26 @@ async function callSumUp<T>(apiKey: string, path: string, init?: RequestInit): P
 }
 
 export const sumupClient = {
+  /**
+   * Il merchant_code (non l'email) è il campo richiesto da POST /checkouts
+   * per identificare a chi va il pagamento (v. createCheckout) — SumUp lo
+   * restituisce dentro il profilo di GET /me, non c'è un endpoint dedicato.
+   * Senza questa chiamata createCheckout falliva con 400 "Validation error"
+   * (param: "pay_to_email or merchant_code"), anche con una API key valida.
+   */
+  async getMerchantCode(apiKey: string): Promise<string> {
+    const profile = await callSumUp<{ merchant_profile?: { merchant_code?: string } }>(apiKey, '/me');
+    const merchantCode = profile.merchant_profile?.merchant_code;
+    if (!merchantCode) {
+      throw new SumUpApiError('Il profilo SumUp non contiene un merchant_code: contatta il supporto SumUp.');
+    }
+    return merchantCode;
+  },
+
   /** Crea un checkout per l'importo totale dell'ordine. */
   async createCheckout(
     apiKey: string,
-    input: { checkoutReference: string; amount: number; currency: string; description: string },
+    input: { checkoutReference: string; amount: number; currency: string; description: string; merchantCode: string },
   ): Promise<SumUpCheckout> {
     return callSumUp<SumUpCheckout>(apiKey, '/checkouts', {
       method: 'POST',
@@ -75,6 +91,7 @@ export const sumupClient = {
         amount: input.amount,
         currency: input.currency,
         description: input.description,
+        merchant_code: input.merchantCode,
       }),
     });
   },

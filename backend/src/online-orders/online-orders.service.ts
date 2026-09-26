@@ -493,11 +493,17 @@ export class OnlineOrdersService {
     // pubblico come 500 generico invece di un 400 con un messaggio sensato.
     let checkout;
     try {
-      checkout = await sumupClient.createCheckout(decryptSecret(pricing.venue.sumupApiKeyEnc), {
+      const apiKey = decryptSecret(pricing.venue.sumupApiKeyEnc);
+      // POST /checkouts richiede il merchant_code (a chi va il pagamento):
+      // SumUp non lo accetta dedotto dalla sola API key, va letto dal
+      // profilo (GET /me) e passato esplicitamente ad ogni checkout.
+      const merchantCode = await sumupClient.getMerchantCode(apiKey);
+      checkout = await sumupClient.createCheckout(apiKey, {
         checkoutReference: randomUUID(),
         amount: pricing.total,
         currency: 'EUR',
         description: `Ordine online — ${pricing.venue.name}`,
+        merchantCode,
       });
     } catch (err) {
       if (err instanceof SumUpApiError) {
