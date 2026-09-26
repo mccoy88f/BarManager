@@ -460,50 +460,39 @@ export function OnlineOrdersAdmin() {
 
             {/* PENDING: Accetta (verde) | Proponi orario (arancione) | Rifiuta (rosso) */}
             {order.status === 'PENDING' && (
-              <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center" sx={{ gap: 1.25 }}>
-                <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                  <Button
-                    color="success"
-                    onClick={() => acceptMutation.mutate(order.id)}
-                    sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
-                  >
-                    Accetta
-                  </Button>
-                  <Button
-                    sx={{
-                      minHeight: 44,
-                      px: 2.5,
-                      fontWeight: 600,
-                      fontSize: '0.9rem',
-                      bgcolor: 'warning.main',
-                      color: 'warning.contrastText',
-                      '&:hover': { bgcolor: 'warning.dark' },
-                    }}
-                    onClick={() => {
-                      setChangingTime(order);
-                      setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
-                    }}
-                  >
-                    Proponi orario
-                  </Button>
-                  <Button
-                    color="error"
-                    onClick={() => setRejecting(order)}
-                    sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
-                  >
-                    Rifiuta
-                  </Button>
-                </ButtonGroup>
+              <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Button
-                  size="medium"
-                  color="error"
-                  variant="text"
-                  onClick={() => setCancelling(order)}
-                  sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
+                  color="success"
+                  onClick={() => acceptMutation.mutate(order.id)}
+                  sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
                 >
-                  Annulla ordine
+                  Accetta
                 </Button>
-              </Stack>
+                <Button
+                  sx={{
+                    minHeight: 44,
+                    px: 2.5,
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    bgcolor: 'warning.main',
+                    color: 'warning.contrastText',
+                    '&:hover': { bgcolor: 'warning.dark' },
+                  }}
+                  onClick={() => {
+                    setChangingTime(order);
+                    setTimeForm(splitDateTime(order.proposedRequestedAt ?? order.requestedAt));
+                  }}
+                >
+                  Proponi orario
+                </Button>
+                <Button
+                  color="error"
+                  onClick={() => setRejecting(order)}
+                  sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  Rifiuta
+                </Button>
+              </ButtonGroup>
             )}
 
             {/* CONFIRMED: Segna come pronto (verde) | Ritardo (arancione) | Annulla ordine (rosso) */}
@@ -540,31 +529,40 @@ export function OnlineOrdersAdmin() {
               </ButtonGroup>
             )}
 
-            {/* READY: Completa (verde) | Annulla ordine (rosso) — proponi orario non necessario */}
+            {/* READY: Completa (verde) | Raggiungi il luogo (secondario, solo DELIVERY con navigazione) */}
             {order.status === 'READY' && (
-              <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                <Button
-                  color="success"
-                  onClick={() => {
-                    if (order.fulfillment === 'DELIVERY') {
-                      completeMutation.mutate({ id: order.id });
-                    } else {
-                      setCompleting(order);
-                      setCompletePaymentMethod('CASH');
-                    }
-                  }}
-                  sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
-                >
-                  Completa
-                </Button>
-                <Button
-                  color="error"
-                  onClick={() => setCancelling(order)}
-                  sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
-                >
-                  Annulla ordine
-                </Button>
-              </ButtonGroup>
+              <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center" sx={{ gap: 1.25 }}>
+                <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                  <Button
+                    color="success"
+                    onClick={() => {
+                      if (order.fulfillment === 'DELIVERY') {
+                        completeMutation.mutate({ id: order.id });
+                      } else {
+                        setCompleting(order);
+                        setCompletePaymentMethod('CASH');
+                      }
+                    }}
+                    sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
+                  >
+                    Completa
+                  </Button>
+                </ButtonGroup>
+                {order.fulfillment === 'DELIVERY' && navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<DirectionsIcon sx={{ fontSize: 18 }} />}
+                    component="a"
+                    href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ minHeight: 44, px: 2, fontWeight: 600, borderRadius: 2, textTransform: 'none' }}
+                  >
+                    Raggiungi il luogo
+                  </Button>
+                )}
+              </Stack>
             )}
           </Box>
         )}
