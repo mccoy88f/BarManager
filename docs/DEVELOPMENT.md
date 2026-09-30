@@ -201,14 +201,45 @@ Gestione del menù del locale, consultabile pubblicamente (es. da QR al tavolo) 
 - Voci raggruppate per categoria, filtrate per orario corrente e visibilità; badge allergeni; badge "non disponibile" per le voci temporaneamente esaurite.
 - Nessun dato sensibile esposto: solo le informazioni pubbliche della voce di menù.
 
-### 5.5 Attività e scadenze
+### 5.5 Attività *(specificata — v. §10 per i punti da confermare prima di implementare)*
 
-Modulo generico per tenere traccia di impegni con una data entro cui vanno fatti, che non rientrano negli altri moduli: pagamento fornitori, visita medica dipendenti, scadenza attestati/corsi obbligatori, manutenzioni.
+Modulo unico (rinominato da "Attività e scadenze" a "Attività", stessa `moduleKey` `tasks` per non rompere i permessi già assegnati) che copre sia le scadenze esistenti sia le **spese** del locale, con un processo che le collega senza obbligare a farlo:
+
+```
+Ordine fornitore ──(opzionale, un clic)──▶ Scadenza (Attività) ──(al pagamento)──▶ Spesa
+                                                  ▲
+                          creabile anche a mano ──┘                    Spesa creabile
+                                                                        anche da sola,
+                                                                        senza scadenza
+```
+
+**Scadenze** (comportamento esistente, invariato):
 
 - Ogni attività ha titolo, descrizione libera, tipo (pagamento fornitore / visita medica / scadenza attestato / manutenzione / generica), scadenza, ed **entro quanti giorni prima** va segnalata come imminente in home (`reminderDaysBefore`, default 7).
 - Può essere collegata a un dipendente (es. "Visita medica — Mario Rossi").
 - **Ricorrenza**: non ricorrente, mensile o annuale — utile per scadenze periodiche come il rinnovo di un attestato. Al completamento di un'attività ricorrente viene creata subito la prossima occorrenza con la scadenza spostata di un mese/anno, così non va reinserita a mano ogni volta.
 - Le attività aperte, evidenziando quelle scadute, alimentano la home dell'amministrazione (§5.6).
+- **Nuovo campo opzionale `amount`**: un importo atteso, sensato per "pagamento fornitore"/"manutenzione" (lasciato vuoto per gli altri tipi) — è l'importo proposto quando la scadenza genera una spesa (sotto). Editabile come ogni altro campo dell'attività.
+- **Nuovo campo opzionale `orderId`**: presente solo per le scadenze generate da un ordine fornitore (sotto), per risalire all'ordine di origine dalla scadenza.
+
+**Spese** (nuovo):
+
+- Ogni spesa ha importo, data, descrizione, un **metodo di pagamento** e un **portafoglio**, entrambi scelti da liste configurabili per locale (sotto), e un riferimento opzionale alla scadenza che l'ha generata.
+- Si crea in tre modi:
+  1. **Autonoma**, dal modulo Spese: nessun collegamento a ordini o scadenze.
+  2. **Da una scadenza esistente con importo**: completandola, si apre un form precompilato con l'importo atteso (modificabile) a cui manca solo scegliere metodo di pagamento e portafoglio prima di confermare. La scadenza può anche essere completata senza registrare una spesa (es. pagamento già tracciato altrove), restano due azioni distinte.
+  3. **Da un ordine fornitore**: nella pagina dell'ordine, un pulsante "Genera scadenza di pagamento" crea un'attività di tipo "pagamento fornitore" con l'importo totale dell'ordine (già calcolato oggi da riga × costo unitario per l'email al fornitore, §5.3) e una scadenza proposta (es. +30gg, modificabile prima di salvare) — poi segue il punto 2 quando viene pagata. Resta un'azione esplicita dell'admin, non automatica ad ogni invio ordine: non ogni ordine genera necessariamente un pagamento da tracciare qui (es. contanti pagati subito alla consegna).
+- **Tutto è modificabile o cancellabile in ogni momento**: cambiare importo/metodo/portafoglio/data/descrizione di una spesa già registrata, scollegarla dalla scadenza, o cancellarla — senza che la scadenza collegata torni automaticamente aperta (restano due entità indipendenti una volta create, il collegamento è solo tracciabilità). Al più una spesa per scadenza.
+
+**Metodi di pagamento e Portafogli** (nuove liste configurabili in Impostazioni, per locale):
+
+- **Metodo di pagamento**: es. Contanti, Bancomat, Carta di credito, Bonifico — nome libero, attivabile/disattivabile, non eliminabile se già usato da una spesa (si disattiva, come già avviene per fornitori/categorie prodotto).
+- **Portafoglio**: es. Cassa contanti, Conto corrente, Carta aziendale — nome libero, stessa gestione. Rappresenta *da dove* escono i soldi, distinto dal metodo con cui si è pagato (es. "Bonifico" dal portafoglio "Conto corrente" oppure, più raramente, da una carta aziendale diversa).
+
+**Report spese**:
+
+- Vista Spese con filtri: intervallo di date (default oggi), metodo di pagamento, portafoglio, sola-autonoma/sola-collegata a scadenza — totale del periodo filtrato in evidenza.
+- **Stampa**: layout ottimizzato per la stampa di sistema via `window.print()` (stesso approccio già adottato per gli scontrini ordini online, §9.2, in sostituzione di QZ Tray), non un PDF generato lato server.
 
 ### 5.6 Home dell'amministrazione
 
@@ -666,6 +697,11 @@ Il motivo di questa scelta: nessuna libreria browser può aprire una connessione
 - Dove verrà ospitato in produzione: server on-premise vs VPS cloud (impatta la strategia stampanti, vedi §9.2).
 - Provider SMTP: globale di piattaforma (un solo mittente per tutti i locali) oppure configurabile per singolo locale.
 - Contratto orario dipendenti (per calcolo straordinari/ferie maturate): regole CCNL da applicare.
+- **Attività — estensione Spese (§5.5)**, specificata ma non ancora implementata, da confermare prima di iniziare:
+  - **Permessi**: Scadenze e Spese condividono oggi la stessa `moduleKey` (`tasks`), quindi chi vede le scadenze vedrebbe anche le spese (dati economici) — da confermare se va bene così o se le spese meritano un permesso separato più restrittivo (es. solo Admin/Manager, mai Dipendente anche se abilitato su "Attività").
+  - **Liste "Metodo di pagamento" e "Portafoglio"**: proposte come liste libere configurabili per locale (come Categorie prodotto/Fornitori) — da confermare che non servano invece valori fissi predefiniti (es. Contanti/Carta sempre presenti di default, come già per `CASH`/`CARD_ONLINE`/`CARD_IN_STORE` negli ordini online) oltre a quelli aggiunti dall'admin.
+  - **"Genera scadenza di pagamento" da un ordine**: proposta come azione manuale con scadenza proposta a +30gg dall'invio — da confermare l'offset di default (o se deve restare vuoto, obbligando l'admin a sceglierlo sempre).
+  - Nessun collegamento pensato per ora fra Spese e HACCP/Inventario (es. scorte) oltre all'origine facoltativa da un ordine fornitore — resta un modulo di sola contabilità/tracciamento uscite, non un vero conto economico con entrate.
 - **Prenotazioni (§5.7)** — implementata in v1 con queste scelte di default (da confermare/rivedere con l'utente):
   - Durata di occupazione di un tavolo impostata a 120 minuti di default (`Venue.reservationSlotDurationMinutes`, configurabile in Impostazioni prenotazioni), **sovrascrivibile per singola prenotazione** (`Reservation.slotDurationMinutes`) quando un caso specifico richiede più o meno tempo del solito. Resta da capire se un locale userà davvero il turnover (più prenotazioni sullo stesso tavolo in orari diversi dello stesso servizio) o preferisce "un turno = tutto il servizio" (in tal caso basta impostare una durata pari all'intero servizio).
   - ~~v1 non combina più tavoli per un unico gruppo grande~~ — **risolto per l'assegnazione manuale**: se nessun tavolo singolo basta, la prenotazione resta `PENDING` senza tavolo assegnato (visibile nella scheda "Da confermare" della coda) ma l'admin può ora scegliere ed assegnare più tavoli insieme dallo stesso campo (Autocomplete multiplo), sia in coda sia dall'aggiunta manuale — modellato con una relazione molti-a-molti (`ReservationTable`). Resta **non** automatica: l'assegnazione automatica del widget pubblico (best-fit) sceglie sempre un solo tavolo, non ne combina mai più di uno.
