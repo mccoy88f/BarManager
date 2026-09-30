@@ -27,6 +27,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, ERROR_CHIP_COLOR } from '../../config/statusChip';
 
+import { formatDateTime } from '../../utils/format';
 interface AttendanceRecordRow {
   id: string;
   type: 'CLOCK_IN' | 'CLOCK_OUT';
@@ -222,7 +223,7 @@ export function AttendanceRecords() {
                   <Typography variant="body2" sx={{ minWidth: 0 }}>
                     {record.employee.firstName} {record.employee.lastName} —{' '}
                     {record.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno —{' '}
-                    {new Date(record.timestamp).toLocaleString('it-IT')}
+                    {formatDateTime(record.timestamp)}
                   </Typography>
                   <Stack direction="row" spacing={0.5}>
                     <IconButton
@@ -329,7 +330,7 @@ export function AttendanceRecords() {
                 </Typography>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 0.5 }}>
                   <Typography variant="body2" color="text.secondary">
-                    {new Date(record.timestamp).toLocaleString('it-IT')}
+                    {formatDateTime(record.timestamp)}
                   </Typography>
                   <Chip size="small" variant="outlined" label={sourceLabels[record.source] ?? record.source} />
                   {approvalStatusChip[record.approvalStatus] && (
@@ -458,7 +459,7 @@ export function AttendanceRecords() {
         title="Eliminare la timbratura?"
         message={
           toDelete
-            ? `"${toDelete.employee.firstName} ${toDelete.employee.lastName}" — ${toDelete.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno del ${new Date(toDelete.timestamp).toLocaleString('it-IT')} verrà eliminata definitivamente.`
+            ? `"${toDelete.employee.firstName} ${toDelete.employee.lastName}" — ${toDelete.type === 'CLOCK_IN' ? 'Inizio' : 'Fine'} turno del ${formatDateTime(toDelete.timestamp)} verrà eliminata definitivamente.`
             : ''
         }
         loading={deleteMutation.isPending}

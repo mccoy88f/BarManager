@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ImageLightbox } from './ImageLightbox';
 
+import { formatDate } from '../utils/format';
 interface BoardMessageRow {
   id: string;
   text: string;
@@ -69,7 +70,7 @@ export function BoardWidget() {
                 <Stack direction="row" spacing={0.5} alignItems="center">
                   <PushPinIcon fontSize="small" color="primary" />
                   <Typography variant="caption" color="text.secondary">
-                    {new Date(msg.createdAt).toLocaleDateString('it-IT')}
+                    {formatDate(msg.createdAt)}
                   </Typography>
                 </Stack>
                 <Typography variant="body2">{msg.text}</Typography>

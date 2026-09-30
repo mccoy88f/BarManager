@@ -22,6 +22,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
+import { formatDateTime } from '../../utils/format';
 
 type CommunicationType = 'COMMUNICATION' | 'MARKETING';
 type RecipientStatus = 'QUEUED' | 'SENT' | 'FAILED';
@@ -67,10 +68,6 @@ const RECIPIENT_STATUS_COLOR: Record<RecipientStatus, 'default' | 'success' | 'e
   SENT: SUCCESS_CHIP_COLOR,
   FAILED: ERROR_CHIP_COLOR,
 };
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString('it-IT');
-}
 
 /**
  * Storico delle comunicazioni inviate dalla pagina Marketing (§1-septdecies

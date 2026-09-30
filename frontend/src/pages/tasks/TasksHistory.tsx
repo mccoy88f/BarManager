@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
+import { formatDate } from '../../utils/format';
 interface TaskRow {
   id: string;
   title: string;
@@ -72,7 +73,7 @@ export function TasksHistory() {
                     color="success"
                     variant="outlined"
                     sx={{ mt: 0.5 }}
-                    label={`Completata il: ${new Date(task.completedAt).toLocaleDateString('it-IT')}`}
+                    label={`Completata il: ${formatDate(task.completedAt)}`}
                   />
                 )}
               </Box>

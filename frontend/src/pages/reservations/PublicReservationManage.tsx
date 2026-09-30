@@ -16,6 +16,13 @@ import {
 } from '@mui/material';
 import CakeIcon from '@mui/icons-material/Cake';
 import { api } from '../../api/client';
+import { formatDateAndTime } from '../../utils/format';
+import {
+  PENDING_CHIP_COLOR,
+  SUCCESS_CHIP_COLOR,
+  ERROR_CHIP_COLOR,
+  NEUTRAL_CHIP_COLOR,
+} from '../../config/statusChip';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
@@ -55,10 +62,12 @@ const statusLabels: Record<ReservationStatus, string> = {
   CANCELLED: 'Annullata',
 };
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString('it-IT')} alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-}
+const statusColors: Record<ReservationStatus, 'warning' | 'success' | 'error' | 'default'> = {
+  PENDING: PENDING_CHIP_COLOR,
+  CONFIRMED: SUCCESS_CHIP_COLOR,
+  REJECTED: ERROR_CHIP_COLOR,
+  CANCELLED: NEUTRAL_CHIP_COLOR,
+};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -170,17 +179,13 @@ export function PublicReservationManage() {
             <Typography variant="subtitle1" fontWeight={600}>
               {reservation.firstName} {reservation.lastName}
             </Typography>
-            <Chip
-              size="small"
-              color={status === 'CONFIRMED' ? 'success' : status === 'REJECTED' ? 'error' : 'warning'}
-              label={statusLabels[status]}
-            />
+            <Chip size="small" color={statusColors[status]} label={statusLabels[status]} />
             {reservation.isEvent && (
               <Chip size="small" icon={<CakeIcon fontSize="small" />} label={reservation.eventNote || 'Evento'} />
             )}
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            {formatWhen(reservation.reservedAt)} — {reservation.partySize} persone
+            {formatDateAndTime(reservation.reservedAt)} — {reservation.partySize} persone
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {reservation.email} — {reservation.phone}
@@ -216,7 +221,7 @@ export function PublicReservationManage() {
                 </Button>
               }
             >
-              Il locale propone di spostare la prenotazione a {formatWhen(reservation.proposedReservedAt)}.
+              Il locale propone di spostare la prenotazione a {formatDateAndTime(reservation.proposedReservedAt)}.
               {confirmTimeMutation.isSuccess && ' Confermato!'}
             </Alert>
           )}

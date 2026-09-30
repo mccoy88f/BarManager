@@ -33,6 +33,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
+import { formatDateAndTime } from '../../utils/format';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 /** "Chiuse" unisce Rifiutate e Annullate nella stessa scheda, senza divisioni (§10). */
@@ -100,11 +101,6 @@ const statusColors: Record<ReservationStatus, 'warning' | 'success' | 'error' | 
   REJECTED: ERROR_CHIP_COLOR,
   CANCELLED: NEUTRAL_CHIP_COLOR,
 };
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString('it-IT')} alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-}
 
 function splitDateTime(iso: string): { date: string; time: string } {
   const d = new Date(iso);
@@ -423,7 +419,7 @@ export function ReservationsAdmin() {
               )}
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              {formatWhen(r.reservedAt)} — {r.partySize} persone
+              {formatDateAndTime(r.reservedAt)} — {r.partySize} persone
               {r.slotDurationMinutes != null && ` — durata ${r.slotDurationMinutes} min`}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -434,7 +430,7 @@ export function ReservationsAdmin() {
                 size="small"
                 color="warning"
                 sx={{ mt: 0.5 }}
-                label={`In attesa di conferma nuovo orario: ${formatWhen(r.proposedReservedAt)}`}
+                label={`In attesa di conferma nuovo orario: ${formatDateAndTime(r.proposedReservedAt)}`}
               />
             )}
             {r.allergiesNote && (
@@ -962,7 +958,7 @@ export function ReservationsAdmin() {
             {historyQuery.data?.map((r) => (
               <ListItem key={r.id} disableGutters>
                 <ListItemText
-                  primary={`${formatWhen(r.reservedAt)} — ${r.partySize} persone`}
+                  primary={`${formatDateAndTime(r.reservedAt)} — ${r.partySize} persone`}
                   secondary={
                     <Chip size="small" sx={{ mt: 0.5 }} color={statusColors[r.status]} label={statusLabels[r.status]} />
                   }

@@ -27,6 +27,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
+import { formatCurrency } from '../../utils/format';
 interface CategoryRow {
   id: string;
   name: string;
@@ -352,7 +353,7 @@ export function Catalog() {
                 <Typography variant="caption" color="text.secondary">
                   {product.category.name} — {product.supplier.name} — standard {product.standardQty}{' '}
                   {product.unit}
-                  {product.costPerUnit != null && ` — € ${product.costPerUnit.toFixed(2)}/${product.unit}`}
+                  {product.costPerUnit != null && ` — ${formatCurrency(product.costPerUnit)}/${product.unit}`}
                   {product.unitsPerPackage != null && ` — ${product.unitsPerPackage} unità/${product.unit}`}
                 </Typography>
               </Box>

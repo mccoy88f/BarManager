@@ -35,6 +35,7 @@ import { ACCENT_COLOR_PRESETS, DEFAULT_ACCENT_COLOR } from '../../config/accentC
 import { OpeningHoursWeekEditor, type OpeningHoursDay } from '../../components/OpeningHoursWeekEditor';
 import { SpecialDaysCard } from './SpecialDaysCard';
 
+import { formatDateTime } from '../../utils/format';
 interface LoyverseSyncSummary {
   categories: number;
   items: number;
@@ -580,7 +581,7 @@ export function VenueSettings() {
 
           {loyverseStatusQuery.data?.lastSyncAt && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-              Ultima sincronizzazione: {new Date(loyverseStatusQuery.data.lastSyncAt).toLocaleString('it-IT')}
+              Ultima sincronizzazione: {formatDateTime(loyverseStatusQuery.data.lastSyncAt)}
             </Typography>
           )}
           {loyverseStatusQuery.data?.lastSyncError && (
@@ -638,7 +639,7 @@ export function VenueSettings() {
         <DialogContent>
           {loyverseStatusQuery.data?.lastSyncAt && (
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              {new Date(loyverseStatusQuery.data.lastSyncAt).toLocaleString('it-IT')}
+              {formatDateTime(loyverseStatusQuery.data.lastSyncAt)}
             </Typography>
           )}
           {loyverseStatusQuery.data?.lastSyncError && (

@@ -17,6 +17,13 @@ import {
 } from '@mui/material';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { formatDateAndTime } from '../../utils/format';
+import {
+  PENDING_CHIP_COLOR,
+  SUCCESS_CHIP_COLOR,
+  ERROR_CHIP_COLOR,
+  NEUTRAL_CHIP_COLOR,
+} from '../../config/statusChip';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
@@ -50,10 +57,12 @@ const statusLabels: Record<ReservationStatus, string> = {
   CANCELLED: 'Annullata',
 };
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString('it-IT')} alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-}
+const statusColors: Record<ReservationStatus, 'warning' | 'success' | 'error' | 'default'> = {
+  PENDING: PENDING_CHIP_COLOR,
+  CONFIRMED: SUCCESS_CHIP_COLOR,
+  REJECTED: ERROR_CHIP_COLOR,
+  CANCELLED: NEUTRAL_CHIP_COLOR,
+};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -184,13 +193,9 @@ export function PublicReservationSelfManage() {
         <CardContent sx={{ display: 'grid', gap: 1 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="subtitle1" fontWeight={600}>
-              {formatWhen(reservation.reservedAt)}
+              {formatDateAndTime(reservation.reservedAt)}
             </Typography>
-            <Chip
-              size="small"
-              color={status === 'CONFIRMED' ? 'success' : status === 'CANCELLED' || status === 'REJECTED' ? 'error' : 'warning'}
-              label={statusLabels[status]}
-            />
+            <Chip size="small" color={statusColors[status]} label={statusLabels[status]} />
           </Stack>
 
           {cancelled && (
@@ -308,7 +313,7 @@ export function PublicReservationSelfManage() {
       <ConfirmDialog
         open={confirmCancelOpen}
         title="Annullare la prenotazione?"
-        message={`La prenotazione per ${form.partySize || reservation.partySize} persone del ${formatWhen(reservation.reservedAt)} verrà annullata.`}
+        message={`La prenotazione per ${form.partySize || reservation.partySize} persone del ${formatDateAndTime(reservation.reservedAt)} verrà annullata.`}
         confirmLabel="Annulla prenotazione"
         loading={cancelMutation.isPending}
         onCancel={() => setConfirmCancelOpen(false)}

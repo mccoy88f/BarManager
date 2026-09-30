@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { formatDateLong } from '../../utils/format';
 
 interface DayOverride {
   closed: boolean;
@@ -133,10 +134,6 @@ function DayOverrideFields({
       )}
     </Stack>
   );
-}
-
-function formatDate(dateIso: string): string {
-  return new Date(dateIso).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 /**
@@ -247,7 +244,7 @@ export function SpecialDaysCard() {
                 sx={{ cursor: 'pointer', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}
               >
                 <ListItemText
-                  primary={`${formatDate(day.date)}${day.label ? ` — ${day.label}` : ''}`}
+                  primary={`${formatDateLong(day.date)}${day.label ? ` — ${day.label}` : ''}`}
                   secondary={
                     <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
                       {day.realHoursOverride && <Chip size="small" label="Orario reale" />}
@@ -333,7 +330,7 @@ export function SpecialDaysCard() {
       <ConfirmDialog
         open={!!toDelete}
         title="Eliminare l'apertura speciale?"
-        message={toDelete ? `L'apertura speciale per ${formatDate(toDelete.date)} verrà eliminata.` : ''}
+        message={toDelete ? `L'apertura speciale per ${formatDateLong(toDelete.date)} verrà eliminata.` : ''}
         loading={deleteMutation.isPending}
         onCancel={() => setToDelete(null)}
         onConfirm={() => toDelete && deleteMutation.mutate(toDelete.id)}

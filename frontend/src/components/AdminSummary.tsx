@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useToast } from './ToastProvider';
 
+import { formatDate } from '../utils/format';
 interface AdminSummaryData {
   pendingLeaveRequests: {
     id: string;
@@ -112,8 +113,8 @@ export function AdminSummary() {
                           {r.employee.firstName} {r.employee.lastName} — {leaveTypeLabels[r.type]}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {new Date(r.startDate).toLocaleDateString('it-IT')} –{' '}
-                          {new Date(r.endDate).toLocaleDateString('it-IT')}
+                          {formatDate(r.startDate)} –{' '}
+                          {formatDate(r.endDate)}
                         </Typography>
                       </Box>
                       <Stack direction="row">
@@ -185,7 +186,7 @@ export function AdminSummary() {
                         <Chip
                           size="small"
                           color={t.overdue ? 'error' : 'warning'}
-                          label={new Date(t.dueDate).toLocaleDateString('it-IT')}
+                          label={formatDate(t.dueDate)}
                         />
                       </Box>
                       <IconButton

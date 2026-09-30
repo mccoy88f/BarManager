@@ -28,6 +28,7 @@ import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
 
+import { formatCurrency } from '../../utils/format';
 type ProductTrend = 'UP' | 'DOWN' | 'STABLE' | null;
 
 const trendTooltips: Record<Exclude<ProductTrend, null>, string> = {
@@ -314,7 +315,7 @@ export function NewOrder() {
               </TableCell>
               <TableCell>
                 {line.product.costPerUnit != null
-                  ? `€ ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
+                  ? `${formatCurrency((line.product.costPerUnit * line.orderedQty))}`
                   : '—'}
               </TableCell>
             </TableRow>
@@ -428,7 +429,7 @@ export function NewOrder() {
                       <TableCell>{suggestedQty}</TableCell>
                       <TableCell>
                         {product.costPerUnit != null
-                          ? `€ ${(product.costPerUnit * suggestedQty).toFixed(2)}`
+                          ? `${formatCurrency((product.costPerUnit * suggestedQty))}`
                           : '—'}
                       </TableCell>
                       <TableCell>
@@ -442,7 +443,7 @@ export function NewOrder() {
 
             {estimatedTotal > 0 && (
               <Typography variant="body2" sx={{ mt: 1, textAlign: 'right' }} fontWeight={600}>
-                Totale stimato: € {estimatedTotal.toFixed(2)}
+                Totale stimato: {formatCurrency(estimatedTotal)}
               </Typography>
             )}
 
@@ -472,7 +473,7 @@ export function NewOrder() {
 
                   {orderTotal(orderQuery.data) > 0 && (
                     <Typography variant="body2" sx={{ mt: 1, textAlign: 'right' }} fontWeight={600}>
-                      Totale: € {orderTotal(orderQuery.data).toFixed(2)}
+                      Totale: {formatCurrency(orderTotal(orderQuery.data))}
                     </Typography>
                   )}
 
@@ -523,7 +524,7 @@ export function NewOrder() {
                             sx={{ mt: 1, textAlign: 'right' }}
                             fontWeight={600}
                           >
-                            Totale: € {orderTotal(order).toFixed(2)}
+                            Totale: {formatCurrency(orderTotal(order))}
                           </Typography>
                         )}
                       </CardContent>

@@ -20,6 +20,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import DirectionsIcon from '@mui/icons-material/Directions';
 import { api } from '../../api/client';
 import { NEUTRAL_CHIP_COLOR, SUCCESS_CHIP_COLOR } from '../../config/statusChip';
+import { formatCurrency, formatDateAndTime } from '../../utils/format';
 
 type HistoryStatus = 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 
@@ -55,10 +56,6 @@ const statusColors: Record<HistoryStatus, 'success' | 'default'> = {
   CANCELLED: NEUTRAL_CHIP_COLOR,
 };
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString('it-IT')} ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-}
 
 function navigateUrl(lat?: number | null, lng?: number | null, address?: string | null): string {
   if (lat != null && lng != null) {
@@ -202,8 +199,8 @@ export function OnlineOrdersHistory() {
                           ? 'Al ritiro'
                           : '—'}
                 </TableCell>
-                <TableCell>{formatWhen(order.requestedAt)}</TableCell>
-                <TableCell align="right">€ {order.total.toFixed(2)}</TableCell>
+                <TableCell>{formatDateAndTime(order.requestedAt)}</TableCell>
+                <TableCell align="right">{formatCurrency(order.total)}</TableCell>
                 <TableCell>
                   <Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} />
                 </TableCell>

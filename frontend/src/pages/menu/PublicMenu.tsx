@@ -26,6 +26,7 @@ import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 import { ImageLightbox } from '../../components/ImageLightbox';
 
+import { formatCurrency } from '../../utils/format';
 interface PublicMenuVariant {
   id: string;
   name: string;
@@ -93,11 +94,11 @@ function matches(item: PublicMenuItem, query: string): boolean {
 function priceLabel(variants: PublicMenuVariant[]): string {
   if (variants.length === 0) return '';
   if (variants.length === 1) {
-    return variants[0].price != null ? `€ ${variants[0].price.toFixed(2)}` : 'Prezzo variabile';
+    return variants[0].price != null ? `${formatCurrency(variants[0].price)}` : 'Prezzo variabile';
   }
   const priced = variants.filter((v) => v.price != null);
   if (priced.length === 0) return 'Prezzo variabile';
-  return `da € ${Math.min(...priced.map((v) => v.price as number)).toFixed(2)}`;
+  return `da ${formatCurrency(Math.min(...priced.map((v) => v.price as number)))}`;
 }
 
 function MenuItemCard({
@@ -139,7 +140,7 @@ function MenuItemCard({
                 <Chip
                   key={v.id}
                   size="small"
-                  label={`${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`}
+                  label={`${v.name || 'Standard'}: ${v.price != null ? `${formatCurrency(v.price)}` : 'variabile'}`}
                 />
               ))}
             </Box>

@@ -65,6 +65,7 @@ import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
 import { ModifierGroupsCard } from './ModifierGroupsCard';
 
+import { formatCurrency } from '../../utils/format';
 interface MenuCategory {
   id: string;
   name: string;
@@ -110,12 +111,12 @@ const emptyVariant: VariantForm = { name: '', price: '' };
 function formatPriceLabel(variants: MenuItemVariant[]): string {
   if (variants.length === 0) return '';
   if (variants.length === 1) {
-    return variants[0].price != null ? `€ ${variants[0].price.toFixed(2)}` : 'Prezzo variabile';
+    return variants[0].price != null ? `${formatCurrency(variants[0].price)}` : 'Prezzo variabile';
   }
   const priced = variants.filter((v) => v.price != null);
   if (priced.length === 0) return 'Prezzo variabile';
   const min = Math.min(...priced.map((v) => v.price as number));
-  return `da € ${min.toFixed(2)}`;
+  return `da ${formatCurrency(min)}`;
 }
 
 const availabilityLabels: Record<string, string> = {
@@ -781,7 +782,7 @@ export function MenuAdmin() {
                                     {item.variants
                                       .map(
                                         (v) =>
-                                          `${v.name || 'Standard'}: ${v.price != null ? `€ ${v.price.toFixed(2)}` : 'variabile'}`,
+                                          `${v.name || 'Standard'}: ${v.price != null ? `${formatCurrency(v.price)}` : 'variabile'}`,
                                       )
                                       .join(' · ')}
                                   </Typography>

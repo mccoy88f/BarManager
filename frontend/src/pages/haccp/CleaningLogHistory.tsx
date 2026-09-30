@@ -3,6 +3,7 @@ import { Box, Card, CardContent, Stack, TextField, Typography } from '@mui/mater
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
+import { formatDateTime } from '../../utils/format';
 interface CleaningLogRow {
   id: string;
   completedAt: string;
@@ -65,7 +66,7 @@ export function CleaningLogHistory() {
                 <strong>{log.task.description}</strong> — {log.task.location}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {whoLabel(log)} — {new Date(log.completedAt).toLocaleString('it-IT')}
+                {whoLabel(log)} — {formatDateTime(log.completedAt)}
               </Typography>
             </Box>
           ))}

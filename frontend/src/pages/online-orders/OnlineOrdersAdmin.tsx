@@ -41,6 +41,7 @@ import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../.
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useOrderNotification } from '../../context/OrderNotificationContext';
 
+import { formatCurrency, formatDateAndTime } from '../../utils/format';
 type OnlineOrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 type Fulfillment = 'PICKUP' | 'DELIVERY';
 
@@ -97,11 +98,6 @@ const statusColors: Record<OnlineOrderStatus, 'warning' | 'success' | 'default'>
   REJECTED: NEUTRAL_CHIP_COLOR,
   CANCELLED: NEUTRAL_CHIP_COLOR,
 };
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString('it-IT')} alle ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-}
 
 function splitDateTime(iso: string): { date: string; time: string } {
   const d = new Date(iso);
@@ -290,7 +286,7 @@ export function OnlineOrdersAdmin() {
             {/* Riga 1: ora + telefono affiancato */}
             <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 1, gap: 1 }}>
               <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                🕒 {formatWhen(order.requestedAt)}
+                🕒 {formatDateAndTime(order.requestedAt)}
               </Typography>
               <Button
                 component="a"
@@ -389,7 +385,7 @@ export function OnlineOrdersAdmin() {
             <Chip
               size="medium"
               color="warning"
-              label={`In attesa di conferma nuovo orario: ${formatWhen(order.proposedRequestedAt)}`}
+              label={`In attesa di conferma nuovo orario: ${formatDateAndTime(order.proposedRequestedAt)}`}
               sx={{ fontWeight: 600 }}
             />
           </Box>
@@ -399,7 +395,7 @@ export function OnlineOrdersAdmin() {
             <Chip
               size="medium"
               color="warning"
-              label={`In attesa di apertura (${formatWhen(order.requestedAt)})`}
+              label={`In attesa di apertura (${formatDateAndTime(order.requestedAt)})`}
               sx={{ fontWeight: 600 }}
             />
           </Box>
@@ -424,7 +420,7 @@ export function OnlineOrdersAdmin() {
               </Typography>
               {line.modifiers.map((m, idx) => (
                 <Typography key={idx} variant="body2" color="text.secondary" sx={{ display: 'block', pl: 1.5, mt: 0.25, fontWeight: 500 }}>
-                  + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                  + {m.optionName}{m.price > 0 ? ` (+${formatCurrency(m.price)})` : ''}
                 </Typography>
               ))}
               {line.note?.trim() && (
@@ -446,10 +442,10 @@ export function OnlineOrdersAdmin() {
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              {order.fulfillment === 'DELIVERY' && order.deliveryFee > 0 ? `Consegna: € ${order.deliveryFee.toFixed(2)}` : ''}
+              {order.fulfillment === 'DELIVERY' && order.deliveryFee > 0 ? `Consegna: ${formatCurrency(order.deliveryFee)}` : ''}
             </Typography>
             <Typography variant="subtitle1" fontWeight={700}>
-              Totale € {order.total.toFixed(2)}
+              Totale {formatCurrency(order.total)}
             </Typography>
           </Box>
         </Box>
@@ -785,7 +781,7 @@ export function OnlineOrdersAdmin() {
                 Orario attuale
               </Typography>
               <Typography variant="body1" fontWeight={600}>
-                {formatWhen(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt)}
+                {formatDateAndTime(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt)}
               </Typography>
             </Box>
           )}
@@ -821,7 +817,7 @@ export function OnlineOrdersAdmin() {
             >
               <Typography variant="body2" fontWeight={700}>
                 Nuovo orario:{' '}
-                {formatWhen(
+                {formatDateAndTime(
                   new Date(
                     new Date(delayingOrder.proposedRequestedAt ?? delayingOrder.requestedAt).getTime() +
                       delayMinutes * 60 * 1000,

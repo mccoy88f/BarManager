@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -30,6 +31,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { canAccessModule } from '../../config/modules';
 
+import { formatCurrency, formatDate } from '../../utils/format';
 interface TaskRow {
   id: string;
   title: string;
@@ -94,6 +96,7 @@ const emptyExpenseForm = {
 
 /** Attività e scadenze aperte: pagamenti fornitori, visite mediche, attestati, ecc. */
 export function TasksAdmin() {
+  const [listRef] = useAutoAnimate();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const showToast = useToast();
@@ -237,7 +240,7 @@ export function TasksAdmin() {
           </Button>
         </Stack>
       </Box>
-      <Stack spacing={1}>
+      <Stack spacing={1} ref={listRef}>
         {tasksQuery.data?.map((task) => {
           const overdue = new Date(task.dueDate) < now;
           return (
@@ -263,13 +266,13 @@ export function TasksAdmin() {
                     <Chip
                       size="small"
                       color={overdue ? 'error' : 'default'}
-                      label={`Scadenza: ${new Date(task.dueDate).toLocaleDateString('it-IT')}`}
+                      label={`Scadenza: ${formatDate(task.dueDate)}`}
                     />
                     {task.recurrence !== 'NONE' && (
                       <Chip size="small" variant="outlined" label={recurrenceLabels[task.recurrence]} />
                     )}
                     {task.amount != null && (
-                      <Chip size="small" color="primary" variant="outlined" label={`€ ${task.amount.toFixed(2)}`} />
+                      <Chip size="small" color="primary" variant="outlined" label={`${formatCurrency(task.amount)}`} />
                     )}
                   </Stack>
                 </Box>

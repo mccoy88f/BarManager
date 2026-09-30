@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert,
   Box,
@@ -55,6 +56,7 @@ function extractErrorMessage(error: unknown): string {
 }
 
 export function Suppliers() {
+  const [listRef] = useAutoAnimate();
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [open, setOpen] = useState(false);
@@ -133,7 +135,7 @@ export function Suppliers() {
           Aggiungi
         </Button>
       </Box>
-      <Stack spacing={2}>
+      <Stack spacing={2} ref={listRef}>
         {suppliersQuery.data?.map((supplier) => (
           <Card key={supplier.id} variant="outlined">
             <CardContent>

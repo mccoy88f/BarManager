@@ -22,6 +22,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { formatDate } from '../../utils/format';
 import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { shareReceiptPdf } from '../../printing/printJob';
@@ -120,7 +121,7 @@ export function TemperatureEntry() {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6">
-            Rilevazione temperature — {new Date().toLocaleDateString('it-IT')}
+            Rilevazione temperature — {formatDate(new Date())}
           </Typography>
           <Button
             variant="outlined"

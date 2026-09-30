@@ -27,6 +27,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR } from '../../config/statusChip';
 
+import { formatDate } from '../../utils/format';
 interface LeaveRequestRow {
   id: string;
   type: 'VACATION' | 'PERMIT' | 'SICKNESS';
@@ -58,9 +59,9 @@ function OverlapChip({ show }: { show?: boolean }) {
 }
 
 function formatRequestDates(r: LeaveRequestRow): string {
-  const requested = `Richiesta il ${new Date(r.createdAt).toLocaleDateString('it-IT')}`;
+  const requested = `Richiesta il ${formatDate(r.createdAt)}`;
   if (!r.reviewedAt) return requested;
-  const reviewed = new Date(r.reviewedAt).toLocaleDateString('it-IT');
+  const reviewed = formatDate(r.reviewedAt);
   const verb = r.status === 'APPROVED' ? 'accettata' : 'rifiutata';
   return `${requested} — ${verb} il ${reviewed}`;
 }
@@ -185,8 +186,8 @@ function SelfServiceLeaveRequests() {
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2">{typeLabels[r.type]}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
-                  {new Date(r.endDate).toLocaleDateString('it-IT')}
+                  {formatDate(r.startDate)} —{' '}
+                  {formatDate(r.endDate)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}
@@ -223,7 +224,7 @@ function SelfServiceLeaveRequests() {
         title="Annullare la richiesta?"
         message={
           toCancel
-            ? `La richiesta di ${typeLabels[toCancel.type].toLowerCase()} per il periodo ${new Date(toCancel.startDate).toLocaleDateString('it-IT')} — ${new Date(toCancel.endDate).toLocaleDateString('it-IT')} verrà annullata${toCancel.status === 'APPROVED' ? ' (era già approvata)' : ''}. L\'amministratore ne sarà avvisato via email.${
+            ? `La richiesta di ${typeLabels[toCancel.type].toLowerCase()} per il periodo ${formatDate(toCancel.startDate)} — ${formatDate(toCancel.endDate)} verrà annullata${toCancel.status === 'APPROVED' ? ' (era già approvata)' : ''}. L\'amministratore ne sarà avvisato via email.${
                 cancelError ? `\n\n${cancelError}` : ''
               }`
             : ''
@@ -343,8 +344,8 @@ function ApprovedRequestsManager() {
                   {typeLabels[r.type]}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
-                  {new Date(r.endDate).toLocaleDateString('it-IT')}
+                  {formatDate(r.startDate)} —{' '}
+                  {formatDate(r.endDate)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}
@@ -501,8 +502,8 @@ function AdminLeaveRequests() {
                   {typeLabels[r.type]}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {new Date(r.startDate).toLocaleDateString('it-IT')} —{' '}
-                  {new Date(r.endDate).toLocaleDateString('it-IT')}
+                  {formatDate(r.startDate)} —{' '}
+                  {formatDate(r.endDate)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" display="block">
                   {formatRequestDates(r)}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert,
   Box,
@@ -117,6 +118,7 @@ function extractErrorMessage(error: unknown): string {
 
 /** Anagrafica dipendenti: crea gli account (email+password) con cui accedono. */
 export function Employees() {
+  const [listRef] = useAutoAnimate();
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [open, setOpen] = useState(false);
@@ -229,7 +231,7 @@ export function Employees() {
           Aggiungi
         </Button>
       </Box>
-      <Stack spacing={2}>
+      <Stack spacing={2} ref={listRef}>
         {employeesQuery.data?.map((employee) => (
           <Card key={employee.id} variant="outlined">
             <CardContent

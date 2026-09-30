@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Stack, Typography } from '@mui/material';
 import { api } from '../../api/client';
 
+import { formatCurrency } from '../../utils/format';
 type OnlineOrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 
 interface TrackedLine {
@@ -207,7 +208,7 @@ export function PublicOnlineOrderTrack() {
                   </Typography>
                   {line.modifiers.map((m, idx) => (
                     <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 1 }}>
-                      + {m.optionName}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                      + {m.optionName}{m.price > 0 ? ` (+${formatCurrency(m.price)})` : ''}
                     </Typography>
                   ))}
                   {line.note?.trim() && (
@@ -217,7 +218,7 @@ export function PublicOnlineOrderTrack() {
                   )}
                 </Box>
                 <Typography variant="body2">
-                  € {(line.quantity * (line.unitPrice + line.modifiers.reduce((s, m) => s + m.price, 0))).toFixed(2)}
+                  {formatCurrency(line.quantity * (line.unitPrice + line.modifiers.reduce((s, m) => s + m.price, 0)))}
                 </Typography>
               </Box>
             ))}
@@ -229,7 +230,7 @@ export function PublicOnlineOrderTrack() {
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="body2">Consegna</Typography>
               <Typography variant="body2">
-                {order.deliveryFee > 0 ? `€ ${order.deliveryFee.toFixed(2)}` : 'Gratuita'}
+                {order.deliveryFee > 0 ? `${formatCurrency(order.deliveryFee)}` : 'Gratuita'}
               </Typography>
             </Box>
           )}
@@ -238,7 +239,7 @@ export function PublicOnlineOrderTrack() {
               Totale
             </Typography>
             <Typography variant="subtitle1" fontWeight={700}>
-              € {order.total.toFixed(2)}
+              {formatCurrency(order.total)}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>

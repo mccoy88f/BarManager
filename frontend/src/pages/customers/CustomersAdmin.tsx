@@ -31,6 +31,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
+import { formatCurrency, formatDate as formatDateShared } from '../../utils/format';
 interface Customer {
   id: string;
   firstName: string;
@@ -65,7 +66,7 @@ function extractErrorMessage(error: unknown): string {
 }
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleDateString('it-IT') : '—';
+  return value ? formatDateShared(value) : '—';
 }
 
 /**
@@ -309,7 +310,7 @@ export function CustomersAdmin() {
                 <TableCell align="center">
                   <Chip size="small" label={customer.ordersCount} />
                 </TableCell>
-                <TableCell align="right">€ {customer.totalOrdersSpent.toFixed(2)}</TableCell>
+                <TableCell align="right">{formatCurrency(customer.totalOrdersSpent)}</TableCell>
                 <TableCell>{formatDate(customer.firstReservationAt)}</TableCell>
                 <TableCell>{formatDate(customer.lastReservationAt)}</TableCell>
                 <TableCell align="right">

@@ -12,6 +12,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import { formatTime as formatTimeShared } from '../../utils/format';
 
 interface ShiftRow {
   date: string;
@@ -36,7 +37,7 @@ interface HistorySummary {
 }
 
 function formatTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '—';
+  return iso ? formatTimeShared(iso) : '—';
 }
 
 /** Storico delle proprie timbrature: visibile solo se l'admin lo ha abilitato (Impostazioni > Presenze). */

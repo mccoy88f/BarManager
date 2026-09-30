@@ -28,8 +28,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useToast } from './ToastProvider';
+import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR } from '../config/statusChip';
 import { QrScanDialog } from './QrScanDialog';
 
+import { formatDate, formatTime } from '../utils/format';
 interface AttendanceStatus {
   lastRecord: { type: 'CLOCK_IN' | 'CLOCK_OUT'; timestamp: string } | null;
   nextAction: 'CLOCK_IN' | 'CLOCK_OUT';
@@ -62,10 +64,10 @@ const statusLabels: Record<string, string> = {
   REJECTED: 'Rifiutata',
 };
 
-const statusColor: Record<string, 'default' | 'success' | 'error'> = {
-  PENDING: 'default',
-  APPROVED: 'success',
-  REJECTED: 'error',
+const statusColor: Record<string, 'warning' | 'success' | 'error'> = {
+  PENDING: PENDING_CHIP_COLOR,
+  APPROVED: SUCCESS_CHIP_COLOR,
+  REJECTED: ERROR_CHIP_COLOR,
 };
 
 function nowAsDatetimeLocal(): string {
@@ -215,7 +217,13 @@ export function EmployeeSummary() {
     setSelfReportOpen(true);
   };
 
-  if (!statusQuery.data) return null;
+  if (!statusQuery.data) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   const { lastRecord, nextAction } = statusQuery.data;
   const isClockedIn = nextAction === 'CLOCK_OUT';
@@ -248,7 +256,7 @@ export function EmployeeSummary() {
                 <Typography variant="body2" color="text.secondary" gutterBottom>
                   Fuori turno
                   {lastRecord &&
-                    ` — ultima uscita alle ${new Date(lastRecord.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`}
+                    ` — ultima uscita alle ${formatTime(lastRecord.timestamp)}`}
                 </Typography>
               )}
 
@@ -347,8 +355,8 @@ export function EmployeeSummary() {
                       <Box>
                         <Typography variant="body2">{leaveTypeLabels[r.type]}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {new Date(r.startDate).toLocaleDateString('it-IT')} –{' '}
-                          {new Date(r.endDate).toLocaleDateString('it-IT')}
+                          {formatDate(r.startDate)} –{' '}
+                          {formatDate(r.endDate)}
                         </Typography>
                       </Box>
                       <Chip

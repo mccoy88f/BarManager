@@ -30,6 +30,7 @@ import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
 import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 
+import { formatDate } from '../../utils/format';
 interface BoardMessageRow {
   id: string;
   text: string;
@@ -210,7 +211,7 @@ export function BoardPage() {
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     {msg.pinned && <PushPinIcon fontSize="small" color="primary" />}
                     <Typography variant="caption" color="text.secondary">
-                      {new Date(msg.createdAt).toLocaleDateString('it-IT')}
+                      {formatDate(msg.createdAt)}
                     </Typography>
                   </Stack>
                   {isAdmin && (

@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -32,6 +33,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { canAccessModule } from '../../config/modules';
 import { EmailStatusIndicator, statusLabels, statusColor, OrderRow as OrderHistoryRow } from './OrderHistory';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface OrderLineRow {
   id: string;
@@ -97,7 +99,13 @@ export function OrderDetail() {
     URL.revokeObjectURL(url);
   };
 
-  if (!orderQuery.data) return null;
+  if (!orderQuery.data) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
   const order = orderQuery.data;
   const total = orderTotal(order);
 
@@ -117,11 +125,11 @@ export function OrderDetail() {
             {order.supplier.name}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Ordinato il {new Date(order.createdAt).toLocaleDateString('it-IT')} da {order.createdBy.email}
+            Ordinato il {formatDate(order.createdAt)} da {order.createdBy.email}
           </Typography>
           {order.sentAt && (
             <Typography variant="body2" color="text.secondary">
-              Inviato il {new Date(order.sentAt).toLocaleDateString('it-IT')}
+              Inviato il {formatDate(order.sentAt)}
             </Typography>
           )}
         </Box>
@@ -170,11 +178,11 @@ export function OrderDetail() {
                       {line.orderedQty} {line.product.unit}
                     </TableCell>
                     <TableCell align="right">
-                      {line.product.costPerUnit != null ? `€ ${line.product.costPerUnit.toFixed(2)}` : '—'}
+                      {line.product.costPerUnit != null ? `${formatCurrency(line.product.costPerUnit)}` : '—'}
                     </TableCell>
                     <TableCell align="right">
                       {line.product.costPerUnit != null
-                        ? `€ ${(line.product.costPerUnit * line.orderedQty).toFixed(2)}`
+                        ? `${formatCurrency((line.product.costPerUnit * line.orderedQty))}`
                         : '—'}
                     </TableCell>
                   </TableRow>
@@ -184,7 +192,7 @@ export function OrderDetail() {
           </TableContainer>
           {total > 0 && (
             <Typography variant="h6" sx={{ mt: 2, textAlign: 'right' }}>
-              Totale: € {total.toFixed(2)}
+              Totale: {formatCurrency(total)}
             </Typography>
           )}
         </CardContent>
@@ -194,7 +202,7 @@ export function OrderDetail() {
         <DialogTitle>Genera scadenza di pagamento</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Alert severity="info">
-            Crea un'attività di tipo "Pagamento fornitore" per € {total.toFixed(2)}, collegata a
+            Crea un'attività di tipo "Pagamento fornitore" per {formatCurrency(total)}, collegata a
             questo ordine. Scegli quando scade il pagamento.
           </Alert>
           <TextField

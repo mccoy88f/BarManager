@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Card, CardContent, Typography, CircularProgress, Alert } from '@mui/material';
 import { api } from '../../api/client';
+import { formatTime } from '../../utils/format';
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -52,7 +53,7 @@ export function ClockPage() {
 
           {clockMutation.isSuccess && (
             <Alert severity="success" sx={{ mb: 2 }}>
-              Registrato alle {new Date(clockMutation.data.timestamp).toLocaleTimeString('it-IT')}
+              Registrato alle {formatTime(clockMutation.data.timestamp)}
             </Alert>
           )}
           {clockMutation.isError && (

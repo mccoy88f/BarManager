@@ -3,8 +3,10 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { api } from '../../api/client';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface OrderLineRow {
   id: string;
@@ -65,6 +67,7 @@ function orderTotal(order: OrderRow): number {
 
 /** Storico degli ordini inviati ai fornitori: clic su un ordine apre il dettaglio a pagina intera. */
 export function OrderHistory() {
+  const [listRef] = useAutoAnimate();
   const navigate = useNavigate();
 
   const ordersQuery = useQuery({
@@ -75,7 +78,7 @@ export function OrderHistory() {
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Typography variant="h6">Storico ordini</Typography>
-      <Stack spacing={1}>
+      <Stack spacing={1} ref={listRef}>
         {ordersQuery.data?.map((order) => {
           const total = orderTotal(order);
           return (
@@ -96,8 +99,8 @@ export function OrderHistory() {
                     {order.supplier.name}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {new Date(order.createdAt).toLocaleDateString('it-IT')}
-                    {total > 0 && ` — Totale € ${total.toFixed(2)}`}
+                    {formatDate(order.createdAt)}
+                    {total > 0 && ` — Totale ${formatCurrency(total)}`}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} alignItems="center">

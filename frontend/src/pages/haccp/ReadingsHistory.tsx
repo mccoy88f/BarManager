@@ -11,6 +11,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 
+import { formatDateTime } from '../../utils/format';
 interface ReadingRow {
   id: string;
   value: number;
@@ -80,7 +81,7 @@ export function ReadingsHistory() {
                   {reading.correctiveAction && ` — Azione: ${reading.correctiveAction}`}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {new Date(reading.recordedAt).toLocaleString('it-IT')}
+                  {formatDateTime(reading.recordedAt)}
                   {reading.recordedBy?.email && ` — ${reading.recordedBy.email}`}
                 </Typography>
               </Box>

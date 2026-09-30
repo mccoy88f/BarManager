@@ -55,6 +55,7 @@ import { useCheckoutContactStore } from '../../store/checkoutContactStore';
 import { useCheckoutCartStore, type CartLine } from '../../store/checkoutCartStore';
 import { mountSumUpCard, unmountSumUpCard, type SumUpCardResponse } from '../../payments/sumupCardWidget';
 
+import { formatCurrency } from '../../utils/format';
 const SUMUP_CARD_ELEMENT_ID = 'sumup-card';
 
 const LocationPicker = lazy(() =>
@@ -176,8 +177,8 @@ function matchesSearch(item: MenuItem, query: string): boolean {
 function itemPriceLabel(item: MenuItem): string {
   const priced = item.variants.filter((v) => v.price != null);
   if (priced.length === 0) return '';
-  if (priced.length === 1 && item.variants.length === 1) return `€ ${priced[0].price!.toFixed(2)}`;
-  return `da € ${Math.min(...priced.map((v) => v.price as number)).toFixed(2)}`;
+  if (priced.length === 1 && item.variants.length === 1) return `${formatCurrency(priced[0].price!)}`;
+  return `da ${formatCurrency(Math.min(...priced.map((v) => v.price as number)))}`;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -294,7 +295,7 @@ function AddToCartDialog({
                   key={v.id}
                   value={v.id}
                   control={<Radio />}
-                  label={`${v.name || 'Standard'} — € ${(v.price ?? 0).toFixed(2)}`}
+                  label={`${v.name || 'Standard'} — ${formatCurrency((v.price ?? 0))}`}
                 />
               ))}
             </RadioGroup>
@@ -315,7 +316,7 @@ function AddToCartDialog({
                   disableCloseOnSelect
                   options={group.options}
                   value={currentSelectedOptions}
-                  getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                  getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+${formatCurrency(option.price)})` : ''}`}
                   isOptionEqualToValue={(option, val) => option.id === val.id}
                   onChange={(_, newValue) => {
                     const max = group.maxSelections ?? Infinity;
@@ -334,7 +335,7 @@ function AddToCartDialog({
                           <Typography variant="body2">{option.name}</Typography>
                           {option.price > 0 && (
                             <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ ml: 1 }}>
-                              +€ {option.price.toFixed(2)}
+                              +{formatCurrency(option.price)}
                             </Typography>
                           )}
                         </Box>
@@ -363,7 +364,7 @@ function AddToCartDialog({
                         <Chip
                           key={key}
                           size="small"
-                          label={`${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                          label={`${option.name}${option.price > 0 ? ` (+${formatCurrency(option.price)})` : ''}`}
                           {...tagProps}
                         />
                       );
@@ -381,7 +382,7 @@ function AddToCartDialog({
               <Autocomplete
                 options={group.options}
                 value={selectedOption}
-                getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+€ ${option.price.toFixed(2)})` : ''}`}
+                getOptionLabel={(option) => `${option.name}${option.price > 0 ? ` (+${formatCurrency(option.price)})` : ''}`}
                 isOptionEqualToValue={(option, val) => option.id === val.id}
                 onChange={(_, newValue) => {
                   setSelectedOptions((prev) => ({
@@ -397,7 +398,7 @@ function AddToCartDialog({
                         <Typography variant="body2">{option.name}</Typography>
                         {option.price > 0 && (
                           <Typography variant="caption" color="primary.main" fontWeight={600} sx={{ ml: 1 }}>
-                            +€ {option.price.toFixed(2)}
+                            +{formatCurrency(option.price)}
                           </Typography>
                         )}
                       </Box>
@@ -452,7 +453,7 @@ function AddToCartDialog({
             })
           }
         >
-          Aggiungi — € {(unitPrice * quantity).toFixed(2)}
+          Aggiungi — {formatCurrency((unitPrice * quantity))}
         </Button>
       </DialogActions>
     </Dialog>
@@ -519,7 +520,7 @@ function SumUpCardDialog({
       <DialogTitle>Pagamento con carta</DialogTitle>
       <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
         <Typography variant="body2" color="text.secondary">
-          Importo da pagare: € {total.toFixed(2)}
+          Importo da pagare: {formatCurrency(total)}
         </Typography>
         {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -1024,17 +1025,17 @@ export function PublicOnlineOrder() {
               <Box sx={{ display: 'grid', gap: 0.5, bgcolor: 'action.hover', borderRadius: 1, p: 1.5 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2">Subtotale</Typography>
-                  <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
+                  <Typography variant="body2">{formatCurrency(subtotal)}</Typography>
                 </Box>
                 {fulfillment === 'DELIVERY' && (
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="body2">Consegna</Typography>
-                    <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
+                    <Typography variant="body2">{deliveryFee > 0 ? `${formatCurrency(deliveryFee)}` : 'Gratuita'}</Typography>
                   </Box>
                 )}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" fontWeight={700}>Totale</Typography>
-                  <Typography variant="body2" fontWeight={700}>€ {total.toFixed(2)}</Typography>
+                  <Typography variant="body2" fontWeight={700}>{formatCurrency(total)}</Typography>
                 </Box>
               </Box>
 
@@ -1118,8 +1119,8 @@ export function PublicOnlineOrder() {
                 {finalizeOrderMutation.isPending || createSumupCheckoutMutation.isPending
                   ? 'Invio in corso…'
                   : fulfillment === 'DELIVERY' && paymentMethod === 'CARD_ONLINE'
-                    ? `Paga e conferma ordine — € ${total.toFixed(2)}`
-                    : `Conferma ordine — € ${total.toFixed(2)}`}
+                    ? `Paga e conferma ordine — ${formatCurrency(total)}`
+                    : `Conferma ordine — ${formatCurrency(total)}`}
               </Button>
             )}
           </Stack>
@@ -1305,7 +1306,7 @@ export function PublicOnlineOrder() {
                   </Typography>
                   {line.modifiers.map((m, idx) => (
                     <Typography key={idx} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 0.5 }}>
-                      + {m.name}{m.price > 0 ? ` (+€ ${m.price.toFixed(2)})` : ''}
+                      + {m.name}{m.price > 0 ? ` (+${formatCurrency(m.price)})` : ''}
                     </Typography>
                   ))}
                   {line.note?.trim() && (
@@ -1315,7 +1316,7 @@ export function PublicOnlineOrder() {
                   )}
                 </Box>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2">€ {lineTotal(line).toFixed(2)}</Typography>
+                  <Typography variant="body2">{formatCurrency(lineTotal(line))}</Typography>
                   <IconButton size="small" onClick={() => setCart((prev) => prev.filter((l) => l.key !== line.key))}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -1325,12 +1326,12 @@ export function PublicOnlineOrder() {
             <Divider />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="body2">Subtotale</Typography>
-              <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
+              <Typography variant="body2">{formatCurrency(subtotal)}</Typography>
             </Box>
             {fulfillment === 'DELIVERY' && (
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography variant="body2">Consegna</Typography>
-                <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
+                <Typography variant="body2">{deliveryFee > 0 ? `${formatCurrency(deliveryFee)}` : 'Gratuita'}</Typography>
               </Box>
             )}
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1338,12 +1339,12 @@ export function PublicOnlineOrder() {
                 Totale
               </Typography>
               <Typography variant="subtitle1" fontWeight={700}>
-                € {total.toFixed(2)}
+                {formatCurrency(total)}
               </Typography>
             </Box>
             {!meetsMinOrder && (
               <Alert severity="warning">
-                Ordine minimo € {minOrderAmount!.toFixed(2)}: aggiungi altri € {(minOrderAmount! - subtotal).toFixed(2)} per procedere.
+                Ordine minimo {formatCurrency(minOrderAmount!)}: aggiungi altri {formatCurrency((minOrderAmount! - subtotal))} per procedere.
               </Alert>
             )}
           </Box>

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 
+import { formatDate } from '../../utils/format';
 interface KbArticleListRow {
   id: string;
   title: string;
@@ -46,7 +47,7 @@ export function KbHome() {
                   {article.title}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Aggiornato il {new Date(article.updatedAt).toLocaleDateString('it-IT')}
+                  Aggiornato il {formatDate(article.updatedAt)}
                 </Typography>
               </Box>
             </CardContent>

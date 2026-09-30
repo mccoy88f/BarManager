@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert,
   Box,
@@ -34,6 +35,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
+import { formatCurrency, formatDate } from '../../utils/format';
 interface RefOption {
   id: string;
   name: string;
@@ -75,6 +77,7 @@ function extractErrorMessage(error: unknown): string {
 
 /** Tab "Spese": lista filtrabile/stampabile, collegata o no a una scadenza (§5.5 di DEVELOPMENT.md). */
 function ExpensesTab() {
+  const [tableBodyRef] = useAutoAnimate();
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [filters, setFilters] = useState(emptyFilters);
@@ -273,10 +276,10 @@ function ExpensesTab() {
                 </TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
+            <TableBody ref={tableBodyRef}>
               {expensesQuery.data?.map((expense) => (
                 <TableRow key={expense.id}>
-                  <TableCell>{new Date(expense.date).toLocaleDateString('it-IT')}</TableCell>
+                  <TableCell>{formatDate(expense.date)}</TableCell>
                   <TableCell>{expense.description}</TableCell>
                   <TableCell>{expense.paymentMethod.name}</TableCell>
                   <TableCell>{expense.wallet.name}</TableCell>
@@ -287,7 +290,7 @@ function ExpensesTab() {
                       <Chip size="small" label="Autonoma" />
                     )}
                   </TableCell>
-                  <TableCell align="right">€ {expense.amount.toFixed(2)}</TableCell>
+                  <TableCell align="right">{formatCurrency(expense.amount)}</TableCell>
                   <TableCell align="right" className="no-print">
                     <IconButton size="small" title="Modifica" onClick={() => openEdit(expense)}>
                       <EditIcon fontSize="small" />
@@ -312,7 +315,7 @@ function ExpensesTab() {
         </TableContainer>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Typography variant="subtitle1" fontWeight={700}>
-            Totale: € {total.toFixed(2)}
+            Totale: {formatCurrency(total)}
           </Typography>
         </Box>
       </div>
@@ -401,7 +404,7 @@ function ExpensesTab() {
         title="Eliminare la spesa?"
         message={
           toDelete
-            ? `"${toDelete.description}" (€ ${toDelete.amount.toFixed(2)}) verrà eliminata definitivamente.${
+            ? `"${toDelete.description}" (${formatCurrency(toDelete.amount)}) verrà eliminata definitivamente.${
                 toDelete.task ? ' La scadenza collegata non verrà toccata.' : ''
               }`
             : ''

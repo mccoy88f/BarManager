@@ -1,4 +1,4 @@
-import { Box, Button, Stack, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PdfViewerDialog } from '../../components/PdfViewerDialog';
 import { useToast } from '../../components/ToastProvider';
+import { formatDate } from '../../utils/format';
 
 interface KbArticle {
   id: string;
@@ -42,7 +43,13 @@ export function KbArticleView() {
     },
   });
 
-  if (!articleQuery.data) return null;
+  if (!articleQuery.data) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   /**
    * Un link "apri" (target=_blank) verso un PDF grezzo, su un browser/webview
@@ -92,7 +99,7 @@ export function KbArticleView() {
         {articleQuery.data.title}
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        Aggiornato il {new Date(articleQuery.data.updatedAt).toLocaleDateString('it-IT')}
+        Aggiornato il {formatDate(articleQuery.data.updatedAt)}
       </Typography>
 
       <Box
