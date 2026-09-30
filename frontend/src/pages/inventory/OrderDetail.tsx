@@ -1,10 +1,16 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Stack,
   Table,
   TableBody,
@@ -12,15 +18,19 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { useToast } from '../../components/ToastProvider';
+import { useAuthStore } from '../../store/authStore';
+import { canAccessModule } from '../../config/modules';
 import { EmailStatusIndicator, statusLabels, statusColor, OrderRow as OrderHistoryRow } from './OrderHistory';
 
 interface OrderLineRow {
@@ -43,6 +53,10 @@ export function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const showToast = useToast();
+  const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const [paymentTaskOpen, setPaymentTaskOpen] = useState(false);
+  const [paymentTaskDueDate, setPaymentTaskDueDate] = useState('');
 
   const orderQuery = useQuery({
     queryKey: ['order', id],
@@ -58,6 +72,19 @@ export function OrderDetail() {
     },
     onSuccess: () => showToast('Ricevuta condivisa per la stampa.'),
     onError: () => showToast({ message: 'Ristampa non riuscita.', severity: 'error' }),
+  });
+
+  /** "Genera scadenza di pagamento" (§5.5): crea un'Attività collegata a questo ordine. */
+  const paymentTaskMutation = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/inventory/orders/${id}/payment-task`, { dueDate: paymentTaskDueDate })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setPaymentTaskOpen(false);
+      setPaymentTaskDueDate('');
+      showToast('Scadenza di pagamento creata in Attività.');
+    },
+    onError: () => showToast({ message: 'Creazione scadenza non riuscita.', severity: 'error' }),
   });
 
   const downloadPdf = async () => {
@@ -104,7 +131,7 @@ export function OrderDetail() {
         </Stack>
       </Stack>
 
-      <Stack direction="row" spacing={1}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={downloadPdf}>
           Esporta PDF
         </Button>
@@ -116,6 +143,11 @@ export function OrderDetail() {
         >
           Condividi per la stampa
         </Button>
+        {total > 0 && canAccessModule(user, 'tasks') && (
+          <Button variant="outlined" startIcon={<EventNoteIcon />} onClick={() => setPaymentTaskOpen(true)}>
+            Genera scadenza di pagamento
+          </Button>
+        )}
       </Stack>
 
       <Card variant="outlined">
@@ -157,6 +189,33 @@ export function OrderDetail() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={paymentTaskOpen} onClose={() => setPaymentTaskOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Genera scadenza di pagamento</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
+          <Alert severity="info">
+            Crea un'attività di tipo "Pagamento fornitore" per € {total.toFixed(2)}, collegata a
+            questo ordine. Scegli quando scade il pagamento.
+          </Alert>
+          <TextField
+            label="Scadenza"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={paymentTaskDueDate}
+            onChange={(e) => setPaymentTaskDueDate(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setPaymentTaskOpen(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!paymentTaskDueDate || paymentTaskMutation.isPending}
+            onClick={() => paymentTaskMutation.mutate()}
+          >
+            Genera
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -21,10 +22,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { useAuthStore } from '../../store/authStore';
+import { canAccessModule } from '../../config/modules';
 
 interface TaskRow {
   id: string;
@@ -35,7 +39,18 @@ interface TaskRow {
   recurrence: string;
   status: string;
   completedAt?: string;
+  amount?: number | null;
   relatedEmployee?: { id: string; firstName: string; lastName: string };
+}
+
+interface PaymentMethodOption {
+  id: string;
+  name: string;
+}
+
+interface WalletOption {
+  id: string;
+  name: string;
 }
 
 interface EmployeeOption {
@@ -66,6 +81,15 @@ const emptyForm = {
   dueDate: '',
   recurrence: 'NONE',
   relatedEmployeeId: '',
+  amount: '',
+};
+
+const emptyExpenseForm = {
+  description: '',
+  amount: '',
+  date: new Date().toISOString().slice(0, 10),
+  paymentMethodId: '',
+  walletId: '',
 };
 
 /** Attività e scadenze aperte: pagamenti fornitori, visite mediche, attestati, ecc. */
@@ -73,10 +97,14 @@ export function TasksAdmin() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const showToast = useToast();
+  const user = useAuthStore((s) => s.user);
+  const canManageExpenses = canAccessModule(user, 'expenses');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TaskRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [taskToDelete, setTaskToDelete] = useState<TaskRow | null>(null);
+  const [payingTask, setPayingTask] = useState<TaskRow | null>(null);
+  const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', 'OPEN'],
@@ -88,11 +116,27 @@ export function TasksAdmin() {
     queryFn: async () => (await api.get<EmployeeOption[]>('/employees')).data,
   });
 
+  const paymentMethodsQuery = useQuery({
+    queryKey: ['expense-payment-methods'],
+    queryFn: async () => (await api.get<PaymentMethodOption[]>('/expenses/payment-methods')).data,
+    enabled: canManageExpenses,
+  });
+
+  const walletsQuery = useQuery({
+    queryKey: ['expense-wallets'],
+    queryFn: async () => (await api.get<WalletOption[]>('/expenses/wallets')).data,
+    enabled: canManageExpenses,
+  });
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...form, relatedEmployeeId: form.relatedEmployeeId || undefined };
+      const payload = {
+        ...form,
+        relatedEmployeeId: form.relatedEmployeeId || undefined,
+        amount: form.amount === '' ? undefined : Number(form.amount),
+      };
       return editing
         ? (await api.patch(`/tasks/${editing.id}`, payload)).data
         : (await api.post('/tasks', payload)).data;
@@ -111,6 +155,27 @@ export function TasksAdmin() {
     onSuccess: () => {
       invalidate();
       showToast('Attività completata');
+    },
+  });
+
+  /** Registra la spesa collegata (§5.5) e poi completa la scadenza — due chiamate distinte, in sequenza. */
+  const registerExpenseMutation = useMutation({
+    mutationFn: async () => {
+      await api.post('/expenses', {
+        description: expenseForm.description,
+        amount: Number(expenseForm.amount),
+        date: expenseForm.date,
+        paymentMethodId: expenseForm.paymentMethodId,
+        walletId: expenseForm.walletId,
+        taskId: payingTask!.id,
+      });
+      return (await api.post(`/tasks/${payingTask!.id}/complete`)).data;
+    },
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      setPayingTask(null);
+      showToast('Spesa registrata e attività completata');
     },
   });
 
@@ -138,8 +203,23 @@ export function TasksAdmin() {
       dueDate: task.dueDate.slice(0, 10),
       recurrence: task.recurrence,
       relatedEmployeeId: task.relatedEmployee?.id ?? '',
+      amount: task.amount != null ? String(task.amount) : '',
     });
     setOpen(true);
+  };
+
+  /** Scadenze con importo atteso e permesso Spese: completare apre prima il form di registrazione pagamento (§5.5). */
+  const handleComplete = (task: TaskRow) => {
+    if (task.amount != null && canManageExpenses) {
+      setPayingTask(task);
+      setExpenseForm({
+        ...emptyExpenseForm,
+        description: task.title,
+        amount: String(task.amount),
+      });
+    } else {
+      completeMutation.mutate(task.id);
+    }
   };
 
   const now = new Date();
@@ -188,14 +268,17 @@ export function TasksAdmin() {
                     {task.recurrence !== 'NONE' && (
                       <Chip size="small" variant="outlined" label={recurrenceLabels[task.recurrence]} />
                     )}
+                    {task.amount != null && (
+                      <Chip size="small" color="primary" variant="outlined" label={`€ ${task.amount.toFixed(2)}`} />
+                    )}
                   </Stack>
                 </Box>
                 <Stack direction="row" spacing={0.5}>
                   <IconButton
                     size="small"
                     color="success"
-                    title="Segna come completata"
-                    onClick={() => completeMutation.mutate(task.id)}
+                    title={task.amount != null && canManageExpenses ? 'Registra pagamento e completa' : 'Segna come completata'}
+                    onClick={() => handleComplete(task)}
                   >
                     <CheckCircleIcon fontSize="small" />
                   </IconButton>
@@ -277,7 +360,14 @@ export function TasksAdmin() {
               </MenuItem>
             ))}
           </TextField>
-          <div />
+          <TextField
+            label="Importo atteso (opzionale)"
+            type="number"
+            inputProps={{ min: 0, step: 0.01 }}
+            helperText="Proposto per registrare la spesa al completamento (§5.5)"
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+          />
           <TextField
             label="Note"
             multiline
@@ -311,6 +401,85 @@ export function TasksAdmin() {
         onCancel={() => setTaskToDelete(null)}
         onConfirm={() => taskToDelete && deleteMutation.mutate(taskToDelete.id)}
       />
+
+      <Dialog open={!!payingTask} onClose={() => setPayingTask(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Registra pagamento — {payingTask?.title}</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' }, pt: 4 }}>
+          <Alert severity="info" sx={{ gridColumn: '1 / -1' }}>
+            Puoi registrare subito la spesa collegata a questa scadenza, oppure completarla senza
+            registrarla (es. pagamento già tracciato altrove).
+          </Alert>
+          <TextField
+            label="Descrizione"
+            value={expenseForm.description}
+            onChange={(e) => setExpenseForm((f) => ({ ...f, description: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          />
+          <TextField
+            label="Importo"
+            type="number"
+            inputProps={{ min: 0, step: 0.01 }}
+            value={expenseForm.amount}
+            onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
+          />
+          <TextField
+            label="Data"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={expenseForm.date}
+            onChange={(e) => setExpenseForm((f) => ({ ...f, date: e.target.value }))}
+          />
+          <TextField
+            select
+            label="Metodo di pagamento"
+            InputLabelProps={{ shrink: true }}
+            value={expenseForm.paymentMethodId}
+            onChange={(e) => setExpenseForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
+          >
+            {paymentMethodsQuery.data?.map((m) => (
+              <MenuItem key={m.id} value={m.id}>
+                {m.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Portafoglio"
+            InputLabelProps={{ shrink: true }}
+            value={expenseForm.walletId}
+            onChange={(e) => setExpenseForm((f) => ({ ...f, walletId: e.target.value }))}
+          >
+            {walletsQuery.data?.map((w) => (
+              <MenuItem key={w.id} value={w.id}>
+                {w.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            disabled={completeMutation.isPending}
+            onClick={() => payingTask && completeMutation.mutate(payingTask.id, { onSuccess: () => setPayingTask(null) })}
+          >
+            Completa senza registrare spesa
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<ReceiptLongIcon />}
+            disabled={
+              !expenseForm.description ||
+              !expenseForm.amount ||
+              !expenseForm.date ||
+              !expenseForm.paymentMethodId ||
+              !expenseForm.walletId ||
+              registerExpenseMutation.isPending
+            }
+            onClick={() => registerExpenseMutation.mutate()}
+          >
+            Registra spesa e completa
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

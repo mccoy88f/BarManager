@@ -73,4 +73,18 @@ describe('ModuleAccessGuard', () => {
     const ctx = makeContext({ role: Role.MANAGER, userId: 'm1' });
     await expect(guard.canActivate(ctx)).resolves.toBe(false);
   });
+
+  it('un Manager senza allowedModules configurati ha "expenses" di default (§5.5)', async () => {
+    withRequiredModule('expenses');
+    prisma.employee.findUnique.mockResolvedValue({ allowedModules: [] });
+    const ctx = makeContext({ role: Role.MANAGER, userId: 'm1' });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('"expenses" non è mai concesso a un Dipendente, nemmeno con un elenco esplicito che lo contiene (§5.5)', async () => {
+    withRequiredModule('expenses');
+    prisma.employee.findUnique.mockResolvedValue({ allowedModules: ['expenses'] });
+    const ctx = makeContext({ role: Role.EMPLOYEE, userId: 'e1' });
+    await expect(guard.canActivate(ctx)).resolves.toBe(false);
+  });
 });

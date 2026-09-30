@@ -428,3 +428,57 @@ describe('OrdersService.exportPdf', () => {
     expect(text).toContain('===PAGE===');
   });
 });
+
+describe('OrdersService.createPaymentTask (§5.5)', () => {
+  let prisma: { order: { findUnique: jest.Mock }; task: { create: jest.Mock } };
+  let service: OrdersService;
+
+  const order = {
+    id: 'order-1',
+    venueId: 'venue-1',
+    supplier: { name: 'Fornitore SRL' },
+    createdBy: { email: 'admin@venue1.test' },
+    venue: { name: 'Bar Test' },
+    lines: [
+      { orderedQty: 3, product: { name: 'Birra', unit: 'cassa', costPerUnit: 10 } },
+      { orderedQty: 0, product: { name: 'Non ordinato', unit: 'pz', costPerUnit: 5 } },
+    ],
+  };
+
+  beforeEach(() => {
+    prisma = {
+      order: { findUnique: jest.fn().mockResolvedValue(order) },
+      task: { create: jest.fn().mockResolvedValue({ id: 'task-1' }) },
+    };
+    service = new OrdersService(
+      prisma as unknown as PrismaService,
+      {} as unknown as AuditService,
+      {} as unknown as MailService,
+      {} as unknown as PdfService,
+    );
+  });
+
+  it('crea un\'Attività di tipo pagamento fornitore con l\'importo totale dell\'ordine, collegata all\'ordine', async () => {
+    await service.createPaymentTask(adminUser, 'order-1', '2026-02-15');
+
+    expect(prisma.task.create).toHaveBeenCalledWith({
+      data: {
+        title: 'Pagamento fornitore — Fornitore SRL',
+        type: 'SUPPLIER_PAYMENT',
+        dueDate: new Date('2026-02-15'),
+        amount: 30, // solo la riga con orderedQty > 0: 3 x €10
+        orderId: 'order-1',
+        venueId: 'venue-1',
+        createdById: 'user-1',
+      },
+    });
+  });
+
+  it('rifiuta un ordine di un altro locale', async () => {
+    prisma.order.findUnique.mockResolvedValue({ ...order, venueId: 'venue-2' });
+    await expect(service.createPaymentTask(adminUser, 'order-1', '2026-02-15')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+});

@@ -152,6 +152,34 @@ export class OrdersService {
     return order;
   }
 
+  /**
+   * "Genera scadenza di pagamento" (§5.5 di DEVELOPMENT.md): crea
+   * un'Attività di tipo pagamento fornitore con l'importo totale
+   * dell'ordine (stesso calcolo riga×costo unitario usato per la
+   * checklist/email al fornitore), collegata all'ordine di origine.
+   * Azione esplicita dell'admin, mai automatica all'invio — non ogni
+   * ordine genera per forza un pagamento da tracciare qui.
+   */
+  async createPaymentTask(user: AuthenticatedUser, orderId: string, dueDate: string) {
+    const venueId = requireVenueId(user);
+    const order = await this.getOrder(venueId, orderId);
+    const total = order.lines.reduce(
+      (sum, l) => sum + (l.product.costPerUnit ?? 0) * l.orderedQty,
+      0,
+    );
+    return this.prisma.task.create({
+      data: {
+        title: `Pagamento fornitore — ${order.supplier.name}`,
+        type: 'SUPPLIER_PAYMENT',
+        dueDate: new Date(dueDate),
+        amount: total,
+        orderId: order.id,
+        venueId,
+        createdById: user.userId,
+      },
+    });
+  }
+
   /** Storico ordini: righe incluse per calcolare il totale (se i prodotti hanno un costo). */
   listOrders(venueId: string) {
     return this.prisma.order.findMany({

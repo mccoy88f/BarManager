@@ -11,7 +11,7 @@ import { REQUIRE_MODULE_KEY, ModuleKey } from '../decorators/require-module.deco
 // (spenti di default per il locale), l'admin li concede esplicitamente a
 // chi deve gestirli.
 const DEFAULT_MODULES_BY_ROLE: Partial<Record<Role, ModuleKey[]>> = {
-  [Role.MANAGER]: ['haccp', 'inventory', 'menu', 'tasks'],
+  [Role.MANAGER]: ['haccp', 'inventory', 'menu', 'tasks', 'expenses'],
   [Role.EMPLOYEE]: ['haccp'],
 };
 
@@ -44,6 +44,13 @@ export class ModuleAccessGuard implements CanActivate {
     // Nessun dipendente collegato: caso anomalo, non blocchiamo qui (altri
     // guard/requireVenueId si occupano di rifiutare la richiesta).
     if (!employee) return true;
+
+    // Le Spese (dati economici) non sono mai concedibili al Dipendente, a
+    // differenza degli altri moduli granulari: anche se il ruolo cambia da
+    // Manager a Dipendente lasciando 'expenses' nell'elenco già salvato, o
+    // in caso di modifica diretta dei dati, questo blocco resta autoritativo
+    // indipendentemente da cosa contiene `allowedModules` (§5.5).
+    if (requiredModule === 'expenses' && user.role === Role.EMPLOYEE) return false;
 
     const allowed = employee.allowedModules.length
       ? employee.allowedModules

@@ -25,6 +25,7 @@ describe('VenuesService', () => {
     venueSpecialDay: { findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock; delete: jest.Mock };
   };
   let service: VenuesService;
+  let expenses: { seedDefaults: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -37,7 +38,8 @@ describe('VenuesService', () => {
         delete: jest.fn(),
       },
     };
-    service = new VenuesService(prisma as unknown as PrismaService);
+    expenses = { seedDefaults: jest.fn().mockResolvedValue(undefined) };
+    service = new VenuesService(prisma as unknown as PrismaService, expenses as unknown as never);
   });
 
   describe('getOwn', () => {

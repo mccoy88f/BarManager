@@ -73,10 +73,14 @@ function toggleModule(list: string[], key: ModuleKey): string[] {
 function ModulesCheckboxes({
   value,
   onChange,
+  isManager,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
+  /** "Spese" (dati economici) non è mai concedibile a un Dipendente: la checkbox non compare affatto per quel ruolo. */
+  isManager: boolean;
 }) {
+  const visibleKeys = isManager ? ALL_MODULE_KEYS : ALL_MODULE_KEYS.filter((k) => k !== 'expenses');
   return (
     <Box sx={{ gridColumn: '1 / -1' }}>
       <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -85,7 +89,7 @@ function ModulesCheckboxes({
         l'elenco scelto qui sostituisce il default.
       </Typography>
       <FormGroup row>
-        {ALL_MODULE_KEYS.map((key) => (
+        {visibleKeys.map((key) => (
           <FormControlLabel
             key={key}
             control={
@@ -320,6 +324,7 @@ export function Employees() {
           <ModulesCheckboxes
             value={form.allowedModules}
             onChange={(allowedModules) => setForm((f) => ({ ...f, allowedModules }))}
+            isManager={form.isManager}
           />
           {createError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }} onClose={() => setCreateError(null)}>
@@ -390,6 +395,7 @@ export function Employees() {
           <ModulesCheckboxes
             value={editForm.allowedModules}
             onChange={(allowedModules) => setEditForm((f) => ({ ...f, allowedModules }))}
+            isManager={editForm.isManager}
           />
           {editError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }} onClose={() => setEditError(null)}>

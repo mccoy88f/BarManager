@@ -27,6 +27,7 @@ import { MenuSettings } from './pages/menu/MenuSettings';
 import { PublicMenu } from './pages/menu/PublicMenu';
 import { TasksAdmin } from './pages/tasks/TasksAdmin';
 import { TasksHistory } from './pages/tasks/TasksHistory';
+import { ExpensesAdmin } from './pages/tasks/ExpensesAdmin';
 import { Venues } from './pages/super-admin/Venues';
 import { SettingsHome } from './pages/settings/SettingsHome';
 import { BoardPage } from './pages/board/BoardPage';
@@ -128,6 +129,9 @@ export default function App() {
           <Route element={<ProtectedRoute moduleKey="tasks" />}>
             <Route path="/tasks" element={<TasksAdmin />} />
             <Route path="/tasks/history" element={<TasksHistory />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="expenses" />}>
+            <Route path="/tasks/expenses" element={<ExpensesAdmin />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="reservations" />}>
             <Route path="/reservations" element={<ReservationsAdmin />} />

@@ -14,6 +14,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrdersByCategoryDto } from './dto/create-orders-by-category.dto';
 import { SendOrdersBatchDto } from './dto/send-orders-batch.dto';
 import { UpdateOrderLineDto } from './dto/update-order-line.dto';
+import { CreatePaymentTaskDto } from './dto/create-payment-task.dto';
 
 // Niente @Roles(ADMIN, MANAGER) qui: l'accesso al modulo Inventario è
 // governato da ModuleAccessGuard (l'Admin può concederlo anche a un
@@ -83,6 +84,16 @@ export class OrdersController {
   @Post(':id/send')
   send(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.ordersService.sendOrder(user, id);
+  }
+
+  /** "Genera scadenza di pagamento" (§5.5): crea un'Attività collegata a questo ordine. */
+  @Post(':id/payment-task')
+  createPaymentTask(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreatePaymentTaskDto,
+  ) {
+    return this.ordersService.createPaymentTask(user, id, dto.dueDate);
   }
 
   @Get(':id/export/pdf')

@@ -10,6 +10,7 @@ export type ModuleKey =
   | 'inventory'
   | 'menu'
   | 'tasks'
+  | 'expenses'
   | 'reservations'
   | 'customers'
   | 'onlineOrders';

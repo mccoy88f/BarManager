@@ -17,6 +17,7 @@ import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settin
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
 import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
 import { specialDayKey } from '../common/opening-hours/opening-hours';
+import { ExpensesService } from '../expenses/expenses.service';
 
 /**
  * Gestione locali riservata al Super Admin: creazione del Venue e del suo
@@ -24,7 +25,10 @@ import { specialDayKey } from '../common/opening-hours/opening-hours';
  */
 @Injectable()
 export class VenuesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private expenses: ExpensesService,
+  ) {}
 
   async create(dto: CreateVenueDto) {
     const existing = await this.prisma.venue.findUnique({ where: { slug: dto.slug } });
@@ -34,7 +38,7 @@ export class VenuesService {
 
     const passwordHash = await AuthService.hashPassword(dto.adminPassword);
 
-    return this.prisma.venue.create({
+    const venue = await this.prisma.venue.create({
       data: {
         name: dto.name,
         slug: dto.slug,
@@ -48,6 +52,10 @@ export class VenuesService {
       },
       include: { users: { select: { id: true, email: true, role: true } } },
     });
+    // Metodi di pagamento/portafogli precompilati (§5.5, §10): valori
+    // tipici, l'admin li estende/modifica/disattiva liberamente da qui in poi.
+    await this.expenses.seedDefaults(venue.id);
+    return venue;
   }
 
   listAll() {

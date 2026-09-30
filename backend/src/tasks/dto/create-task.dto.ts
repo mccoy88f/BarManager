@@ -1,9 +1,15 @@
 import { TaskRecurrence, TaskType } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateTaskDto {
   @IsString()
   title: string;
+
+  /** Importo atteso (§5.5): proposto come importo della Spesa quando questa scadenza viene pagata. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amount?: number;
 
   @IsOptional()
   @IsString()

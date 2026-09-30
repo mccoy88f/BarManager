@@ -11,6 +11,7 @@ export type ModuleKey =
   | 'inventory'
   | 'menu'
   | 'tasks'
+  | 'expenses'
   | 'reservations'
   | 'customers'
   | 'onlineOrders';
@@ -19,7 +20,8 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   haccp: 'Controlli HACCP',
   inventory: 'Ordini e inventario',
   menu: 'Menù online',
-  tasks: 'Attività e scadenze',
+  tasks: 'Attività',
+  expenses: 'Spese',
   reservations: 'Prenotazioni',
   customers: 'Clienti',
   onlineOrders: 'Ordini online',
@@ -29,9 +31,11 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
 // esplicito impostato dall'admin: specchia ModuleAccessGuard lato backend.
 // "reservations" e "customers" non compaiono qui: sono moduli opzionali
 // (spenti di default per il locale), l'admin li concede esplicitamente a
-// chi deve gestirli.
+// chi deve gestirli. "expenses" (dati economici) non compare MAI nel
+// default Dipendente, nemmeno esplicitamente — v. ModuleAccessGuard lato
+// backend, autoritativo, per il blocco reale.
 const DEFAULT_MODULES_BY_ROLE: Partial<Record<Role, ModuleKey[]>> = {
-  MANAGER: ['haccp', 'inventory', 'menu', 'tasks'],
+  MANAGER: ['haccp', 'inventory', 'menu', 'tasks', 'expenses'],
   EMPLOYEE: ['haccp'],
 };
 
@@ -41,6 +45,10 @@ export function canAccessModule(
 ): boolean {
   if (!user) return false;
   if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') return true;
+  // "expenses" non è mai concesso al Dipendente, anche indipendentemente
+  // da cosa contiene allowedModules (§5.5) — il backend applica lo stesso
+  // blocco in modo autoritativo, questo è solo per coerenza della UI.
+  if (moduleKey === 'expenses' && user.role === 'EMPLOYEE') return false;
   const allowed = user.allowedModules?.length
     ? user.allowedModules
     : (DEFAULT_MODULES_BY_ROLE[user.role] ?? []);

@@ -201,8 +201,8 @@ model Venue {
   // come il token Loyverse sopra. Il checkout reale non filtra per singolo
   // metodo di pagamento (SumUp li mostra tutti quelli validi per l'account
   // nel proprio widget): l'unico controllo lato admin è sumupEnabled.
-  sumupEnabled   Boolean @default(false)
-  sumupApiKeyEnc String?
+  sumupEnabled               Boolean  @default(false)
+  sumupApiKeyEnc             String?
   // Campo storico, non più scritto né letto da alcun codice: rimosso da
   // qui richiederebbe una migrazione, lasciato inerte in attesa di uno
   // sweep schema dedicato.
@@ -226,30 +226,33 @@ model Venue {
   // sincronizzazione ordini online, non da un campo impostabile a mano.
   loyverseStoreId                  String?
 
-  users              User[]
-  employees          Employee[]
-  fridges            Fridge[]
-  cleaningTasks      CleaningTask[]
-  printers           Printer[]
-  productCategories  ProductCategory[]
-  suppliers          Supplier[]
-  orders             Order[]
-  auditLogs          AuditLog[]
-  qrTokens           QrToken[]
-  nfcTags            NfcTag[]
-  haccpReports       HaccpReport[]
-  menuCategories     MenuCategory[]
-  menuItems          MenuItem[]
-  menuModifierGroups MenuModifierGroup[]
-  tasks              Task[]
-  boardMessages      BoardMessage[]
-  kbArticles         KbArticle[]
-  tables             Table[]
-  reservations       Reservation[]
-  customers          Customer[]
-  communications     Communication[]
-  onlineOrders       OnlineOrder[]
-  specialDays        VenueSpecialDay[]
+  users                 User[]
+  employees             Employee[]
+  fridges               Fridge[]
+  cleaningTasks         CleaningTask[]
+  printers              Printer[]
+  productCategories     ProductCategory[]
+  suppliers             Supplier[]
+  orders                Order[]
+  auditLogs             AuditLog[]
+  qrTokens              QrToken[]
+  nfcTags               NfcTag[]
+  haccpReports          HaccpReport[]
+  menuCategories        MenuCategory[]
+  menuItems             MenuItem[]
+  menuModifierGroups    MenuModifierGroup[]
+  tasks                 Task[]
+  boardMessages         BoardMessage[]
+  kbArticles            KbArticle[]
+  tables                Table[]
+  reservations          Reservation[]
+  customers             Customer[]
+  communications        Communication[]
+  onlineOrders          OnlineOrder[]
+  specialDays           VenueSpecialDay[]
+  expensePaymentMethods ExpensePaymentMethod[]
+  wallets               Wallet[]
+  expenses              Expense[]
 }
 
 /// Apertura/chiusura straordinaria per una singola data (§5.10 di
@@ -311,6 +314,7 @@ model User {
   cleaningLogs          CleaningLog[]
   reservationsHandled   Reservation[]        @relation("ReservationRespondedBy")
   communicationsCreated Communication[]
+  expensesCreated       Expense[]
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +692,8 @@ model Order {
   supplier   Supplier @relation(fields: [supplierId], references: [id])
 
   lines OrderLine[]
+  // Scadenze di pagamento generate da questo ordine (§5.5), se create.
+  tasks Task[]
 
   createdById String
   createdBy   User      @relation(fields: [createdById], references: [id])
@@ -952,8 +958,19 @@ model Task {
   recurrence         TaskRecurrence @default(NONE)
   completedAt        DateTime?
 
+  // Importo atteso (§5.5): sensato per "pagamento fornitore"/"manutenzione",
+  // lasciato vuoto per gli altri tipi — è l'importo proposto quando questa
+  // scadenza genera una Spesa al completamento.
+  amount Float?
+
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
+
+  // Ordine fornitore di origine, solo per le scadenze generate con "Genera
+  // scadenza di pagamento" dalla pagina ordine (§5.5) — assente per le
+  // scadenze create a mano.
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id])
 
   // Dipendente collegato (es. di chi è la visita medica/l'attestato)
   relatedEmployeeId String?
@@ -965,10 +982,75 @@ model Task {
   createdById String
   createdBy   User   @relation("TaskCreatedBy", fields: [createdById], references: [id])
 
+  // Spesa generata al pagamento di questa scadenza, se registrata (§5.5) —
+  // al più una per scadenza, restano comunque due entità indipendenti:
+  // cancellare la spesa non riapre la scadenza.
+  expense Expense?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([venueId, status, dueDate])
+}
+
+// ---------------------------------------------------------------------------
+// Spese (§5.5 di DEVELOPMENT.md) — catena opzionale Ordine -> Scadenza ->
+// Spesa, oppure spesa autonoma senza nulla a monte.
+// ---------------------------------------------------------------------------
+
+model ExpensePaymentMethod {
+  id       String    @id @default(cuid())
+  name     String
+  active   Boolean   @default(true)
+  venueId  String
+  venue    Venue     @relation(fields: [venueId], references: [id])
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+model Wallet {
+  id       String    @id @default(cuid())
+  name     String
+  active   Boolean   @default(true)
+  venueId  String
+  venue    Venue     @relation(fields: [venueId], references: [id])
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float
+  date        DateTime
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  paymentMethodId String
+  paymentMethod   ExpensePaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id])
+
+  // Scadenza che ha generato questa spesa, se registrata da lì (§5.5) —
+  // al più una spesa per scadenza. Assente per le spese autonome.
+  taskId String? @unique
+  task   Task?   @relation(fields: [taskId], references: [id])
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, date])
 }
 
 // ---------------------------------------------------------------------------

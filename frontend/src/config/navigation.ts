@@ -13,6 +13,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import EventSeatIcon from '@mui/icons-material/EventSeat';
 import PeopleIcon from '@mui/icons-material/People';
 import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -186,10 +187,10 @@ export const navigation: NavItem[] = [
   },
   {
     key: 'tasks',
-    label: 'Attività e scadenze',
+    label: 'Attività',
     path: '/tasks',
     icon: EventNoteIcon,
-    description: 'Pagamenti, visite mediche, attestati',
+    description: 'Scadenze, pagamenti, spese',
     moduleKey: 'tasks',
     children: [
       {
@@ -198,6 +199,14 @@ export const navigation: NavItem[] = [
         path: '/tasks/history',
         icon: EventNoteIcon,
         description: 'Attività completate',
+      },
+      {
+        key: 'tasks-expenses',
+        label: 'Spese',
+        path: '/tasks/expenses',
+        icon: ReceiptLongIcon,
+        description: 'Spese, metodi di pagamento, portafogli, report',
+        moduleKey: 'expenses',
       },
     ],
   },

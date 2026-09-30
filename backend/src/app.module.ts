@@ -16,6 +16,7 @@ import { HaccpModule } from './haccp/haccp.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MenuModule } from './menu/menu.module';
 import { TasksModule } from './tasks/tasks.module';
+import { ExpensesModule } from './expenses/expenses.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PrintingModule } from './printing/printing.module';
@@ -46,6 +47,7 @@ import { OnlineOrdersModule } from './online-orders/online-orders.module';
     InventoryModule,
     MenuModule,
     TasksModule,
+    ExpensesModule,
     NotificationsModule,
     DashboardModule,
     PrintingModule,

@@ -201,7 +201,7 @@ Gestione del menù del locale, consultabile pubblicamente (es. da QR al tavolo) 
 - Voci raggruppate per categoria, filtrate per orario corrente e visibilità; badge allergeni; badge "non disponibile" per le voci temporaneamente esaurite.
 - Nessun dato sensibile esposto: solo le informazioni pubbliche della voce di menù.
 
-### 5.5 Attività *(specificata — v. §10 per i punti da confermare prima di implementare)*
+### 5.5 Attività *(implementata — unico modulo Attività+Spese, processo ordine→scadenza→spesa opzionale e reversibile a ogni passo; vedi §10 per i punti confermati e per gli eventuali sviluppi futuri)*
 
 Modulo unico (rinominato da "Attività e scadenze" a "Attività", stessa `moduleKey` `tasks` per non rompere i permessi già assegnati) che copre sia le scadenze esistenti sia le **spese** del locale, con un processo che le collega senza obbligare a farlo:
 
@@ -228,7 +228,7 @@ Ordine fornitore ──(opzionale, un clic)──▶ Scadenza (Attività) ──
 - Si crea in tre modi:
   1. **Autonoma**, dal modulo Spese: nessun collegamento a ordini o scadenze.
   2. **Da una scadenza esistente con importo**: completandola, si apre un form precompilato con l'importo atteso (modificabile) a cui manca solo scegliere metodo di pagamento e portafoglio prima di confermare. La scadenza può anche essere completata senza registrare una spesa (es. pagamento già tracciato altrove), restano due azioni distinte.
-  3. **Da un ordine fornitore**: nella pagina dell'ordine, un pulsante "Genera scadenza di pagamento" crea un'attività di tipo "pagamento fornitore" con l'importo totale dell'ordine (già calcolato oggi da riga × costo unitario per l'email al fornitore, §5.3) e una scadenza proposta (es. +30gg, modificabile prima di salvare) — poi segue il punto 2 quando viene pagata. Resta un'azione esplicita dell'admin, non automatica ad ogni invio ordine: non ogni ordine genera necessariamente un pagamento da tracciare qui (es. contanti pagati subito alla consegna).
+  3. **Da un ordine fornitore**: nella pagina dell'ordine, un pulsante "Genera scadenza di pagamento" crea un'attività di tipo "pagamento fornitore" con l'importo totale dell'ordine (già calcolato oggi da riga × costo unitario per l'email al fornitore, §5.3) e una scadenza da scegliere sempre al momento (nessuna data proposta di default, §10) — poi segue il punto 2 quando viene pagata. Resta un'azione esplicita dell'admin, non automatica ad ogni invio ordine: non ogni ordine genera necessariamente un pagamento da tracciare qui (es. contanti pagati subito alla consegna).
 - **Tutto è modificabile o cancellabile in ogni momento**: cambiare importo/metodo/portafoglio/data/descrizione di una spesa già registrata, scollegarla dalla scadenza, o cancellarla — senza che la scadenza collegata torni automaticamente aperta (restano due entità indipendenti una volta create, il collegamento è solo tracciabilità). Al più una spesa per scadenza.
 
 **Metodi di pagamento e Portafogli** (nuove liste configurabili in Impostazioni, per locale):
@@ -697,10 +697,10 @@ Il motivo di questa scelta: nessuna libreria browser può aprire una connessione
 - Dove verrà ospitato in produzione: server on-premise vs VPS cloud (impatta la strategia stampanti, vedi §9.2).
 - Provider SMTP: globale di piattaforma (un solo mittente per tutti i locali) oppure configurabile per singolo locale.
 - Contratto orario dipendenti (per calcolo straordinari/ferie maturate): regole CCNL da applicare.
-- **Attività — estensione Spese (§5.5)**, specificata ma non ancora implementata, da confermare prima di iniziare:
-  - **Permessi**: Scadenze e Spese condividono oggi la stessa `moduleKey` (`tasks`), quindi chi vede le scadenze vedrebbe anche le spese (dati economici) — da confermare se va bene così o se le spese meritano un permesso separato più restrittivo (es. solo Admin/Manager, mai Dipendente anche se abilitato su "Attività").
-  - **Liste "Metodo di pagamento" e "Portafoglio"**: proposte come liste libere configurabili per locale (come Categorie prodotto/Fornitori) — da confermare che non servano invece valori fissi predefiniti (es. Contanti/Carta sempre presenti di default, come già per `CASH`/`CARD_ONLINE`/`CARD_IN_STORE` negli ordini online) oltre a quelli aggiunti dall'admin.
-  - **"Genera scadenza di pagamento" da un ordine**: proposta come azione manuale con scadenza proposta a +30gg dall'invio — da confermare l'offset di default (o se deve restare vuoto, obbligando l'admin a sceglierlo sempre).
+- **Attività — estensione Spese (§5.5)** — implementata (processo ordine→scadenza→spesa, tutto modificabile/cancellabile, permesso `expenses` dedicato, report con filtri e stampa via `window.print()`), punti confermati con l'utente durante l'implementazione:
+  - ~~**Permessi**~~ — **risolto**: le Spese hanno una `moduleKey` propria (`expenses`), separata da `tasks` (Scadenze) — mai concedibile al ruolo Dipendente (nemmeno esplicitamente, a differenza degli altri permessi granulari `Employee.allowedModules`), di default assegnata a Manager oltre che ad Admin.
+  - ~~**Liste "Metodo di pagamento" e "Portafoglio"**~~ — **risolto**: precompilate con valori tipici alla creazione del locale (Metodi: Contanti, Bancomat, Carta di credito, Bonifico; Portafogli: Cassa contanti, Conto corrente), poi liberamente modificabili/estendibili/disattivabili dall'admin come ogni altra lista configurabile.
+  - ~~**"Genera scadenza di pagamento" da un ordine**~~ — **risolto**: nessuna data proposta di default, la sceglie sempre l'admin al momento della generazione.
   - Nessun collegamento pensato per ora fra Spese e HACCP/Inventario (es. scorte) oltre all'origine facoltativa da un ordine fornitore — resta un modulo di sola contabilità/tracciamento uscite, non un vero conto economico con entrate.
 - **Prenotazioni (§5.7)** — implementata in v1 con queste scelte di default (da confermare/rivedere con l'utente):
   - Durata di occupazione di un tavolo impostata a 120 minuti di default (`Venue.reservationSlotDurationMinutes`, configurabile in Impostazioni prenotazioni), **sovrascrivibile per singola prenotazione** (`Reservation.slotDurationMinutes`) quando un caso specifico richiede più o meno tempo del solito. Resta da capire se un locale userà davvero il turnover (più prenotazioni sullo stesso tavolo in orari diversi dello stesso servizio) o preferisce "un turno = tutto il servizio" (in tal caso basta impostare una durata pari all'intero servizio).
