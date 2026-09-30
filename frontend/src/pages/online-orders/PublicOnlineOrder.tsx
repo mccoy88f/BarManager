@@ -1021,6 +1021,23 @@ export function PublicOnlineOrder() {
               <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               <TextField label="Telefono" value={phone} onChange={(e) => setPhone(e.target.value)} />
 
+              <Box sx={{ display: 'grid', gap: 0.5, bgcolor: 'action.hover', borderRadius: 1, p: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Subtotale</Typography>
+                  <Typography variant="body2">€ {subtotal.toFixed(2)}</Typography>
+                </Box>
+                {fulfillment === 'DELIVERY' && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">Consegna</Typography>
+                    <Typography variant="body2">{deliveryFee > 0 ? `€ ${deliveryFee.toFixed(2)}` : 'Gratuita'}</Typography>
+                  </Box>
+                )}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" fontWeight={700}>Totale</Typography>
+                  <Typography variant="body2" fontWeight={700}>€ {total.toFixed(2)}</Typography>
+                </Box>
+              </Box>
+
               {fulfillment === 'DELIVERY' && (
                 <Box>
                   <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
