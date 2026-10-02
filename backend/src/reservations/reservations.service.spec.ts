@@ -670,8 +670,7 @@ describe('ReservationsService', () => {
       );
       expect(mail.sendCancelled).toHaveBeenCalledWith(
         expect.objectContaining({ status: ReservationStatus.CANCELLED }),
-        'Bar Test',
-        null,
+        expect.objectContaining({ name: 'Bar Test' }),
         'http://localhost:5173/privacy?token=privacy-token',
         null,
       );

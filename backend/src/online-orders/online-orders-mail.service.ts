@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { OnlineOrder, OnlineOrderLine, OnlineOrderLineModifier } from '@prisma/client';
 import { MailService } from '../common/mail/mail.service';
 import { escapeHtml } from '../common/mail/escape-html';
+import { buildMailFooter, VenueFooterInfo } from '../common/mail/mail-footer';
 
 type OrderWithLines = OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] };
 
@@ -39,14 +40,6 @@ export class OnlineOrdersMailService {
   /** Numero progressivo giornaliero + data dell'ordine (v. OnlineOrdersService.createPublicOrder), per identificarlo in ogni email di notifica senza dover aprire la coda. */
   private orderNumberLabel(order: OrderWithLines): string {
     return `Ordine N. ${order.dailyNumber} del ${order.createdAt.toLocaleDateString('it-IT')}`;
-  }
-
-  private privacyFooter(privacyUrl?: string | null) {
-    if (!privacyUrl) return { text: '', html: '' };
-    return {
-      text: `\n\n---\nGestisci i tuoi dati personali (marketing, cancellazione): ${privacyUrl}`,
-      html: `<p style="margin-top:24px;padding-top:12px;border-top:1px solid #ddd;font-size:0.8em;color:#999;"><a href="${privacyUrl}" style="color:#999;">Gestisci i tuoi dati personali</a></p>`,
-    };
   }
 
   private trackingBlock(trackUrl: string) {
@@ -139,18 +132,17 @@ export class OnlineOrdersMailService {
 
   sendReceived(
     order: OrderWithLines,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     trackUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const block = this.trackingBlock(trackUrl);
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — ordine ricevuto`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
+      subject: `${venue.name} — ordine ricevuto`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))}. Ti confermeremo a breve.</p>
@@ -158,8 +150,8 @@ export class OnlineOrdersMailService {
             ${block.html}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
@@ -173,19 +165,18 @@ export class OnlineOrdersMailService {
    */
   sendReceivedAwaitingOpening(
     order: OrderWithLines,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     trackUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const block = this.trackingBlock(trackUrl);
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     const reopenText = this.when(order.requestedAt);
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — ordine ricevuto, in attesa di apertura`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venueName}`,
+      subject: `${venue.name} — ordine ricevuto, in attesa di apertura`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per <strong>${escapeHtml(reopenText)}</strong>.</p>
@@ -193,26 +184,25 @@ export class OnlineOrdersMailService {
             ${block.html}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
 
   sendConfirmed(
     order: OrderWithLines,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     trackUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const block = this.trackingBlock(trackUrl);
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — ordine confermato`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\n${venueName}`,
+      subject: `${venue.name} — ordine confermato`,
+      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))} è confermato ed è in preparazione.</p>
@@ -220,28 +210,27 @@ export class OnlineOrdersMailService {
             ${block.html}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
 
   sendReady(
     order: OrderWithLines,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     trackUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const readyText =
       order.fulfillment === 'DELIVERY' ? 'è uscito per la consegna' : 'è pronto per il ritiro';
     const block = this.trackingBlock(trackUrl);
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — ${order.fulfillment === 'DELIVERY' ? 'ordine in consegna' : 'ordine pronto'}`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venueName}`,
+      subject: `${venue.name} — ${order.fulfillment === 'DELIVERY' ? 'ordine in consegna' : 'ordine pronto'}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
@@ -250,21 +239,20 @@ export class OnlineOrdersMailService {
             ${block.html}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
 
   sendRejected(
     order: OrderWithLines,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     reason: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     const isCardPaid = order.paymentMethod === 'CARD_ONLINE';
     const refundNoticeText = isCardPaid
       ? `\n\nI soldi sono stati stornati e torneranno sul metodo di pagamento originale secondo i tempi previsti dall'emittente della carta.`
@@ -274,8 +262,8 @@ export class OnlineOrdersMailService {
       : '';
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — ordine non confermato`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venueName}`,
+      subject: `${venue.name} — ordine non confermato`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
@@ -285,8 +273,8 @@ export class OnlineOrdersMailService {
             ${refundNoticeHtml}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
@@ -294,31 +282,30 @@ export class OnlineOrdersMailService {
   /** Il locale propone un nuovo orario (tipicamente per spostare l'ordine da una fascia satura, §5.10): il cliente lo confermerà dalla stessa pagina di tracciamento. */
   sendTimeChangeRequest(
     order: OrderWithLines & { proposedRequestedAt: Date | null },
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     trackUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const newWhen = order.proposedRequestedAt ? this.when(order.proposedRequestedAt) : '';
     const block = this.trackingBlock(trackUrl);
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: order.email,
-      subject: `${venueName} — nuovo orario da confermare`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\n${venueName} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venueName}`,
+      subject: `${venue.name} — nuovo orario da confermare`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\n${venue.name} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venue.name}`,
       html: `
         <div style="font-family:sans-serif;color:#222;">
           <h2>Nuovo orario da confermare</h2>
           <p>Ciao ${escapeHtml(order.firstName)},</p>
           <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
-          <p>${escapeHtml(venueName)} propone di spostare il tuo ordine al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
+          <p>${escapeHtml(venue.name)} propone di spostare il tuo ordine al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
           ${block.html}
           <p style="margin-top:16px;">Se non ti va bene, contattaci direttamente.</p>
           ${footer.html}
         </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }

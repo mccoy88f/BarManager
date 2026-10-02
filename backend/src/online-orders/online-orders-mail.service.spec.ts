@@ -12,6 +12,8 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   let mail: { send: jest.Mock };
   let service: OnlineOrdersMailService;
 
+  const venue = { name: 'Bar Test' };
+
   const order = {
     dailyNumber: 7,
     createdAt: new Date('2026-01-15T10:00:00Z'),
@@ -41,7 +43,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReceived include articoli, indirizzo, totale e metodo di pagamento', () => {
-    service.sendReceived(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendReceived(order as never, venue, 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -55,7 +57,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReceivedAwaitingOpening include lo stesso riepilogo e metodo di pagamento', () => {
-    service.sendReceivedAwaitingOpening(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendReceivedAwaitingOpening(order as never, venue, 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -67,7 +69,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendConfirmed include lo stesso riepilogo e metodo di pagamento', () => {
-    service.sendConfirmed(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendConfirmed(order as never, venue, 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Margherita');
@@ -79,24 +81,24 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('ogni email di notifica include numero progressivo e data dell\'ordine', () => {
-    service.sendReceived(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendReceived(order as never, venue, 'https://example.com/traccia');
     expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
     expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
 
     mail.send.mockClear();
-    service.sendReady(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendReady(order as never, venue, 'https://example.com/traccia');
     expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
     expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
 
     mail.send.mockClear();
-    service.sendRejected(order as never, 'Bar Test', 'Chiusura imprevista');
+    service.sendRejected(order as never, venue, 'Chiusura imprevista');
     expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
     expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
 
     mail.send.mockClear();
     service.sendTimeChangeRequest(
       { ...order, proposedRequestedAt: new Date('2026-01-15T20:00:00Z') } as never,
-      'Bar Test',
+      venue,
       'https://example.com/traccia',
     );
     expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
@@ -104,7 +106,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendReady include il metodo di pagamento', () => {
-    service.sendReady(order as never, 'Bar Test', 'https://example.com/traccia');
+    service.sendReady(order as never, venue, 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Metodo di pagamento: Contanti alla consegna');
@@ -113,7 +115,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
 
   it('sendRejected se pagato con carta include la spiegazione dello storno e tempi emittente', () => {
     const cardOrder = { ...order, paymentMethod: 'CARD_ONLINE' };
-    service.sendRejected(cardOrder as never, 'Bar Test', 'Ingredienti esauriti');
+    service.sendRejected(cardOrder as never, venue, 'Ingredienti esauriti');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Metodo di pagamento: Carta (online)');
@@ -123,7 +125,7 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   });
 
   it('sendRejected se non pagato con carta non include la spiegazione dello storno', () => {
-    service.sendRejected(order, 'Bar Test', 'Chiusura imprevista');
+    service.sendRejected(order, venue, 'Chiusura imprevista');
     const call = mail.send.mock.calls[0][0];
 
     expect(call.text).toContain('Metodo di pagamento: Contanti alla consegna');

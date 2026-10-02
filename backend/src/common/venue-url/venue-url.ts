@@ -33,3 +33,8 @@ export function venuePublicUrl(venue: VenueForPublicUrl, path: string): string {
 export function venueLogoAbsoluteUrl(venue: VenueForPublicUrl & { logoUrl: string | null }): string | null {
   return venue.logoUrl ? venuePublicUrl(venue, venue.logoUrl) : null;
 }
+
+/** URL pubblico "gestisci i tuoi dati personali" (§5.8), per il footer di ogni email al cliente — null se il cliente non ha ancora un token (v. CustomersService.ensurePrivacyToken). */
+export function venuePrivacyUrl(venue: VenueForPublicUrl, privacyToken: string | null): string | null {
+  return privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
+}

@@ -7,7 +7,8 @@ import { MailService } from '../common/mail/mail.service';
 import { CustomersService } from '../customers/customers.service';
 import { stripHtml } from '../common/mail/strip-html';
 import { escapeHtml } from '../common/mail/escape-html';
-import { venuePublicUrl, venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
+import { buildMailFooter } from '../common/mail/mail-footer';
+import { venuePublicUrl, venueLogoAbsoluteUrl, venuePrivacyUrl } from '../common/venue-url/venue-url';
 import { CreateCommunicationDto } from './dto/create-communication.dto';
 
 /** Placeholder disponibili nell'editor, mappati sui campi di Customer (v. §1-septdecies di DEVELOPMENT.md). */
@@ -100,51 +101,6 @@ export class CommunicationsService {
       html: `<div style="text-align:center;margin:20px 0;"><a href="${clickUrl}" style="display:inline-block;background:#1565c0;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">${escapeHtml(label)}</a></div>`,
       text: `\n\n${label}: ${clickUrl}\n`,
     };
-  }
-
-  /**
-   * Dati del locale (stessi campi già usati in fondo al menù pubblico e
-   * al widget prenotazioni: indirizzo, città, telefono, social, sito) più
-   * il link "gestisci i tuoi dati personali" (stesso principio delle
-   * email di prenotazioni/ordini online, §5.8) — in fondo a ogni email di
-   * Marketing/Comunicazioni, non solo nelle altre email transazionali.
-   */
-  private buildFooter(venue: Venue, privacyToken: string | null): { html: string; text: string } {
-    const contactLines = [venue.menuAddress, venue.city, venue.menuPhone].filter(
-      (v): v is string => !!v?.trim(),
-    );
-    const links = [
-      venue.menuWebsiteUrl ? { label: 'Sito web', url: venue.menuWebsiteUrl } : null,
-      venue.menuInstagramUrl ? { label: 'Instagram', url: venue.menuInstagramUrl } : null,
-      venue.menuFacebookUrl ? { label: 'Facebook', url: venue.menuFacebookUrl } : null,
-    ].filter((l): l is { label: string; url: string } => !!l);
-    const privacyUrl = privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
-
-    const text = [
-      '',
-      '---',
-      venue.name,
-      ...contactLines,
-      ...links.map((l) => `${l.label}: ${l.url}`),
-      ...(privacyUrl ? [`Gestisci i tuoi dati personali: ${privacyUrl}`] : []),
-    ].join('\n');
-
-    const html = [
-      `<div style="margin-top:28px;padding-top:14px;border-top:1px solid #ddd;font-size:0.85em;color:#666;">`,
-      `<p style="margin:0 0 4px;font-weight:bold;">${escapeHtml(venue.name)}</p>`,
-      contactLines.length ? `<p style="margin:0 0 4px;">${escapeHtml(contactLines.join(' — '))}</p>` : '',
-      links.length
-        ? `<p style="margin:0 0 4px;">${links.map((l) => `<a href="${l.url}" style="color:#666;">${escapeHtml(l.label)}</a>`).join(' · ')}</p>`
-        : '',
-      privacyUrl
-        ? `<p style="margin:8px 0 0;"><a href="${privacyUrl}" style="color:#999;">Gestisci i tuoi dati personali</a></p>`
-        : '',
-      `</div>`,
-    ]
-      .filter(Boolean)
-      .join('');
-
-    return { text, html };
   }
 
   async create(venueId: string, userId: string, dto: CreateCommunicationDto) {
@@ -265,7 +221,7 @@ export class CommunicationsService {
         : plainBody.replace(CTA_PLACEHOLDER, '');
 
       const privacyToken = await this.customers.ensurePrivacyToken(communication.venueId, customer.email);
-      const footer = this.buildFooter(communication.venue, privacyToken);
+      const footer = buildMailFooter(communication.venue, venuePrivacyUrl(communication.venue, privacyToken));
       html += footer.html;
       text += footer.text;
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Reservation } from '@prisma/client';
 import { MailService } from '../common/mail/mail.service';
 import { escapeHtml } from '../common/mail/escape-html';
+import { buildMailFooter, VenueFooterInfo } from '../common/mail/mail-footer';
 
 /**
  * Email al cliente sull'esito della sua richiesta di prenotazione, ed email
@@ -38,73 +39,52 @@ export class ReservationsMailService {
     };
   }
 
-  /**
-   * Footer "gestisci i tuoi dati personali", in fondo a ogni email al
-   * cliente (non a quelle allo staff): rimanda a una pagina pubblica dove
-   * può togliere il consenso marketing o eliminare la propria scheda
-   * cliente, sullo stesso principio di un link di cancellazione da una
-   * mailing list. `privacyUrl` può essere null (cliente non ancora
-   * associato a un token, non dovrebbe succedere in pratica): in quel
-   * caso il footer è semplicemente omesso, non è un errore bloccante.
-   */
-  private privacyFooter(privacyUrl?: string | null) {
-    if (!privacyUrl) return { text: '', html: '' };
-    return {
-      text: `\n\n---\nGestisci i tuoi dati personali (marketing, cancellazione): ${privacyUrl}`,
-      html: `<p style="margin-top:24px;padding-top:12px;border-top:1px solid #ddd;font-size:0.8em;color:#999;"><a href="${privacyUrl}" style="color:#999;">Gestisci i tuoi dati personali</a></p>`,
-    };
-  }
-
   sendReceived(
     reservation: Reservation,
-    venueName: string,
-    venueEmail?: string | null,
+    venue: VenueFooterInfo & { email?: string | null },
     selfManageUrl?: string,
-    venuePhone?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const block = selfManageUrl ? this.selfManageBlock(selfManageUrl, venuePhone) : null;
-    const footer = this.privacyFooter(privacyUrl);
+    const block = selfManageUrl ? this.selfManageBlock(selfManageUrl, venue.menuPhone) : null;
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — richiesta di prenotazione ricevuta`,
-      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.${block?.text ?? ''}${footer.text}\n\nGrazie,\n${venueName}`,
+      subject: `${venue.name} — richiesta di prenotazione ricevuta`,
+      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.${block?.text ?? ''}${footer.text}\n\nGrazie,\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Abbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}. Ti confermeremo a breve la disponibilità.</p>
             ${block?.html ?? ''}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
 
   sendConfirmed(
     reservation: Reservation,
-    venueName: string,
-    venueEmail?: string | null,
+    venue: VenueFooterInfo & { email?: string | null },
     selfManageUrl?: string,
-    venuePhone?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const block = selfManageUrl ? this.selfManageBlock(selfManageUrl, venuePhone) : null;
-    const footer = this.privacyFooter(privacyUrl);
+    const block = selfManageUrl ? this.selfManageBlock(selfManageUrl, venue.menuPhone) : null;
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — prenotazione confermata`,
-      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.${block?.text ?? ''}${footer.text}\n\nTi aspettiamo,\n${venueName}`,
+      subject: `${venue.name} — prenotazione confermata`,
+      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.${block?.text ?? ''}${footer.text}\n\nTi aspettiamo,\n${venue.name}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>La tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))} è confermata.</p>
             ${block?.html ?? ''}
             ${footer.html}
           </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
@@ -112,52 +92,46 @@ export class ReservationsMailService {
   /** Email al cliente quando modifica da sé la prenotazione: torna PENDING e richiede riconferma del locale (§10). */
   sendSelfEditPending(
     reservation: Reservation,
-    venueName: string,
-    venueEmail?: string | null,
+    venue: VenueFooterInfo & { email?: string | null },
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — modifica ricevuta, in attesa di conferma`,
-      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nÈ di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.${footer.text}\n\n${venueName}`,
-      html: footer.html
-        ? `<div style="font-family:sans-serif;color:#222;">
+      subject: `${venue.name} — modifica ricevuta, in attesa di conferma`,
+      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nÈ di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.${footer.text}\n\n${venue.name}`,
+      html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Abbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}. È di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.</p>
             ${footer.html}
-          </div>`
-        : undefined,
-      venueName,
-      replyTo: venueEmail,
+          </div>`,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
 
   sendRejected(
     reservation: Reservation,
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     reason: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — prenotazione non confermata`,
-      text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}${footer.text}\n\n${venueName}`,
-      html: footer.html
-        ? `<div style="font-family:sans-serif;color:#222;">
+      subject: `${venue.name} — prenotazione non confermata`,
+      text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}${footer.text}\n\n${venue.name}`,
+      html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Non possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}.</p>
             <p>Motivo: ${escapeHtml(reason)}</p>
             ${footer.html}
-          </div>`
-        : undefined,
-      venueName,
-      replyTo: venueEmail,
+          </div>`,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
@@ -165,25 +139,22 @@ export class ReservationsMailService {
   /** Annullamento da parte del locale (es. il cliente disdice per telefono, o l'admin corregge un errore). */
   sendCancelled(
     reservation: Reservation,
-    venueName: string,
-    venueEmail?: string | null,
+    venue: VenueFooterInfo & { email?: string | null },
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — prenotazione annullata`,
-      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.${footer.text}\n\n${venueName}`,
-      html: footer.html
-        ? `<div style="font-family:sans-serif;color:#222;">
+      subject: `${venue.name} — prenotazione annullata`,
+      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.${footer.text}\n\n${venue.name}`,
+      html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>La tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))} è stata annullata. Se pensi sia un errore, contattaci direttamente.</p>
             ${footer.html}
-          </div>`
-        : undefined,
-      venueName,
-      replyTo: venueEmail,
+          </div>`,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }
@@ -197,31 +168,30 @@ export class ReservationsMailService {
    */
   sendTimeChangeRequest(
     reservation: Reservation & { proposedReservedAt: Date | null },
-    venueName: string,
+    venue: VenueFooterInfo & { email?: string | null },
     confirmUrl: string,
-    venueEmail?: string | null,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const newWhen = reservation.proposedReservedAt ? this.when(reservation.proposedReservedAt) : '';
-    const footer = this.privacyFooter(privacyUrl);
+    const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
       to: reservation.email,
-      subject: `${venueName} — nuovo orario da confermare`,
-      text: `Ciao ${reservation.firstName},\n\n${venueName} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venueName}`,
+      subject: `${venue.name} — nuovo orario da confermare`,
+      text: `Ciao ${reservation.firstName},\n\n${venue.name} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venue.name}`,
       html: `
         <div style="font-family:sans-serif;color:#222;">
           <h2>Nuovo orario da confermare</h2>
           <p>Ciao ${escapeHtml(reservation.firstName)},</p>
-          <p>${escapeHtml(venueName)} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
+          <p>${escapeHtml(venue.name)} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
           <div style="margin-top:16px;">
             <a href="${confirmUrl}" style="display:inline-block;background:#2e7d32;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">Confermo il nuovo orario</a>
           </div>
           <p style="margin-top:16px;">Se non ti va bene, contattaci direttamente.</p>
           ${footer.html}
         </div>`,
-      venueName,
-      replyTo: venueEmail,
+      venueName: venue.name,
+      replyTo: venue.email,
       logoUrl,
     });
   }

@@ -40,7 +40,7 @@ import { distanceMeters } from '../common/geo/geo';
 import { locationIqClient } from '../common/geo/locationiq-client';
 import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
 import { decryptSecret } from '../common/crypto/secret-crypto';
-import { venuePublicUrl, venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
+import { venuePublicUrl, venueLogoAbsoluteUrl, venuePrivacyUrl } from '../common/venue-url/venue-url';
 import { loyverseClient } from '../loyverse/loyverse-client';
 import { CustomersService } from '../customers/customers.service';
 import { OnlineOrdersMailService } from './online-orders-mail.service';
@@ -55,6 +55,12 @@ const VENUE_SELECT = {
   name: true,
   slug: true,
   email: true,
+  menuAddress: true,
+  city: true,
+  menuPhone: true,
+  menuInstagramUrl: true,
+  menuFacebookUrl: true,
+  menuWebsiteUrl: true,
   logoUrl: true,
   timezone: true,
   gpsLat: true,
@@ -89,6 +95,12 @@ type OnlineOrdersVenueSettings = {
   name: string;
   slug: string;
   email: string | null;
+  menuAddress: string | null;
+  city: string | null;
+  menuPhone: string | null;
+  menuInstagramUrl: string | null;
+  menuFacebookUrl: string | null;
+  menuWebsiteUrl: string | null;
   logoUrl: string | null;
   timezone: string;
   gpsLat: number | null;
@@ -180,7 +192,7 @@ export class OnlineOrdersService {
   }
 
   private privacyUrl(venue: OnlineOrdersVenueSettings, privacyToken: string | null): string | null {
-    return privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
+    return venuePrivacyUrl(venue, privacyToken);
   }
 
   /** Apertura speciale (§5.10) per la data di "at" (nel fuso del locale), se configurata. */
@@ -684,11 +696,11 @@ export class OnlineOrdersService {
     const trackUrl = this.trackUrl(venue, order.id, order.manageToken);
     const privacyUrl = this.privacyUrl(venue, customer.privacyToken);
     if (initialStatus === 'CONFIRMED') {
-      await this.mail.sendConfirmed(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+      await this.mail.sendConfirmed(order, venue, trackUrl, privacyUrl, logoUrl);
     } else if (order.awaitingShopOpening) {
-      await this.mail.sendReceivedAwaitingOpening(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+      await this.mail.sendReceivedAwaitingOpening(order, venue, trackUrl, privacyUrl, logoUrl);
     } else {
-      await this.mail.sendReceived(order, venue.name, trackUrl, venue.email, privacyUrl, logoUrl);
+      await this.mail.sendReceived(order, venue, trackUrl, privacyUrl, logoUrl);
     }
     // Notifica sonora nella coda admin: v. OnlineOrdersAdmin.tsx (confronto poll su poll, §5.10).
     if (venue.email) {
@@ -778,9 +790,8 @@ export class OnlineOrdersService {
     const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
     await this.mail.sendConfirmed(
       updated,
-      venue.name,
+      venue,
       this.trackUrl(venue, updated.id, updated.manageToken),
-      venue.email,
       this.privacyUrl(venue, privacyToken),
       venueLogoAbsoluteUrl(venue),
     );
@@ -829,9 +840,8 @@ export class OnlineOrdersService {
     const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
     await this.mail.sendRejected(
       updated,
-      venue.name,
+      venue,
       dto.reason,
-      venue.email,
       this.privacyUrl(venue, privacyToken),
       venueLogoAbsoluteUrl(venue),
     );
@@ -862,9 +872,8 @@ export class OnlineOrdersService {
     const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
     await this.mail.sendReady(
       updated,
-      venue.name,
+      venue,
       this.trackUrl(venue, updated.id, updated.manageToken),
-      venue.email,
       this.privacyUrl(venue, privacyToken),
       venueLogoAbsoluteUrl(venue),
     );
@@ -1057,9 +1066,8 @@ export class OnlineOrdersService {
     const privacyToken = await this.customers.ensurePrivacyToken(venueId, updated.email);
     await this.mail.sendTimeChangeRequest(
       updated,
-      venue.name,
+      venue,
       this.trackUrl(venue, updated.id, updated.manageToken),
-      venue.email,
       this.privacyUrl(venue, privacyToken),
       venueLogoAbsoluteUrl(venue),
     );
