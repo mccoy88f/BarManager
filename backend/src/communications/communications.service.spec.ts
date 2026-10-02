@@ -198,6 +198,18 @@ describe('CommunicationsService', () => {
       expect(mail.send).not.toHaveBeenCalled();
     });
 
+    it('esclude dalla ricerca i destinatari di una comunicazione fermata (PAUSED)', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue(null);
+      await service.processNext();
+      expect(prisma.communicationRecipient.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            communication: { status: { not: CommunicationStatus.PAUSED } },
+          }),
+        }),
+      );
+    });
+
     it('invia il destinatario più vecchio in coda con i placeholder sostituiti e lo marca SENT', async () => {
       prisma.communicationRecipient.findFirst.mockResolvedValue(recipient);
       mail.send.mockResolvedValue({ sent: true });
@@ -437,6 +449,53 @@ describe('CommunicationsService', () => {
         where: { id: 'rec-1' },
         data: { clickedAt: expect.any(Date), openedAt: firstOpen },
       });
+    });
+  });
+
+  describe('pause/resume', () => {
+    it('pause() ferma un invio in corso (QUEUED -> PAUSED)', async () => {
+      prisma.communication.findUnique.mockResolvedValue({ id: 'comm-1', venueId: 'venue-1', status: CommunicationStatus.QUEUED });
+      prisma.communication.update.mockResolvedValue({ id: 'comm-1', status: CommunicationStatus.PAUSED });
+
+      await service.pause('venue-1', 'comm-1');
+
+      expect(prisma.communication.update).toHaveBeenCalledWith({
+        where: { id: 'comm-1' },
+        data: { status: CommunicationStatus.PAUSED },
+      });
+    });
+
+    it('pause() rifiuta una comunicazione non in corso (es. già DONE)', async () => {
+      prisma.communication.findUnique.mockResolvedValue({ id: 'comm-1', venueId: 'venue-1', status: CommunicationStatus.DONE });
+
+      await expect(service.pause('venue-1', 'comm-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.communication.update).not.toHaveBeenCalled();
+    });
+
+    it('pause() di una comunicazione di un altro locale non la trova', async () => {
+      prisma.communication.findUnique.mockResolvedValue({ id: 'comm-1', venueId: 'venue-2', status: CommunicationStatus.QUEUED });
+
+      await expect(service.pause('venue-1', 'comm-1')).rejects.toThrow('Comunicazione non trovata');
+    });
+
+    it('resume() riprende un invio fermato (PAUSED -> QUEUED) e rilancia processNext', async () => {
+      prisma.communication.findUnique.mockResolvedValue({ id: 'comm-1', venueId: 'venue-1', status: CommunicationStatus.PAUSED });
+      prisma.communication.update.mockResolvedValue({ id: 'comm-1', status: CommunicationStatus.QUEUED });
+      prisma.communicationRecipient.findFirst.mockResolvedValue(null);
+
+      await service.resume('venue-1', 'comm-1');
+
+      expect(prisma.communication.update).toHaveBeenCalledWith({
+        where: { id: 'comm-1' },
+        data: { status: CommunicationStatus.QUEUED },
+      });
+    });
+
+    it('resume() rifiuta una comunicazione non fermata', async () => {
+      prisma.communication.findUnique.mockResolvedValue({ id: 'comm-1', venueId: 'venue-1', status: CommunicationStatus.QUEUED });
+
+      await expect(service.resume('venue-1', 'comm-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.communication.update).not.toHaveBeenCalled();
     });
   });
 

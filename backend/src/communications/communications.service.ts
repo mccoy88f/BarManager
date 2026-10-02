@@ -176,6 +176,42 @@ export class CommunicationsService {
     return communication;
   }
 
+  private async requireOwnCommunication(venueId: string, id: string) {
+    const communication = await this.prisma.communication.findUnique({ where: { id } });
+    if (!communication || communication.venueId !== venueId) {
+      throw new NotFoundException('Comunicazione non trovata');
+    }
+    return communication;
+  }
+
+  /**
+   * Ferma manualmente l'invio (es. troppi errori consecutivi, da controllare
+   * prima di proseguire): i destinatari già SENT/FAILED restano così, quelli
+   * ancora QUEUED aspettano una resume() — processNext() li salta nel
+   * frattempo (v. filtro sopra). Permesso solo mentre l'invio è in corso.
+   */
+  async pause(venueId: string, id: string) {
+    const communication = await this.requireOwnCommunication(venueId, id);
+    if (communication.status !== CommunicationStatus.QUEUED) {
+      throw new BadRequestException('Solo un invio ancora in corso può essere fermato');
+    }
+    return this.prisma.communication.update({ where: { id }, data: { status: CommunicationStatus.PAUSED } });
+  }
+
+  /** Riprende un invio fermato in precedenza: torna QUEUED e processNext() riparte dal prossimo tick (o subito, qui sotto). */
+  async resume(venueId: string, id: string) {
+    const communication = await this.requireOwnCommunication(venueId, id);
+    if (communication.status !== CommunicationStatus.PAUSED) {
+      throw new BadRequestException('Solo un invio fermato può essere ripreso');
+    }
+    const updated = await this.prisma.communication.update({
+      where: { id },
+      data: { status: CommunicationStatus.QUEUED },
+    });
+    void this.processNext();
+    return updated;
+  }
+
   /** Un tick ogni 10 secondi: invia al più un destinatario, per garantire l'invio sequenziale richiesto ("per non intasare il server posta"). */
   @Cron('*/10 * * * * *')
   async tick() {
@@ -187,7 +223,13 @@ export class CommunicationsService {
     this.processing = true;
     try {
       const recipient = await this.prisma.communicationRecipient.findFirst({
-        where: { status: CommunicationRecipientStatus.QUEUED },
+        where: {
+          status: CommunicationRecipientStatus.QUEUED,
+          // Una comunicazione fermata dall'admin (pause()) non deve far
+          // avanzare l'invio: i suoi destinatari restano QUEUED in attesa
+          // di resume(), ma processNext() li salta.
+          communication: { status: { not: CommunicationStatus.PAUSED } },
+        },
         orderBy: { createdAt: 'asc' },
         include: { customer: true, communication: { include: { venue: true } } },
       });

@@ -4,15 +4,18 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   Box,
   Button,
   Chip,
   Dialog,
   DialogContent,
   DialogTitle,
+  IconButton,
   List,
   ListItem,
   ListItemText,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -23,19 +26,24 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { useQuery } from '@tanstack/react-query';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import { SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
+import { useToast } from '../../components/ToastProvider';
+import { SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR, PENDING_CHIP_COLOR } from '../../config/statusChip';
 import { formatDateTime } from '../../utils/format';
 
 type CommunicationType = 'COMMUNICATION' | 'MARKETING';
 type RecipientStatus = 'QUEUED' | 'SENT' | 'FAILED';
+type CommunicationStatus = 'QUEUED' | 'PAUSED' | 'DONE';
 
 interface CommunicationRow {
   id: string;
   type: CommunicationType;
   subject: string;
-  status: 'QUEUED' | 'DONE';
+  status: CommunicationStatus;
   createdAt: string;
   ctaLabel: string | null;
   ctaUrl: string | null;
@@ -82,6 +90,26 @@ const RECIPIENT_STATUS_COLOR: Record<RecipientStatus, 'default' | 'success' | 'e
 /** Ordine di visualizzazione dei gruppi nel dettaglio: prima gli esiti definitivi, poi chi è ancora in coda. */
 const RECIPIENT_STATUS_ORDER: RecipientStatus[] = ['SENT', 'FAILED', 'QUEUED'];
 
+const COMMUNICATION_STATUS_LABELS: Record<CommunicationStatus, string> = {
+  QUEUED: 'In invio',
+  PAUSED: 'Fermata',
+  DONE: 'Conclusa',
+};
+
+const COMMUNICATION_STATUS_COLOR: Record<CommunicationStatus, 'default' | 'warning' | 'success'> = {
+  QUEUED: PENDING_CHIP_COLOR,
+  PAUSED: NEUTRAL_CHIP_COLOR,
+  DONE: SUCCESS_CHIP_COLOR,
+};
+
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
+  const message = data?.message;
+  if (Array.isArray(message)) return message.join('; ');
+  if (message) return message;
+  return "Operazione non riuscita.";
+}
+
 /**
  * Storico delle comunicazioni inviate dalla pagina Marketing (§1-septdecies
  * di DEVELOPMENT.md): conteggio inviate/fallite/in coda per ogni invio
@@ -91,6 +119,8 @@ const RECIPIENT_STATUS_ORDER: RecipientStatus[] = ['SENT', 'FAILED', 'QUEUED'];
  */
 export function CommunicationsHistory() {
   const navigate = useNavigate();
+  const showToast = useToast();
+  const queryClient = useQueryClient();
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const historyQuery = useQuery({
@@ -103,6 +133,30 @@ export function CommunicationsHistory() {
     queryKey: ['communications', 'detail', detailId],
     queryFn: async () => (await api.get<CommunicationDetail>(`/communications/${detailId}`)).data,
     enabled: !!detailId,
+    refetchInterval: 10000,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['communications', 'history'] });
+    queryClient.invalidateQueries({ queryKey: ['communications', 'detail', detailId] });
+  };
+
+  const pauseMutation = useMutation({
+    mutationFn: async () => (await api.patch(`/communications/${detailId}/pause`)).data,
+    onSuccess: () => {
+      showToast('Invio fermato: i destinatari ancora in coda restano in attesa.');
+      invalidate();
+    },
+    onError: (error) => showToast({ message: extractErrorMessage(error), severity: 'error' }),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async () => (await api.patch(`/communications/${detailId}/resume`)).data,
+    onSuccess: () => {
+      showToast('Invio ripreso.');
+      invalidate();
+    },
+    onError: (error) => showToast({ message: extractErrorMessage(error), severity: 'error' }),
   });
 
   return (
@@ -147,9 +201,16 @@ export function CommunicationsHistory() {
                 <TableCell>{c.openedCount}</TableCell>
                 <TableCell>{c.ctaLabel ? c.clickedCount : '—'}</TableCell>
                 <TableCell>
-                  <Button size="small" onClick={(e) => { e.stopPropagation(); setDetailId(c.id); }}>
-                    Dettaglio
-                  </Button>
+                  <IconButton
+                    size="small"
+                    title="Dettaglio"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailId(c.id);
+                    }}
+                  >
+                    <InfoOutlinedIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -163,8 +224,55 @@ export function CommunicationsHistory() {
       )}
 
       <Dialog open={!!detailId} onClose={() => setDetailId(null)} maxWidth="md" fullWidth>
-        <DialogTitle>{detailQuery.data?.subject ?? 'Dettaglio comunicazione'}</DialogTitle>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+            <Box>{detailQuery.data?.subject ?? 'Dettaglio comunicazione'}</Box>
+            {detailQuery.data && (
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Chip
+                  size="small"
+                  label={COMMUNICATION_STATUS_LABELS[detailQuery.data.status]}
+                  color={COMMUNICATION_STATUS_COLOR[detailQuery.data.status]}
+                />
+                {detailQuery.data.status === 'QUEUED' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="warning"
+                    startIcon={<PauseIcon />}
+                    disabled={pauseMutation.isPending}
+                    onClick={() => pauseMutation.mutate()}
+                  >
+                    Ferma invio
+                  </Button>
+                )}
+                {detailQuery.data.status === 'PAUSED' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                    startIcon={<PlayArrowIcon />}
+                    disabled={resumeMutation.isPending}
+                    onClick={() => resumeMutation.mutate()}
+                  >
+                    Riprendi invio
+                  </Button>
+                )}
+              </Stack>
+            )}
+          </Stack>
+        </DialogTitle>
         <DialogContent sx={{ pt: 4 }}>
+          {(pauseMutation.isError || resumeMutation.isError) && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {extractErrorMessage(pauseMutation.error ?? resumeMutation.error)}
+            </Alert>
+          )}
+          {detailQuery.data?.status === 'PAUSED' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Invio fermato: i destinatari ancora in coda non riceveranno l'email finché non riprendi l'invio.
+            </Alert>
+          )}
           {detailQuery.data && (
             <Accordion sx={{ mb: 2 }}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>

@@ -10,6 +10,17 @@ export default defineConfig({
       includeAssets: ['favicon.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // Senza questa esclusione, il service worker intercetta come
+        // "navigazione" anche un GET a un endpoint pubblico del backend
+        // aperto direttamente nel browser (es. il redirect di tracciamento
+        // del pulsante CTA Marketing, /api/public/communications/:id/click)
+        // e risponde con la shell della SPA invece di lasciar passare la
+        // richiesta alla rete — su un browser che ha già visitato il
+        // pannello admin di quel locale (service worker già installato),
+        // il risultato è una pagina bianca perché nessuna route client
+        // corrisponde a quel percorso, e la richiesta non arriva mai al
+        // backend (bug segnalato: il link CTA non reindirizzava più).
+        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//],
       },
       manifest: {
         name: 'Bar Management',

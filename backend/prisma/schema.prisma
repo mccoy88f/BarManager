@@ -1331,6 +1331,7 @@ enum CommunicationType {
 
 enum CommunicationStatus {
   QUEUED // creata, invio ai destinatari non ancora iniziato/in corso
+  PAUSED // invio fermato manualmente dall'admin (es. troppi errori): i destinatari ancora QUEUED aspettano una resume(), v. CommunicationsService
   DONE // tutti i destinatari sono in uno stato finale (SENT o FAILED)
 }
 

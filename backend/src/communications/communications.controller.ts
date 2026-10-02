@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CommunicationType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -40,5 +40,15 @@ export class CommunicationsController {
   @Get(':id')
   getDetail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.communicationsService.getDetail(requireVenueId(user), id);
+  }
+
+  @Patch(':id/pause')
+  pause(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.communicationsService.pause(requireVenueId(user), id);
+  }
+
+  @Patch(':id/resume')
+  resume(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.communicationsService.resume(requireVenueId(user), id);
   }
 }
