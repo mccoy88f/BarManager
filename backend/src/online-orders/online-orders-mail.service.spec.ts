@@ -56,6 +56,16 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
     expect(call.html).toContain('Metodo di pagamento: <strong>Contanti alla consegna</strong>');
   });
 
+  it('sendReceived: il footer (dati del locale) viene dopo la firma di chiusura, non in mezzo al messaggio', () => {
+    service.sendReceived(order as never, venue, 'https://example.com/traccia');
+    const call = mail.send.mock.calls[0][0];
+
+    const signoffIndex = call.text.indexOf('Grazie,');
+    const footerIndex = call.text.indexOf('---');
+    expect(signoffIndex).toBeGreaterThan(-1);
+    expect(footerIndex).toBeGreaterThan(signoffIndex);
+  });
+
   it('sendReceivedAwaitingOpening include lo stesso riepilogo e metodo di pagamento', () => {
     service.sendReceivedAwaitingOpening(order as never, venue, 'https://example.com/traccia');
     const call = mail.send.mock.calls[0][0];

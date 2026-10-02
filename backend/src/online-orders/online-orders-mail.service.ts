@@ -142,7 +142,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine ricevuto`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}\n\nGrazie,\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))}. Ti confermeremo a breve.</p>
@@ -176,7 +176,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine ricevuto, in attesa di apertura`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\nGrazie,\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per ${reopenText}.\n\n${this.orderLines(order).join('\n')}${block.text}\n\nGrazie,\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}), ma il locale è al momento chiuso: non potremo confermarlo prima della riapertura, prevista per <strong>${escapeHtml(reopenText)}</strong>.</p>
@@ -202,7 +202,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine confermato`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p>Il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))} è confermato ed è in preparazione.</p>
@@ -230,7 +230,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ${order.fulfillment === 'DELIVERY' ? 'ordine in consegna' : 'ordine pronto'}`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
@@ -263,7 +263,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine non confermato`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
@@ -293,7 +293,7 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — nuovo orario da confermare`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\n${venue.name} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\n${venue.name} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.\n\n${venue.name}${footer.text}`,
       html: `
         <div style="font-family:sans-serif;color:#222;">
           <h2>Nuovo orario da confermare</h2>

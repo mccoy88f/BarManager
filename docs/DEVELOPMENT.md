@@ -682,6 +682,12 @@ Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/ema
 - Test Jest aggiunti: `communications.service.spec.ts` — filtro `PAUSED` in `processNext()`, `pause()`/`resume()` (transizioni valide e rifiutate, isolamento multi-tenant).
 - Verifica eseguita in questa fase: `tsc --noEmit` backend e frontend, `vite build` frontend (confermato `denylist` nel `sw.js` generato), intera suite Jest backend verde (28 suite, 448/449 test — unico fallimento preesistente e indipendente, v. fasi precedenti).
 
+**Fase 1-sexvicies — Verifica allineamento footer email (completata, §5.7/§5.10/§1-septdecies)**
+
+- **Verifica richiesta dall'utente**: prenotazioni, ordini online e Marketing/Comunicazioni condividono già lo stesso `buildMailFooter()` (stessi dati, stesso ordine, stesso stile — v. Fase 1-quatervicies), quindi il contenuto del footer era già allineato. La verifica ha però trovato una disomogeneità reale nella **versione testo** (non l'HTML, già corretto): prenotazioni e ordini online mettevano il footer (che ora inizia col nome del locale) PRIMA della firma di chiusura ("Grazie,"/"Ti aspettiamo, {locale}"), lasciando quella firma orfana dopo il blocco del footer invece di seguirlo naturalmente dal corpo del messaggio — nelle email Marketing invece il footer è sempre l'ultimo elemento, senza firma dopo. Risolto spostando la firma di chiusura prima del footer in tutti i 12 template testo coinvolti (6 in `reservations-mail.service.ts`, 6 in `online-orders-mail.service.ts`): ordine ora uniforme in tutte le email — corpo del messaggio, firma di chiusura, poi footer — su tutti e tre i moduli.
+- Test Jest aggiunti: nuovo `reservations-mail.service.spec.ts` (non esisteva ancora uno spec dedicato) e un test in più in `online-orders-mail.service.spec.ts`, entrambi verificano che la firma di chiusura preceda sempre il separatore del footer nel testo.
+- Verifica eseguita in questa fase: `tsc --noEmit` backend, intera suite Jest backend verde (30 suite, 451/452 test — unico fallimento preesistente e indipendente, v. fasi precedenti).
+
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
 - App Android via Capacitor.

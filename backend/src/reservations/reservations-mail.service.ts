@@ -51,7 +51,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — richiesta di prenotazione ricevuta`,
-      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.${block?.text ?? ''}${footer.text}\n\nGrazie,\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nTi confermeremo a breve la disponibilità.${block?.text ?? ''}\n\nGrazie,\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Abbiamo ricevuto la tua richiesta di prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}. Ti confermeremo a breve la disponibilità.</p>
@@ -76,7 +76,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — prenotazione confermata`,
-      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.${block?.text ?? ''}${footer.text}\n\nTi aspettiamo,\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è confermata.${block?.text ?? ''}\n\nTi aspettiamo,\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>La tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))} è confermata.</p>
@@ -100,7 +100,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — modifica ricevuta, in attesa di conferma`,
-      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nÈ di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\nabbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nÈ di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Abbiamo ricevuto la modifica alla tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}. È di nuovo in attesa di conferma da parte del locale: ti avviseremo appena confermata.</p>
@@ -123,7 +123,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — prenotazione non confermata`,
-      text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\nnon possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)}.\nMotivo: ${reason}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>Non possiamo confermare la tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))}.</p>
@@ -147,7 +147,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — prenotazione annullata`,
-      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\nla tua prenotazione per ${reservation.partySize} persone il ${this.when(reservation.reservedAt)} è stata annullata.\nSe pensi sia un errore, contattaci direttamente.\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(reservation.firstName)},</p>
             <p>La tua prenotazione per ${reservation.partySize} persone il ${escapeHtml(this.when(reservation.reservedAt))} è stata annullata. Se pensi sia un errore, contattaci direttamente.</p>
@@ -178,7 +178,7 @@ export class ReservationsMailService {
     return this.mail.send({
       to: reservation.email,
       subject: `${venue.name} — nuovo orario da confermare`,
-      text: `Ciao ${reservation.firstName},\n\n${venue.name} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venue.name}`,
+      text: `Ciao ${reservation.firstName},\n\n${venue.name} propone di spostare la tua prenotazione per ${reservation.partySize} persone al nuovo orario: ${newWhen}.\n\nConfermalo qui: ${confirmUrl}\n\nSe non ti va bene, contattaci direttamente.\n\n${venue.name}${footer.text}`,
       html: `
         <div style="font-family:sans-serif;color:#222;">
           <h2>Nuovo orario da confermare</h2>
