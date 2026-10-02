@@ -9,7 +9,13 @@ describe('CommunicationsService', () => {
   let prisma: {
     customer: { findMany: jest.Mock };
     communication: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
-    communicationRecipient: { findFirst: jest.Mock; update: jest.Mock; count: jest.Mock };
+    communicationRecipient: {
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+      count: jest.Mock;
+    };
   };
   let audit: { log: jest.Mock };
   let mail: { send: jest.Mock };
@@ -39,7 +45,9 @@ describe('CommunicationsService', () => {
       },
       communicationRecipient: {
         findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
       },
     };
@@ -181,7 +189,15 @@ describe('CommunicationsService', () => {
       await service.processNext();
 
       expect(mail.send).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'mario@test.it', subject: 'Ciao Mario', html: '<p>Ciao Mario</p>' }),
+        expect.objectContaining({
+          to: 'mario@test.it',
+          subject: 'Ciao Mario',
+          html: expect.stringContaining('<p>Ciao Mario</p>'),
+        }),
+      );
+      // Pixel di tracciamento apertura sempre presente, identificato dal destinatario.
+      expect(mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.stringContaining('/public/communications/rec-1/open') }),
       );
       expect(prisma.communicationRecipient.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -221,6 +237,90 @@ describe('CommunicationsService', () => {
       expect(prisma.communicationRecipient.findFirst).toHaveBeenCalledTimes(1);
       expect(mail.send).toHaveBeenCalledTimes(1);
     });
+
+    it('con un CTA configurato aggiunge il pulsante tracciato al corpo e al testo semplice', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue({
+        ...recipient,
+        communication: { ...recipient.communication, ctaLabel: 'Prenota ora', ctaUrl: 'https://esterno.test/promo' },
+      });
+      mail.send.mockResolvedValue({ sent: true });
+      prisma.communicationRecipient.count.mockResolvedValue(0);
+
+      await service.processNext();
+
+      expect(mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining('/public/communications/rec-1/click'),
+          text: expect.stringContaining('https://esterno.test/promo'),
+        }),
+      );
+      // Il link vero non è mai inviato direttamente nell'HTML: passa sempre dal redirect di tracciamento.
+      expect(mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.not.stringContaining('https://esterno.test/promo') }),
+      );
+    });
+  });
+
+  describe('markOpened', () => {
+    it('imposta openedAt solo se ancora nullo', async () => {
+      await service.markOpened('rec-1');
+      expect(prisma.communicationRecipient.updateMany).toHaveBeenCalledWith({
+        where: { id: 'rec-1', openedAt: null },
+        data: { openedAt: expect.any(Date) },
+      });
+    });
+  });
+
+  describe('markClicked', () => {
+    it('restituisce null se il destinatario non esiste', async () => {
+      prisma.communicationRecipient.findUnique.mockResolvedValue(null);
+      await expect(service.markClicked('rec-x')).resolves.toBeNull();
+      expect(prisma.communicationRecipient.update).not.toHaveBeenCalled();
+    });
+
+    it('restituisce null se la comunicazione non ha un CTA', async () => {
+      prisma.communicationRecipient.findUnique.mockResolvedValue({
+        id: 'rec-1',
+        openedAt: null,
+        clickedAt: null,
+        communication: { ctaUrl: null },
+      });
+      await expect(service.markClicked('rec-1')).resolves.toBeNull();
+    });
+
+    it('segna click e apertura (se ancora nulla) e restituisce il ctaUrl', async () => {
+      prisma.communicationRecipient.findUnique.mockResolvedValue({
+        id: 'rec-1',
+        openedAt: null,
+        clickedAt: null,
+        communication: { ctaUrl: 'https://esterno.test/promo' },
+      });
+
+      const result = await service.markClicked('rec-1');
+
+      expect(result).toBe('https://esterno.test/promo');
+      expect(prisma.communicationRecipient.update).toHaveBeenCalledWith({
+        where: { id: 'rec-1' },
+        data: { clickedAt: expect.any(Date), openedAt: expect.any(Date) },
+      });
+    });
+
+    it('non sovrascrive un\'apertura già registrata', async () => {
+      const firstOpen = new Date('2026-01-01T10:00:00.000Z');
+      prisma.communicationRecipient.findUnique.mockResolvedValue({
+        id: 'rec-1',
+        openedAt: firstOpen,
+        clickedAt: null,
+        communication: { ctaUrl: 'https://esterno.test/promo' },
+      });
+
+      await service.markClicked('rec-1');
+
+      expect(prisma.communicationRecipient.update).toHaveBeenCalledWith({
+        where: { id: 'rec-1' },
+        data: { clickedAt: expect.any(Date), openedAt: firstOpen },
+      });
+    });
   });
 
   describe('listHistory', () => {
@@ -232,9 +332,9 @@ describe('CommunicationsService', () => {
           subject: 'Chiusura',
           _count: { recipients: 3 },
           recipients: [
-            { status: CommunicationRecipientStatus.SENT },
-            { status: CommunicationRecipientStatus.SENT },
-            { status: CommunicationRecipientStatus.FAILED },
+            { status: CommunicationRecipientStatus.SENT, openedAt: new Date(), clickedAt: new Date() },
+            { status: CommunicationRecipientStatus.SENT, openedAt: null, clickedAt: null },
+            { status: CommunicationRecipientStatus.FAILED, openedAt: null, clickedAt: null },
           ],
         },
       ]);
@@ -246,6 +346,8 @@ describe('CommunicationsService', () => {
         sentCount: 2,
         failedCount: 1,
         queuedCount: 0,
+        openedCount: 1,
+        clickedCount: 1,
       });
     });
   });

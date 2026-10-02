@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { MailService } from '../common/mail/mail.service';
 import { stripHtml } from '../common/mail/strip-html';
+import { escapeHtml } from '../common/mail/escape-html';
+import { venuePublicUrl } from '../common/venue-url/venue-url';
 import { CreateCommunicationDto } from './dto/create-communication.dto';
 
 /** Placeholder disponibili nell'editor, mappati sui campi di Customer (v. §1-septdecies di DEVELOPMENT.md). */
@@ -89,6 +91,8 @@ export class CommunicationsService {
         type: dto.type,
         subject: dto.subject,
         bodyHtml: dto.bodyHtml,
+        ctaLabel: dto.ctaLabel || null,
+        ctaUrl: dto.ctaUrl || null,
         recipients: {
           createMany: { data: recipients.map((c) => ({ customerId: c.id })) },
         },
@@ -118,7 +122,7 @@ export class CommunicationsService {
       where: { venueId },
       include: {
         _count: { select: { recipients: true } },
-        recipients: { select: { status: true } },
+        recipients: { select: { status: true, openedAt: true, clickedAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -129,6 +133,8 @@ export class CommunicationsService {
       sentCount: recipients.filter((r) => r.status === CommunicationRecipientStatus.SENT).length,
       failedCount: recipients.filter((r) => r.status === CommunicationRecipientStatus.FAILED).length,
       queuedCount: recipients.filter((r) => r.status === CommunicationRecipientStatus.QUEUED).length,
+      openedCount: recipients.filter((r) => r.openedAt).length,
+      clickedCount: recipients.filter((r) => r.clickedAt).length,
     }));
   }
 
@@ -167,12 +173,22 @@ export class CommunicationsService {
 
       const { communication, customer } = recipient;
       const subject = this.substitutePlaceholders(communication.subject, customer);
-      const html = this.substitutePlaceholders(communication.bodyHtml, customer);
+      const body = this.substitutePlaceholders(communication.bodyHtml, customer);
+
+      let text = stripHtml(body);
+      let html = body;
+      if (communication.ctaUrl && communication.ctaLabel) {
+        const clickUrl = venuePublicUrl(communication.venue, `/api/public/communications/${recipient.id}/click`);
+        html += `<div style="text-align:center;margin-top:20px;"><a href="${clickUrl}" style="display:inline-block;background:#1565c0;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">${escapeHtml(communication.ctaLabel)}</a></div>`;
+        text += `\n\n${communication.ctaLabel}: ${communication.ctaUrl}`;
+      }
+      const openPixelUrl = venuePublicUrl(communication.venue, `/api/public/communications/${recipient.id}/open`);
+      html += `<img src="${openPixelUrl}" width="1" height="1" alt="" style="display:none;" />`;
 
       const result = await this.mail.send({
         to: customer.email,
         subject,
-        text: stripHtml(html),
+        text,
         html,
         venueName: communication.venue.name,
         replyTo: communication.venue.email,
@@ -200,5 +216,42 @@ export class CommunicationsService {
     } finally {
       this.processing = false;
     }
+  }
+
+  /**
+   * Pixel di tracciamento apertura (endpoint pubblico, nessun login): un
+   * `recipientId` inesistente o già segnato non è un errore, per non far
+   * fallire il rendering dell'immagine nel client di posta del cliente —
+   * resta no-op silenzioso (v. PublicCommunicationsController).
+   */
+  async markOpened(recipientId: string): Promise<void> {
+    await this.prisma.communicationRecipient.updateMany({
+      where: { id: recipientId, openedAt: null },
+      data: { openedAt: new Date() },
+    });
+  }
+
+  /**
+   * Click sul pulsante CTA: segna anche l'apertura se ancora nulla (un
+   * client che blocca le immagini ma permette comunque il click non deve
+   * restare "mai aperta"), e ritorna l'URL di destinazione per il redirect
+   * del controller — null se il destinatario non esiste o la comunicazione
+   * non ha un CTA configurato.
+   */
+  async markClicked(recipientId: string): Promise<string | null> {
+    const recipient = await this.prisma.communicationRecipient.findUnique({
+      where: { id: recipientId },
+      include: { communication: { select: { ctaUrl: true } } },
+    });
+    if (!recipient || !recipient.communication.ctaUrl) return null;
+
+    await this.prisma.communicationRecipient.update({
+      where: { id: recipientId },
+      data: {
+        clickedAt: recipient.clickedAt ?? new Date(),
+        openedAt: recipient.openedAt ?? new Date(),
+      },
+    });
+    return recipient.communication.ctaUrl;
   }
 }

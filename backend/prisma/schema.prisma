@@ -1349,6 +1349,14 @@ model Communication {
   bodyHtml String
   status   CommunicationStatus @default(QUEUED)
 
+  // Pulsante di invito all'azione opzionale, aggiunto in fondo al corpo
+  // email (non nell'editor ricco): entrambi presenti o entrambi assenti,
+  // v. CreateCommunicationDto. Il link effettivo che il cliente riceve
+  // passa dal redirect di tracciamento (CommunicationRecipient.clickedAt),
+  // non da ctaUrl direttamente.
+  ctaLabel String?
+  ctaUrl   String?
+
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])
 
@@ -1370,6 +1378,15 @@ model CommunicationRecipient {
   status CommunicationRecipientStatus @default(QUEUED)
   error  String?
   sentAt DateTime?
+
+  // Tracciamento apertura (pixel 1x1 nel corpo email) e click sul pulsante
+  // CTA (redirect via /public/communications/:id/click): entrambi via
+  // endpoint pubblici non autenticati, v. PublicCommunicationsController.
+  // Un click implica anche l'apertura (alcuni client bloccano le immagini
+  // ma permettono comunque di cliccare un link), quindi openedAt viene
+  // impostato anche lì se ancora nullo.
+  openedAt  DateTime?
+  clickedAt DateTime?
 
   communicationId String
   communication   Communication @relation(fields: [communicationId], references: [id], onDelete: Cascade)

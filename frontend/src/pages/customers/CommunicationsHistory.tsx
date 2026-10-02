@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Chip,
@@ -19,6 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
@@ -33,10 +37,14 @@ interface CommunicationRow {
   subject: string;
   status: 'QUEUED' | 'DONE';
   createdAt: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
   recipientsCount: number;
   sentCount: number;
   failedCount: number;
   queuedCount: number;
+  openedCount: number;
+  clickedCount: number;
 }
 
 interface RecipientDetail {
@@ -44,6 +52,8 @@ interface RecipientDetail {
   status: RecipientStatus;
   error: string | null;
   sentAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
   customer: { firstName: string; lastName: string; email: string };
 }
 
@@ -68,6 +78,9 @@ const RECIPIENT_STATUS_COLOR: Record<RecipientStatus, 'default' | 'success' | 'e
   SENT: SUCCESS_CHIP_COLOR,
   FAILED: ERROR_CHIP_COLOR,
 };
+
+/** Ordine di visualizzazione dei gruppi nel dettaglio: prima gli esiti definitivi, poi chi è ancora in coda. */
+const RECIPIENT_STATUS_ORDER: RecipientStatus[] = ['SENT', 'FAILED', 'QUEUED'];
 
 /**
  * Storico delle comunicazioni inviate dalla pagina Marketing (§1-septdecies
@@ -112,6 +125,8 @@ export function CommunicationsHistory() {
               <TableCell>Inviate</TableCell>
               <TableCell>Fallite</TableCell>
               <TableCell>In coda</TableCell>
+              <TableCell>Aperti</TableCell>
+              <TableCell>Click CTA</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
@@ -129,6 +144,8 @@ export function CommunicationsHistory() {
                   {c.failedCount > 0 ? <Chip size="small" color="error" label={c.failedCount} /> : c.failedCount}
                 </TableCell>
                 <TableCell>{c.queuedCount}</TableCell>
+                <TableCell>{c.openedCount}</TableCell>
+                <TableCell>{c.ctaLabel ? c.clickedCount : '—'}</TableCell>
                 <TableCell>
                   <Button size="small" onClick={(e) => { e.stopPropagation(); setDetailId(c.id); }}>
                     Dettaglio
@@ -145,30 +162,64 @@ export function CommunicationsHistory() {
         </Typography>
       )}
 
-      <Dialog open={!!detailId} onClose={() => setDetailId(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!detailId} onClose={() => setDetailId(null)} maxWidth="md" fullWidth>
         <DialogTitle>{detailQuery.data?.subject ?? 'Dettaglio comunicazione'}</DialogTitle>
         <DialogContent sx={{ pt: 4 }}>
-          <List dense>
-            {detailQuery.data?.recipients.map((r) => (
-              <ListItem key={r.id} disableGutters>
-                <ListItemText
-                  primary={`${r.customer.firstName} ${r.customer.lastName} — ${r.customer.email}`}
-                  secondary={
-                    r.status === 'FAILED' && r.error
-                      ? `Fallita: ${r.error}`
-                      : r.status === 'SENT' && r.sentAt
-                        ? `Inviata il ${formatDateTime(r.sentAt)}`
-                        : RECIPIENT_STATUS_LABELS[r.status]
-                  }
+          {detailQuery.data && (
+            <Accordion sx={{ mb: 2 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Contenuto dell'email inviata</Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <Box
+                  sx={{ '& img, & video': { maxWidth: '100%' } }}
+                  dangerouslySetInnerHTML={{ __html: detailQuery.data.bodyHtml }}
                 />
-                <Chip
-                  size="small"
-                  label={RECIPIENT_STATUS_LABELS[r.status]}
-                  color={RECIPIENT_STATUS_COLOR[r.status]}
-                />
-              </ListItem>
-            ))}
-          </List>
+              </AccordionDetails>
+            </Accordion>
+          )}
+
+          {RECIPIENT_STATUS_ORDER.map((status) => {
+            const group = detailQuery.data?.recipients.filter((r) => r.status === status) ?? [];
+            if (group.length === 0) return null;
+            return (
+              <Box key={status} sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Chip size="small" label={RECIPIENT_STATUS_LABELS[status]} color={RECIPIENT_STATUS_COLOR[status]} />
+                  {group.length}
+                </Typography>
+                <List dense>
+                  {group.map((r) => {
+                    const trackingNotes = [
+                      r.openedAt ? `Aperta il ${formatDateTime(r.openedAt)}` : null,
+                      r.clickedAt ? `Click CTA il ${formatDateTime(r.clickedAt)}` : null,
+                    ].filter(Boolean);
+                    return (
+                      <ListItem key={r.id} disableGutters sx={{ alignItems: 'flex-start' }}>
+                        <ListItemText
+                          primary={`${r.customer.firstName} ${r.customer.lastName} — ${r.customer.email}`}
+                          secondary={
+                            <>
+                              {r.status === 'FAILED' && r.error
+                                ? `Fallita: ${r.error}`
+                                : r.status === 'SENT' && r.sentAt
+                                  ? `Inviata il ${formatDateTime(r.sentAt)}`
+                                  : RECIPIENT_STATUS_LABELS[r.status]}
+                              {trackingNotes.length > 0 && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {trackingNotes.join(' · ')}
+                                </Typography>
+                              )}
+                            </>
+                          }
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </Box>
+            );
+          })}
         </DialogContent>
       </Dialog>
     </Box>

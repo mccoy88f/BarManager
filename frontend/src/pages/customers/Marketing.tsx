@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   FormControlLabel,
   Radio,
@@ -70,6 +71,9 @@ export function Marketing() {
   const [selected, setSelected] = useState<TargetableCustomer[]>([]);
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
+  const [useCta, setUseCta] = useState(false);
+  const [ctaLabel, setCtaLabel] = useState('');
+  const [ctaUrl, setCtaUrl] = useState('');
 
   const targetableQuery = useQuery({
     queryKey: ['communications', 'targetable-customers', type],
@@ -87,6 +91,8 @@ export function Marketing() {
           bodyHtml,
           allCustomers,
           customerIds: allCustomers ? undefined : selected.map((c) => c.id),
+          ctaLabel: useCta ? ctaLabel.trim() : undefined,
+          ctaUrl: useCta ? ctaUrl.trim() : undefined,
         })
       ).data,
     onSuccess: () => {
@@ -100,7 +106,8 @@ export function Marketing() {
   const canGoToRecipients = !!type;
   const recipientsCount = allCustomers ? targetable.length : selected.length;
   const canGoToContent = recipientsCount > 0;
-  const canSend = subject.trim().length > 0 && bodyHtml.trim().length > 0 && recipientsCount > 0;
+  const ctaValid = !useCta || (ctaLabel.trim().length > 0 && /^https?:\/\/.+/.test(ctaUrl.trim()));
+  const canSend = subject.trim().length > 0 && bodyHtml.trim().length > 0 && recipientsCount > 0 && ctaValid;
 
   const insertPlaceholder = (token: string, focusSubject: boolean) => {
     if (focusSubject && subjectRef.current) {
@@ -254,6 +261,41 @@ export function Marketing() {
 
               {placeholderButtons(false)}
               <RichTextEditor ref={editorRef} value={bodyHtml} onChange={setBodyHtml} />
+
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <FormControlLabel
+                  control={<Checkbox checked={useCta} onChange={(e) => setUseCta(e.target.checked)} />}
+                  label="Aggiungi un pulsante di invito all'azione (call to action)"
+                />
+                {useCta && (
+                  <Stack spacing={2} sx={{ mt: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Il pulsante viene aggiunto in fondo all'email, fuori dal testo sopra. Ogni clic viene
+                      registrato nello storico comunicazioni.
+                    </Typography>
+                    <TextField
+                      label="Testo del pulsante"
+                      placeholder="Es. Prenota ora"
+                      value={ctaLabel}
+                      onChange={(e) => setCtaLabel(e.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Link di destinazione"
+                      placeholder="https://..."
+                      value={ctaUrl}
+                      onChange={(e) => setCtaUrl(e.target.value)}
+                      error={ctaUrl.trim().length > 0 && !/^https?:\/\/.+/.test(ctaUrl.trim())}
+                      helperText={
+                        ctaUrl.trim().length > 0 && !/^https?:\/\/.+/.test(ctaUrl.trim())
+                          ? 'Deve essere un link completo (es. https://...)'
+                          : ' '
+                      }
+                      fullWidth
+                    />
+                  </Stack>
+                )}
+              </Box>
 
               {sendMutation.isError && <Alert severity="error">{extractErrorMessage(sendMutation.error)}</Alert>}
             </>
