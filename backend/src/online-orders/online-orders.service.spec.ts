@@ -920,10 +920,18 @@ describe('OnlineOrdersService', () => {
   });
 
   describe('scontrini PDF (§5.10)', () => {
+    // Una ReceiptLine può essere una stringa semplice o { text, bold } (v. ReceiptLine
+    // in pdf.service.ts): per i test basta il testo, il grassetto è verificato a parte.
+    const lineText = (l: string | { text: string; bold?: boolean }) => (typeof l === 'string' ? l : l.text);
+    const findBoldLine = (lines: (string | { text: string; bold?: boolean })[], text: string) =>
+      lines.find((l) => typeof l !== 'string' && l.text === text) as { text: string; bold?: boolean } | undefined;
+
     const orderWithLines = {
       id: 'order-1',
       venueId: 'venue-1',
       fulfillment: 'DELIVERY',
+      dailyNumber: 7,
+      createdAt: new Date('2026-10-02T10:00:00.000Z'),
       firstName: 'Mario',
       lastName: 'Rossi',
       phone: '3331234567',
@@ -953,31 +961,49 @@ describe('OnlineOrdersService', () => {
         menuAddress: 'Via Milano 5',
         city: 'Milano',
         vatNumber: '12345678901',
+        timezone: 'Europe/Rome',
       });
     });
 
-    it('comanda cucina: niente prezzi, totale o indirizzo', async () => {
+    it('comanda cucina: numero d\'ordine al posto del nome, nome e modalità in grassetto, niente prezzi/totale/indirizzo', async () => {
       await service.exportKitchenTicketPdf('venue-1', 'order-1');
       const section = pdf.buildReceiptDocument.mock.calls[0][0][0];
-      const fullText = [section.title, ...section.lines].join('\n');
+      expect(section.title).toBe('Ordine N. 7 del 02/10/2026');
+      const fullText = [section.title, ...section.lines.map(lineText), ...section.footer.map(lineText)].join('\n');
       expect(fullText).toContain('Pizza Margherita');
       expect(fullText).not.toContain('()');
       expect(fullText).toContain('Formaggio extra');
       expect(fullText).toContain('senza basilico');
       expect(fullText).not.toMatch(/€|Via Roma/);
+      expect(findBoldLine(section.lines, 'Mario Rossi')?.bold).toBe(true);
+      expect(findBoldLine(section.lines, 'Consegna a domicilio')?.bold).toBe(true);
+      expect(fullText).toContain('Comanda - Non Fiscale');
     });
 
-    it('scontrino completo: prezzi, totale, indirizzo e pagamento', async () => {
+    it('scontrino completo: prezzi, totale, indirizzo e pagamento, senza ripetere il metodo in testa', async () => {
       await service.exportFullReceiptPdf('venue-1', 'order-1');
       const section = pdf.buildReceiptDocument.mock.calls[0][0][0];
-      const fullText = [...section.letterhead, section.title, ...section.lines, ...section.footer].join('\n');
+      expect(section.title).toBe('Ordine N. 7 del 02/10/2026');
+      const fullText = [
+        ...section.letterhead,
+        section.title,
+        ...section.lines.map(lineText),
+        ...section.footer.map(lineText),
+      ].join('\n');
       expect(fullText).toContain('Pizza Margherita');
       expect(fullText).not.toContain('()');
       expect(fullText).toContain('+ Formaggio extra (+€ 1.00)');
       expect(fullText).toContain('Via Roma 1');
       expect(fullText).toContain('€22.00');
-      expect(fullText).toContain('Metodo di pagamento: Contanti alla consegna');
       expect(fullText).toContain('Via Milano 5');
+      expect(fullText).toContain('Comanda - Non Fiscale');
+      // Il metodo di pagamento compare solo nel piè di pagina, non più ripetuto in testa.
+      expect(fullText).not.toContain('Metodo di pagamento: Contanti alla consegna');
+      expect(fullText).toContain('Pagamento: Contanti alla consegna (PAID)');
+      expect(findBoldLine(section.lines, 'Mario Rossi — 3331234567')?.bold).toBe(true);
+      expect(findBoldLine(section.lines, 'Consegna a domicilio')?.bold).toBe(true);
+      expect(findBoldLine(section.footer, 'TOTALE: €22.00')?.bold).toBe(true);
+      expect(findBoldLine(section.footer, 'Pagamento: Contanti alla consegna (PAID)')?.bold).toBe(true);
     });
   });
 });

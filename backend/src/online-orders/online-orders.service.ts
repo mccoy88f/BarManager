@@ -16,7 +16,7 @@ import {
   OnlineOrderStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PdfService, ReceiptSection } from '../reports/pdf.service';
+import { PdfService, ReceiptLine, ReceiptSection } from '../reports/pdf.service';
 import { AuditService } from '../common/audit/audit.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import {
@@ -34,6 +34,7 @@ import {
   dateOnlyInZone,
   jsWeekdayInZone,
   minutesOfDayInZone,
+  startOfDayInZone,
 } from '../common/timezone/timezone';
 import { distanceMeters } from '../common/geo/geo';
 import { locationIqClient } from '../common/geo/locationiq-client';
@@ -119,6 +120,11 @@ type OnlineOrdersVenueSettings = {
 
 const HISTORY_STATUSES: OnlineOrderStatus[] = ['COMPLETED', 'REJECTED', 'CANCELLED'];
 const QUEUE_STATUSES: OnlineOrderStatus[] = ['PENDING', 'CONFIRMED', 'READY'];
+// Le schede "Completati"/"Rifiutati e annullati" della coda (v.
+// OnlineOrdersAdmin.tsx) mostrano solo gli ordini chiusi nelle ultime 3
+// ore: oltre questa finestra lo staff è rimandato allo Storico ordini
+// online, che non ha limiti di tempo.
+const QUEUE_CLOSED_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 interface ResolvedLine {
   menuItemId: string;
@@ -613,10 +619,22 @@ export class OnlineOrdersService {
       marketingConsent: dto.marketingConsent ?? false,
     });
 
+    // Numero d'ordine progressivo giornaliero (nel fuso del locale), stampato
+    // sugli scontrini al posto del nome nelle prime righe — non un id
+    // tecnico ma un riferimento rapido per cucina/banco. Piccola corsa
+    // critica possibile fra due checkout simultanei (nessun lock/sequenza
+    // dedicata): accettabile ai volumi di un locale, lo stesso compromesso
+    // già fatto altrove in questo modulo (v. countSlotOccupancy).
+    const dailyNumber =
+      (await this.prisma.onlineOrder.count({
+        where: { venueId, createdAt: { gte: startOfDayInZone(new Date(), pricing.venue.timezone) } },
+      })) + 1;
+
     const order = await this.prisma.onlineOrder.create({
       data: {
         venueId,
         customerId: customer.id,
+        dailyNumber,
         fulfillment: dto.fulfillment,
         status: initialStatus,
         requestedAt: pricing.requestedAt,
@@ -695,9 +713,26 @@ export class OnlineOrdersService {
     return order;
   }
 
+  /**
+   * Ordini ancora aperti (QUEUE_STATUSES) più quelli chiusi di recente
+   * (COMPLETED/REJECTED/CANCELLED nelle ultime 3 ore, v.
+   * QUEUE_CLOSED_WINDOW_MS): alimenta sia le schede "vive" sia "Completati"
+   * e "Rifiutati / Annullati" della coda admin — oltre la finestra di 3 ore
+   * quelle due schede restano vuote, lo storico completo è altrove
+   * (listHistory/OnlineOrdersHistory.tsx).
+   */
   listQueue(venueId: string) {
     return this.prisma.onlineOrder.findMany({
-      where: { venueId, status: { in: QUEUE_STATUSES } },
+      where: {
+        venueId,
+        OR: [
+          { status: { in: QUEUE_STATUSES } },
+          {
+            status: { in: HISTORY_STATUSES },
+            updatedAt: { gte: new Date(Date.now() - QUEUE_CLOSED_WINDOW_MS) },
+          },
+        ],
+      },
       include: { lines: { include: { modifiers: true } } },
       orderBy: { requestedAt: 'asc' },
     });
@@ -1077,6 +1112,18 @@ export class OnlineOrdersService {
     return order.fulfillment === 'DELIVERY' ? 'Consegna a domicilio' : 'Ritiro in negozio';
   }
 
+  /**
+   * "ORDINE N. 5 del 02/10/2026", in cima a ogni stampa al posto del
+   * nominativo (v. buildKitchenTicketPayload/buildFullReceiptPayload) — la
+   * data è quella di creazione dell'ordine (stesso giorno su cui è
+   * calcolato dailyNumber), non l'orario di ritiro/consegna richiesto, che
+   * può cadere il giorno dopo per un ordine fatto a tarda sera.
+   */
+  private orderNumberLabel(order: { dailyNumber: number; createdAt: Date }, timezone: string): string {
+    const [y, m, d] = dateOnlyInZone(order.createdAt, timezone).split('-');
+    return `Ordine N. ${order.dailyNumber} del ${d}/${m}/${y}`;
+  }
+
   private paymentMethodLabel(
     method: OnlineOrderPaymentMethod | null,
     fulfillment?: OnlineOrderFulfillment,
@@ -1092,13 +1139,22 @@ export class OnlineOrdersService {
    * Comanda cucina (§5.10 di DEVELOPMENT.md): solo voci/varianti/
    * modificatori/note per riga — nessun prezzo, nessun totale, nessun
    * indirizzo, pensata per restare in cucina/bar dove non deve essere
-   * visibile l'importo pagato dal cliente.
+   * visibile l'importo pagato dal cliente. Nelle prime righe il numero
+   * d'ordine progressivo giornaliero invece del nominativo (su richiesta
+   * esplicita dell'utente), con nominativo/modalità subito sotto in
+   * grassetto — più rapidi da individuare per chi prepara.
    */
   private buildKitchenTicketPayload(
     venueName: string,
     order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
+    timezone: string,
   ): ReceiptSection {
-    const lines = order.lines.flatMap((line) => {
+    const header: ReceiptLine[] = [
+      { text: `${order.firstName} ${order.lastName}`, bold: true },
+      { text: this.fulfillmentLabel(order), bold: true },
+      { text: '' },
+    ];
+    const productLines = order.lines.flatMap((line) => {
       const variant = line.variantName?.trim();
       return [
         `${line.quantity}x ${line.itemName}${variant ? ` (${variant})` : ''}`,
@@ -1107,8 +1163,9 @@ export class OnlineOrdersService {
       ];
     });
     return {
-      title: `Comanda ${this.fulfillmentLabel(order).toLowerCase()} — ${order.firstName} ${order.lastName}`,
-      lines,
+      title: this.orderNumberLabel(order, timezone),
+      lines: [...header, ...productLines],
+      footer: ['Comanda - Non Fiscale'],
       letterhead: [venueName],
     };
   }
@@ -1117,11 +1174,15 @@ export class OnlineOrdersService {
    * Scontrino completo (§5.10): dati cliente, modalità e indirizzo di
    * consegna se presente, ogni riga con prezzo, costo di consegna,
    * totale, metodo e stato del pagamento — pensato per lo staff/il rider,
-   * o da allegare alla consegna.
+   * o da allegare alla consegna. Stessa intestazione "ORDINE N." del
+   * comandone cucina (v. buildKitchenTicketPayload): il metodo di
+   * pagamento compare una sola volta, nel piè di pagina insieme al totale,
+   * non più ripetuto anche in testa.
    */
   private buildFullReceiptPayload(
     venue: { name: string; menuAddress?: string | null; city?: string | null; vatNumber?: string | null },
     order: OnlineOrder & { lines: (OnlineOrderLine & { modifiers: OnlineOrderLineModifier[] })[] },
+    timezone: string,
   ): ReceiptSection {
     const letterheadExtra = [venue.city, venue.vatNumber ? `P.IVA ${venue.vatNumber}` : null]
       .filter(Boolean)
@@ -1130,12 +1191,11 @@ export class OnlineOrdersService {
       (l): l is string => !!l,
     );
 
-    const header = [
-      `${order.firstName} ${order.lastName} — ${order.phone}`,
-      this.fulfillmentLabel(order),
-      ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [order.deliveryAddress] : []),
-      `Metodo di pagamento: ${this.paymentMethodLabel(order.paymentMethod, order.fulfillment)}`,
-      '',
+    const header: ReceiptLine[] = [
+      { text: `${order.firstName} ${order.lastName} — ${order.phone}`, bold: true },
+      { text: this.fulfillmentLabel(order), bold: true },
+      ...(order.fulfillment === 'DELIVERY' && order.deliveryAddress ? [{ text: order.deliveryAddress }] : []),
+      { text: '' },
     ];
 
     const productLines = order.lines.flatMap((line) => {
@@ -1152,15 +1212,19 @@ export class OnlineOrdersService {
       ];
     });
 
-    const footer = [
-      `Subtotale: €${order.subtotal.toFixed(2)}`,
-      ...(order.deliveryFee > 0 ? [`Consegna: €${order.deliveryFee.toFixed(2)}`] : []),
-      `TOTALE: €${order.total.toFixed(2)}`,
-      `Pagamento: ${this.paymentMethodLabel(order.paymentMethod, order.fulfillment)} (${order.paymentStatus})`,
+    const footer: ReceiptLine[] = [
+      { text: `Subtotale: €${order.subtotal.toFixed(2)}` },
+      ...(order.deliveryFee > 0 ? [{ text: `Consegna: €${order.deliveryFee.toFixed(2)}` }] : []),
+      { text: `TOTALE: €${order.total.toFixed(2)}`, bold: true },
+      {
+        text: `Pagamento: ${this.paymentMethodLabel(order.paymentMethod, order.fulfillment)} (${order.paymentStatus})`,
+        bold: true,
+      },
+      { text: 'Comanda - Non Fiscale' },
     ];
 
     return {
-      title: `Ordine ${order.firstName} ${order.lastName}`,
+      title: this.orderNumberLabel(order, timezone),
       lines: [...header, ...productLines],
       footer,
       letterhead,
@@ -1170,9 +1234,9 @@ export class OnlineOrdersService {
   /** PDF comanda cucina di un ordine, largo come uno scontrino: v. buildKitchenTicketPayload. */
   async exportKitchenTicketPdf(venueId: string, id: string): Promise<Buffer> {
     const order = await this.requireOrder(venueId, id);
-    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { name: true } });
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { name: true, timezone: true } });
     if (!venue) throw new NotFoundException('Locale non trovato');
-    return this.pdf.buildReceiptDocument([this.buildKitchenTicketPayload(venue.name, order)]);
+    return this.pdf.buildReceiptDocument([this.buildKitchenTicketPayload(venue.name, order, venue.timezone)]);
   }
 
   /** PDF scontrino completo di un ordine, largo come uno scontrino: v. buildFullReceiptPayload. */
@@ -1180,9 +1244,9 @@ export class OnlineOrdersService {
     const order = await this.requireOrder(venueId, id);
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { name: true, menuAddress: true, city: true, vatNumber: true },
+      select: { name: true, menuAddress: true, city: true, vatNumber: true, timezone: true },
     });
     if (!venue) throw new NotFoundException('Locale non trovato');
-    return this.pdf.buildReceiptDocument([this.buildFullReceiptPayload(venue, order)]);
+    return this.pdf.buildReceiptDocument([this.buildFullReceiptPayload(venue, order, venue.timezone)]);
   }
 }

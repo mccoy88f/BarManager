@@ -17,7 +17,6 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import DirectionsIcon from '@mui/icons-material/Directions';
 import { api } from '../../api/client';
 import { NEUTRAL_CHIP_COLOR, SUCCESS_CHIP_COLOR } from '../../config/statusChip';
 import { formatCurrency, formatDateAndTime } from '../../utils/format';
@@ -26,6 +25,7 @@ type HistoryStatus = 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 
 interface OrderRow {
   id: string;
+  dailyNumber: number;
   status: HistoryStatus;
   fulfillment: 'PICKUP' | 'DELIVERY';
   requestedAt: string;
@@ -55,17 +55,6 @@ const statusColors: Record<HistoryStatus, 'success' | 'default'> = {
   REJECTED: NEUTRAL_CHIP_COLOR,
   CANCELLED: NEUTRAL_CHIP_COLOR,
 };
-
-
-function navigateUrl(lat?: number | null, lng?: number | null, address?: string | null): string {
-  if (lat != null && lng != null) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  }
-  if (address) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
-  }
-  return '';
-}
 
 /** Storico ordini online (§5.10): stesso schema di paginazione/ricerca client-side già in uso in CustomersAdmin.tsx (§204). */
 export function OnlineOrdersHistory() {
@@ -148,7 +137,7 @@ export function OnlineOrdersHistory() {
             {paginated.map((order) => (
               <TableRow key={order.id}>
                 <TableCell>
-                  {order.firstName} {order.lastName}
+                  N. {order.dailyNumber} - {order.firstName} {order.lastName}
                   <Typography variant="caption" color="text.secondary" display="block">
                     {order.email}
                   </Typography>
@@ -170,20 +159,6 @@ export function OnlineOrdersHistory() {
                         <Typography variant="caption" color="text.secondary" display="block">
                           {order.deliveryAddress}
                         </Typography>
-                      )}
-                      {navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          startIcon={<DirectionsIcon sx={{ fontSize: '0.9rem' }} />}
-                          component="a"
-                          href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          sx={{ p: 0, minWidth: 'auto', textTransform: 'none', fontSize: '0.75rem' }}
-                        >
-                          Raggiungi il luogo
-                        </Button>
                       )}
                     </Box>
                   )}

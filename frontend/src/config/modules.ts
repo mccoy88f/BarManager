@@ -17,7 +17,7 @@ export type ModuleKey =
   | 'onlineOrders';
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
-  haccp: 'Controlli HACCP',
+  haccp: 'Controlli',
   inventory: 'Ordini e inventario',
   menu: 'Menù online',
   tasks: 'Attività',

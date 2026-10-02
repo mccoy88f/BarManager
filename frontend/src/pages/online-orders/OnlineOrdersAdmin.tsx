@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import { keyframes } from '@emotion/react';
 import {
   Alert,
   Box,
@@ -57,6 +59,7 @@ interface OrderLine {
 
 interface OrderRow {
   id: string;
+  dailyNumber: number;
   status: OnlineOrderStatus;
   fulfillment: Fulfillment;
   paymentMethod: 'CASH' | 'CARD_ONLINE' | 'CARD_IN_STORE' | null;
@@ -134,6 +137,26 @@ function isAwaitingOpening(order: OrderRow): boolean {
 /** Fascia di poll della coda (§5.10 di DEVELOPMENT.md: "coda in tempo reale", non un vero WebSocket in questa v1). */
 const QUEUE_POLL_MS = 15000;
 
+/** Soglia sotto la quale il timer di ritardo passa da neutro a giallo (§5.10). */
+const DELAY_WARNING_MS = 15 * 60 * 1000;
+
+const blinkAnimation = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+`;
+
+/** Differenza tra l'orario di consegna/ritiro previsto e l'istante corrente, per il timer sulla card CONFIRMED. */
+function delayInfo(requestedAt: string, now: number): { label: string; color: string; late: boolean } {
+  const diffMs = new Date(requestedAt).getTime() - now;
+  const late = diffMs <= 0;
+  const totalMinutes = Math.round(Math.abs(diffMs) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const label = `${late ? '-' : ''}${hours > 0 ? `${hours}h ` : ''}${minutes}min`;
+  const color = late ? 'error.main' : diffMs <= DELAY_WARNING_MS ? 'warning.main' : 'text.secondary';
+  return { label, color, late };
+}
+
 /**
  * Coda ordini online (§5.10 di DEVELOPMENT.md): tre schede — Da
  * confermare, In preparazione, Pronti — stesso schema a tab della coda
@@ -153,6 +176,22 @@ export function OnlineOrdersAdmin() {
   const [timeForm, setTimeForm] = useState({ date: '', time: '' });
   const [delayingOrder, setDelayingOrder] = useState<OrderRow | null>(null);
   const [delayMinutes, setDelayMinutes] = useState(10);
+
+  /** Righe prodotto segnate come preparate in cucina (scheda "In preparazione"): solo locale, non persistito. */
+  const [preparedCounts, setPreparedCounts] = useState<Record<string, number>>({});
+  const togglePrepared = (lineId: string, quantity: number) => {
+    setPreparedCounts((prev) => {
+      const current = prev[lineId] ?? 0;
+      return { ...prev, [lineId]: current >= quantity ? 0 : current + 1 };
+    });
+  };
+
+  /** Orologio per il timer di ritardo sulle card CONFIRMED, aggiornato ogni 15s. */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const { soundEnabled, toggleSound, markOrderHandled } = useOrderNotification();
 
@@ -261,7 +300,7 @@ export function OnlineOrdersAdmin() {
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.75 }}>
               <Typography variant="h6" fontWeight={700} sx={{ fontSize: { xs: '1.05rem', sm: '1.15rem' } }}>
-                {order.firstName} {order.lastName}
+                {order.status !== 'PENDING' ? `N. ${order.dailyNumber} - ` : ''}{order.firstName} {order.lastName}
               </Typography>
               <Chip size="small" color={statusColors[order.status]} label={tabLabels[order.status]} sx={{ fontWeight: 600 }} />
               <Chip size="small" variant="outlined" label={order.fulfillment === 'PICKUP' ? 'Ritiro' : 'Consegna'} sx={{ fontWeight: 500 }} />
@@ -309,34 +348,12 @@ export function OnlineOrdersAdmin() {
               </Button>
             </Stack>
 
-            {/* Riga 2 (solo DELIVERY): indirizzo + navigazione affiancato */}
+            {/* Riga 2 (solo DELIVERY): indirizzo */}
             {order.fulfillment === 'DELIVERY' && (
               <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ mt: 0.75, gap: 1 }}>
                 <Typography variant="body2" color="text.secondary" fontWeight={500}>
                   📍 {order.deliveryAddress || 'Consegna a domicilio'}
                 </Typography>
-                {navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress) && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="secondary"
-                    startIcon={<DirectionsIcon sx={{ fontSize: 18 }} />}
-                    component="a"
-                    href={navigateUrl(order.deliveryLat, order.deliveryLng, order.deliveryAddress)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{
-                      minHeight: 38,
-                      px: 1.75,
-                      py: 0.5,
-                      fontWeight: 600,
-                      textTransform: 'none',
-                      borderRadius: 2,
-                    }}
-                  >
-                    Raggiungi il luogo
-                  </Button>
-                )}
               </Stack>
             )}
           </Box>
@@ -412,24 +429,53 @@ export function OnlineOrdersAdmin() {
             borderColor: 'divider',
           }}
         >
-          {order.lines.map((line) => (
-            <Box key={line.id} sx={{ mb: 1, '&:last-child': { mb: 0 } }}>
-              <Typography variant="body1" fontWeight={600}>
-                {line.quantity}× {line.itemName}
-                {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
-              </Typography>
-              {line.modifiers.map((m, idx) => (
-                <Typography key={idx} variant="body2" color="text.secondary" sx={{ display: 'block', pl: 1.5, mt: 0.25, fontWeight: 500 }}>
-                  + {m.optionName}{m.price > 0 ? ` (+${formatCurrency(m.price)})` : ''}
+          {order.lines.map((line) => {
+            const tappable = order.status === 'CONFIRMED';
+            const prepared = preparedCounts[line.id] ?? 0;
+            const done = tappable && prepared >= line.quantity;
+            return (
+              <Box
+                key={line.id}
+                onClick={tappable ? () => togglePrepared(line.id, line.quantity) : undefined}
+                sx={{
+                  mb: 1,
+                  '&:last-child': { mb: 0 },
+                  ...(tappable
+                    ? {
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        p: 0.75,
+                        borderRadius: 1.5,
+                        bgcolor: done ? 'success.main' : 'transparent',
+                        color: done ? 'success.contrastText' : 'inherit',
+                        '&:active': { opacity: 0.8 },
+                      }
+                    : {}),
+                }}
+              >
+                <Typography
+                  variant="body1"
+                  fontWeight={600}
+                  sx={done ? { textDecoration: 'line-through' } : undefined}
+                >
+                  {line.quantity}× {line.itemName}
+                  {line.variantName?.trim() ? ` (${line.variantName.trim()})` : ''}
+                  {tappable && line.quantity > 1 ? ` [${prepared}/${line.quantity}]` : ''}
+                  {tappable && line.quantity === 1 && done ? ' ✓' : ''}
                 </Typography>
-              ))}
-              {line.note?.trim() && (
-                <Typography variant="body2" color="text.secondary" sx={{ display: 'block', pl: 1.5, mt: 0.25, fontStyle: 'italic' }}>
-                  nota: {line.note.trim()}
-                </Typography>
-              )}
-            </Box>
-          ))}
+                {line.modifiers.map((m, idx) => (
+                  <Typography key={idx} variant="body2" color={done ? 'inherit' : 'text.secondary'} sx={{ display: 'block', pl: 1.5, mt: 0.25, fontWeight: 500 }}>
+                    + {m.optionName}{m.price > 0 ? ` (+${formatCurrency(m.price)})` : ''}
+                  </Typography>
+                ))}
+                {line.note?.trim() && (
+                  <Typography variant="body2" color={done ? 'inherit' : 'text.secondary'} sx={{ display: 'block', pl: 1.5, mt: 0.25, fontStyle: 'italic' }}>
+                    nota: {line.note.trim()}
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
           <Box
             sx={{
               mt: 1.5,
@@ -491,39 +537,48 @@ export function OnlineOrdersAdmin() {
               </ButtonGroup>
             )}
 
-            {/* CONFIRMED: Segna come pronto (verde) | Ritardo (arancione) | Annulla ordine (rosso) */}
-            {order.status === 'CONFIRMED' && (
-              <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                <Button
-                  color="success"
-                  onClick={() => readyMutation.mutate(order.id)}
-                  sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
-                >
-                  Segna come pronto
-                </Button>
-                <Button
-                  sx={{
-                    minHeight: 44,
-                    px: 2.5,
-                    fontWeight: 600,
-                    fontSize: '0.9rem',
-                    bgcolor: 'warning.main',
-                    color: 'warning.contrastText',
-                    '&:hover': { bgcolor: 'warning.dark' },
-                  }}
-                  onClick={() => { setDelayingOrder(order); setDelayMinutes(10); }}
-                >
-                  Ritardo
-                </Button>
-                <Button
-                  color="error"
-                  onClick={() => setCancelling(order)}
-                  sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
-                >
-                  Annulla ordine
-                </Button>
-              </ButtonGroup>
-            )}
+            {/* CONFIRMED: Segna come pronto (verde) | Ritardo (arancione, lampeggia se in ritardo) | Annulla ordine (rosso) — timer a dx */}
+            {order.status === 'CONFIRMED' && (() => {
+              const { label, color, late } = delayInfo(order.requestedAt, now);
+              return (
+                <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center" justifyContent="space-between" sx={{ gap: 1.25 }}>
+                  <ButtonGroup variant="contained" disableElevation sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                    <Button
+                      color="success"
+                      onClick={() => readyMutation.mutate(order.id)}
+                      sx={{ minHeight: 44, px: 3, fontWeight: 700, fontSize: '0.95rem' }}
+                    >
+                      Segna come pronto
+                    </Button>
+                    <Button
+                      sx={{
+                        minHeight: 44,
+                        px: 2.5,
+                        fontWeight: 600,
+                        fontSize: '0.9rem',
+                        bgcolor: 'warning.main',
+                        color: 'warning.contrastText',
+                        '&:hover': { bgcolor: 'warning.dark' },
+                        animation: late ? `${blinkAnimation} 1s ease-in-out infinite` : 'none',
+                      }}
+                      onClick={() => { setDelayingOrder(order); setDelayMinutes(10); }}
+                    >
+                      Ritardo
+                    </Button>
+                    <Button
+                      color="error"
+                      onClick={() => setCancelling(order)}
+                      sx={{ minHeight: 44, px: 2.5, fontWeight: 600, fontSize: '0.9rem' }}
+                    >
+                      Annulla ordine
+                    </Button>
+                  </ButtonGroup>
+                  <Typography variant="body2" fontWeight={700} sx={{ color }}>
+                    🕒 {label}
+                  </Typography>
+                </Stack>
+              );
+            })()}
 
             {/* READY: Completa (verde) | Raggiungi il luogo (secondario, solo DELIVERY con navigazione) */}
             {order.status === 'READY' && (
@@ -648,6 +703,12 @@ export function OnlineOrdersAdmin() {
         {ordersByTab[tab].length === 0 && (
           <Typography variant="body2" color="text.secondary">
             Nessun ordine in questo stato.
+          </Typography>
+        )}
+        {(tab === 'COMPLETED' || tab === 'CLOSED') && (
+          <Typography variant="body2" sx={{ textAlign: 'center', mt: 1 }}>
+            Qui sono mostrati solo gli ordini delle ultime 3 ore. Per vedere tutto lo storico ordini{' '}
+            <RouterLink to="/online-orders/history">clicca qui</RouterLink>.
           </Typography>
         )}
       </Stack>

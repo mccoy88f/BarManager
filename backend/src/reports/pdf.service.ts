@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 
+/** Una riga di testo, opzionalmente in grassetto (es. numero d'ordine, nome cliente). */
+export interface ReceiptLine {
+  text: string;
+  bold?: boolean;
+}
+
 export interface ReceiptSection {
   title: string;
-  lines: string[];
-  footer?: string[];
+  lines: (string | ReceiptLine)[];
+  footer?: (string | ReceiptLine)[];
   /** Intestazione (es. nome e indirizzo dell'attività), sopra il titolo. */
   letterhead?: string[];
 }
@@ -66,21 +72,24 @@ export class PdfService {
       // silenziosamente da PDFKit su una seconda pagina, che l'app di
       // stampa POS potrebbe non stampare.
       const measurer = new PDFDocument({ margin: 0 });
-      measurer.font('Courier').fontSize(RECEIPT_FONT_SIZE);
       const textOptions = { width: RECEIPT_CONTENT_WIDTH_PT, lineGap: RECEIPT_LINE_GAP };
+      const asReceiptLine = (l: string | ReceiptLine): ReceiptLine =>
+        typeof l === 'string' ? { text: l } : l;
 
       for (const section of sections) {
-        const body = [
-          ...(section.letterhead?.length ? [...section.letterhead, ''] : []),
-          section.title.toUpperCase(),
-          RECEIPT_SEPARATOR,
-          ...section.lines,
-          ...(section.footer?.length ? [RECEIPT_SEPARATOR, ...section.footer] : []),
+        const body: ReceiptLine[] = [
+          ...(section.letterhead?.length ? [...section.letterhead.map((t) => ({ text: t })), { text: '' }] : []),
+          { text: section.title.toUpperCase(), bold: true },
+          { text: RECEIPT_SEPARATOR },
+          ...section.lines.map(asReceiptLine),
+          ...(section.footer?.length
+            ? [{ text: RECEIPT_SEPARATOR }, ...section.footer.map(asReceiptLine)]
+            : []),
         ];
-        const contentHeight = body.reduce(
-          (sum, line) => sum + measurer.heightOfString(line, textOptions),
-          0,
-        );
+        const contentHeight = body.reduce((sum, line) => {
+          measurer.font(line.bold ? 'Courier-Bold' : 'Courier').fontSize(RECEIPT_FONT_SIZE);
+          return sum + measurer.heightOfString(line.text, textOptions);
+        }, 0);
         const height = RECEIPT_MARGIN_PT * 2 + contentHeight + 10;
         const pageOptions = {
           size: [RECEIPT_WIDTH_PT, height] as [number, number],
@@ -96,9 +105,10 @@ export class PdfService {
           doc.addPage(pageOptions);
         }
 
-        doc.font('Courier').fontSize(RECEIPT_FONT_SIZE);
+        doc.fontSize(RECEIPT_FONT_SIZE);
         for (const line of body) {
-          doc.text(line, textOptions);
+          doc.font(line.bold ? 'Courier-Bold' : 'Courier');
+          doc.text(line.text, textOptions);
         }
       }
 

@@ -116,7 +116,7 @@ export const navigation: NavItem[] = [
   },
   {
     key: 'haccp',
-    label: 'Controlli HACCP',
+    label: 'Controlli',
     path: '/haccp',
     icon: ThermostatIcon,
     description: 'Temperature frigoriferi, report',

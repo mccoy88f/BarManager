@@ -1421,6 +1421,13 @@ model OnlineOrder {
   fulfillment OnlineOrderFulfillment
   status      OnlineOrderStatus      @default(PENDING)
 
+  // Numero progressivo giornaliero per locale (nel fuso del locale, v.
+  // OnlineOrdersService.createPublicOrder), stampato sugli scontrini al
+  // posto del nome nelle prime righe — un riferimento rapido per
+  // cucina/banco, non un identificativo univoco globale: riparte da 1 ogni
+  // giorno, non ha un vincolo di unicità a livello di database.
+  dailyNumber Int @default(0)
+
   // Orario desiderato di ritiro/consegna, validato ai 15 minuti dentro una
   // fascia di apertura con margine di 30 minuti (v. findOpenSlotWithMargin
   // in common/opening-hours/opening-hours.ts). Per un ordine "il prima
