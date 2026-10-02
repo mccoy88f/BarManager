@@ -57,10 +57,17 @@ export class MailService {
 
   async send(params: MailSendParams): Promise<MailSendResult> {
     try {
-      const html =
-        params.html && params.logoUrl
-          ? `<div style="text-align:center;margin-bottom:20px;"><img src="${params.logoUrl}" alt="${this.escapeHtmlAttr(params.venueName)}" style="max-height:80px;max-width:280px;" /></div>${params.html}`
-          : params.html;
+      const logoBlock = params.logoUrl
+        ? `<div style="text-align:center;margin-bottom:20px;"><img src="${params.logoUrl}" alt="${this.escapeHtmlAttr(params.venueName)}" style="max-height:80px;max-width:280px;" /></div>`
+        : '';
+      // `lang="it"` + charset espliciti: senza un documento HTML completo
+      // (prima si inviava solo il frammento interno), Gmail applica la
+      // propria euristica di rilevamento lingua sul contenuto grezzo e
+      // talvolta la sbaglia, proponendo "traduci dall'inglese" anche su
+      // email interamente in italiano — bug segnalato dall'utente.
+      const html = params.html
+        ? `<!doctype html><html lang="it"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body>${logoBlock}${params.html}</body></html>`
+        : undefined;
       const info = await this.transporter.sendMail({
         from: this.technicalFrom(params.venueName),
         to: params.to,

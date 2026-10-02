@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Button, Card, CardContent, TextField, Typography, Alert } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
@@ -9,6 +9,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const setSession = useAuthStore((s) => s.setSession);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -17,7 +18,11 @@ export function Login() {
     try {
       const { data } = await api.post('/auth/login', { email, password });
       setSession(data.accessToken, data.refreshToken, data.user, data.venueName, data.themeAccentColor);
-      navigate('/');
+      // Torna alla pagina da cui si arrivava (es. un link diretto da
+      // un'email, come la notifica di un nuovo messaggio in bacheca),
+      // non sempre alla home — v. ProtectedRoute.
+      const from = (location.state as { from?: Location } | null)?.from;
+      navigate(from ? `${from.pathname}${from.search}` : '/', { replace: true });
     } catch {
       setError('Credenziali non valide');
     }

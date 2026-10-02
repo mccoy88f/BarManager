@@ -61,12 +61,13 @@ export class BoardController {
 
   @Patch('messages/:id')
   @Roles(Role.ADMIN)
-  updateText(
+  updateMessage(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
+    @Body('title') title: string,
     @Body('text') text: string,
   ) {
-    return this.boardService.updateText(requireVenueId(user), id, text);
+    return this.boardService.updateMessage(requireVenueId(user), id, { title, text });
   }
 
   @Post('messages/:id/photo')

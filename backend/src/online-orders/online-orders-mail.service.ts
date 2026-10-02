@@ -36,6 +36,11 @@ export class OnlineOrdersMailService {
     return `${requestedAt.toLocaleDateString('it-IT')} alle ${requestedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
   }
 
+  /** Numero progressivo giornaliero + data dell'ordine (v. OnlineOrdersService.createPublicOrder), per identificarlo in ogni email di notifica senza dover aprire la coda. */
+  private orderNumberLabel(order: OrderWithLines): string {
+    return `Ordine N. ${order.dailyNumber} del ${order.createdAt.toLocaleDateString('it-IT')}`;
+  }
+
   private privacyFooter(privacyUrl?: string | null) {
     if (!privacyUrl) return { text: '', html: '' };
     return {
@@ -81,6 +86,7 @@ export class OnlineOrdersMailService {
 
   private orderLines(order: OrderWithLines): string[] {
     return [
+      this.orderNumberLabel(order),
       `${order.firstName} ${order.lastName} — ${this.fulfillmentLabel(order)}`,
       this.when(order.requestedAt),
       `Email: ${order.email} — Telefono: ${order.phone}`,
@@ -118,6 +124,7 @@ export class OnlineOrdersMailService {
 
   private orderHtml(order: OrderWithLines): string {
     return [
+      `<p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>`,
       `<p><strong>${escapeHtml(order.firstName)} ${escapeHtml(order.lastName)}</strong> — ${escapeHtml(this.fulfillmentLabel(order))}</p>`,
       `<p>${escapeHtml(this.when(order.requestedAt))}</p>`,
       `<p>Email: ${escapeHtml(order.email)}<br/>Telefono: ${escapeHtml(order.phone)}</p>`,
@@ -234,9 +241,10 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ${order.fulfillment === 'DELIVERY' ? 'ordine in consegna' : 'ordine pronto'}`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nil tuo ordine ${readyText}.\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${block.text}${footer.text}\n\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
+            <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
             <p>Il tuo ordine ${escapeHtml(readyText)}.</p>
             <p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>
             ${block.html}
@@ -267,9 +275,10 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — ordine non confermato`,
-      text: `Ciao ${order.firstName},\n\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}${footer.text}\n\n${venueName}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
+            <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
             <p>Non possiamo confermare il tuo ordine per ${escapeHtml(this.when(order.requestedAt))}.</p>
             <p>Motivo: ${escapeHtml(reason)}</p>
             <p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>
@@ -297,11 +306,12 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venueName} — nuovo orario da confermare`,
-      text: `Ciao ${order.firstName},\n\n${venueName} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venueName}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\n${venueName} propone di spostare il tuo ordine al nuovo orario: ${newWhen}.\n\nConfermalo dalla pagina di tracciamento: ${trackUrl}\n\nSe non ti va bene, contattaci direttamente.${footer.text}\n\n${venueName}`,
       html: `
         <div style="font-family:sans-serif;color:#222;">
           <h2>Nuovo orario da confermare</h2>
           <p>Ciao ${escapeHtml(order.firstName)},</p>
+          <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
           <p>${escapeHtml(venueName)} propone di spostare il tuo ordine al nuovo orario: <strong>${escapeHtml(newWhen)}</strong>.</p>
           ${block.html}
           <p style="margin-top:16px;">Se non ti va bene, contattaci direttamente.</p>

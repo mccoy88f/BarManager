@@ -270,8 +270,9 @@ export function Marketing() {
                 {useCta && (
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <Typography variant="body2" color="text.secondary">
-                      Il pulsante viene aggiunto in fondo all'email, fuori dal testo sopra. Ogni clic viene
-                      registrato nello storico comunicazioni.
+                      Posiziona il pulsante dove vuoi cliccando "Inserisci pulsante qui" col cursore nel testo
+                      sopra, nel punto desiderato; se non lo inserisci, viene aggiunto in fondo all'email. Ogni
+                      clic viene registrato nello storico comunicazioni.
                     </Typography>
                     <TextField
                       label="Testo del pulsante"
@@ -293,6 +294,15 @@ export function Marketing() {
                       }
                       fullWidth
                     />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={!ctaLabel.trim() || !/^https?:\/\/.+/.test(ctaUrl.trim())}
+                      onClick={() => editorRef.current?.insertText('{cta}')}
+                      sx={{ justifySelf: 'flex-start' }}
+                    >
+                      Inserisci pulsante qui
+                    </Button>
                   </Stack>
                 )}
               </Box>

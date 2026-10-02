@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { CommunicationRecipientStatus, CommunicationStatus, CommunicationType, Customer } from '@prisma/client';
+import { CommunicationRecipientStatus, CommunicationStatus, CommunicationType, Customer, Venue } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { MailService } from '../common/mail/mail.service';
+import { CustomersService } from '../customers/customers.service';
 import { stripHtml } from '../common/mail/strip-html';
 import { escapeHtml } from '../common/mail/escape-html';
-import { venuePublicUrl } from '../common/venue-url/venue-url';
+import { venuePublicUrl, venueLogoAbsoluteUrl } from '../common/venue-url/venue-url';
 import { CreateCommunicationDto } from './dto/create-communication.dto';
 
 /** Placeholder disponibili nell'editor, mappati sui campi di Customer (v. §1-septdecies di DEVELOPMENT.md). */
@@ -15,6 +16,16 @@ const PLACEHOLDERS: Record<string, (customer: Customer) => string> = {
   '{cognome}': (c) => c.lastName,
   '{email}': (c) => c.email,
 };
+
+/**
+ * Marcatore testuale che l'admin inserisce nel punto esatto del testo
+ * dove vuole il pulsante CTA (chip "Inserisci pulsante qui" nell'editor,
+ * stesso principio dei placeholder {nome}/{cognome}/{email} sopra, ma
+ * sostituito con HTML invece che con un dato del cliente). Se assente dal
+ * corpo (CTA attivata ma l'admin non l'ha inserito, o rimossa per
+ * errore), il pulsante va comunque in fondo come prima — non silenziarlo.
+ */
+const CTA_PLACEHOLDER = '{cta}';
 
 @Injectable()
 export class CommunicationsService {
@@ -28,6 +39,7 @@ export class CommunicationsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private mail: MailService,
+    private customers: CustomersService,
   ) {}
 
   /**
@@ -79,6 +91,60 @@ export class CommunicationsService {
       result = result.split(placeholder).join(resolve(customer));
     }
     return result;
+  }
+
+  /** Pulsante CTA tracciato (v. PublicCommunicationsController): il link vero non va mai nell'email, solo il redirect di tracciamento. */
+  private buildCtaBlock(venue: Venue, recipientId: string, label: string): { html: string; text: string } {
+    const clickUrl = venuePublicUrl(venue, `/api/public/communications/${recipientId}/click`);
+    return {
+      html: `<div style="text-align:center;margin:20px 0;"><a href="${clickUrl}" style="display:inline-block;background:#1565c0;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">${escapeHtml(label)}</a></div>`,
+      text: `\n\n${label}: ${clickUrl}\n`,
+    };
+  }
+
+  /**
+   * Dati del locale (stessi campi già usati in fondo al menù pubblico e
+   * al widget prenotazioni: indirizzo, città, telefono, social, sito) più
+   * il link "gestisci i tuoi dati personali" (stesso principio delle
+   * email di prenotazioni/ordini online, §5.8) — in fondo a ogni email di
+   * Marketing/Comunicazioni, non solo nelle altre email transazionali.
+   */
+  private buildFooter(venue: Venue, privacyToken: string | null): { html: string; text: string } {
+    const contactLines = [venue.menuAddress, venue.city, venue.menuPhone].filter(
+      (v): v is string => !!v?.trim(),
+    );
+    const links = [
+      venue.menuWebsiteUrl ? { label: 'Sito web', url: venue.menuWebsiteUrl } : null,
+      venue.menuInstagramUrl ? { label: 'Instagram', url: venue.menuInstagramUrl } : null,
+      venue.menuFacebookUrl ? { label: 'Facebook', url: venue.menuFacebookUrl } : null,
+    ].filter((l): l is { label: string; url: string } => !!l);
+    const privacyUrl = privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
+
+    const text = [
+      '',
+      '---',
+      venue.name,
+      ...contactLines,
+      ...links.map((l) => `${l.label}: ${l.url}`),
+      ...(privacyUrl ? [`Gestisci i tuoi dati personali: ${privacyUrl}`] : []),
+    ].join('\n');
+
+    const html = [
+      `<div style="margin-top:28px;padding-top:14px;border-top:1px solid #ddd;font-size:0.85em;color:#666;">`,
+      `<p style="margin:0 0 4px;font-weight:bold;">${escapeHtml(venue.name)}</p>`,
+      contactLines.length ? `<p style="margin:0 0 4px;">${escapeHtml(contactLines.join(' — '))}</p>` : '',
+      links.length
+        ? `<p style="margin:0 0 4px;">${links.map((l) => `<a href="${l.url}" style="color:#666;">${escapeHtml(l.label)}</a>`).join(' · ')}</p>`
+        : '',
+      privacyUrl
+        ? `<p style="margin:8px 0 0;"><a href="${privacyUrl}" style="color:#999;">Gestisci i tuoi dati personali</a></p>`
+        : '',
+      `</div>`,
+    ]
+      .filter(Boolean)
+      .join('');
+
+    return { text, html };
   }
 
   async create(venueId: string, userId: string, dto: CreateCommunicationDto) {
@@ -174,14 +240,35 @@ export class CommunicationsService {
       const { communication, customer } = recipient;
       const subject = this.substitutePlaceholders(communication.subject, customer);
       const body = this.substitutePlaceholders(communication.bodyHtml, customer);
+      const plainBody = stripHtml(body);
 
-      let text = stripHtml(body);
-      let html = body;
-      if (communication.ctaUrl && communication.ctaLabel) {
-        const clickUrl = venuePublicUrl(communication.venue, `/api/public/communications/${recipient.id}/click`);
-        html += `<div style="text-align:center;margin-top:20px;"><a href="${clickUrl}" style="display:inline-block;background:#1565c0;color:#fff;padding:10px 22px;border-radius:4px;text-decoration:none;font-weight:bold;">${escapeHtml(communication.ctaLabel)}</a></div>`;
-        text += `\n\n${communication.ctaLabel}: ${communication.ctaUrl}`;
-      }
+      const cta =
+        communication.ctaUrl && communication.ctaLabel
+          ? this.buildCtaBlock(communication.venue, recipient.id, communication.ctaLabel)
+          : null;
+
+      // Il marcatore {cta} è inserito dall'admin nel punto esatto del testo
+      // dove vuole il pulsante (chip "Inserisci pulsante qui" nel wizard
+      // Marketing): se presente lo sostituisce lì, altrimenti il pulsante
+      // va comunque in fondo come prima (CTA attivata ma non posizionata).
+      // In ogni caso il marcatore letterale non deve mai arrivare al
+      // cliente, nemmeno quando il CTA non è configurato.
+      let html = cta
+        ? body.includes(CTA_PLACEHOLDER)
+          ? body.replace(CTA_PLACEHOLDER, cta.html)
+          : `${body}${cta.html}`
+        : body.replace(CTA_PLACEHOLDER, '');
+      let text = cta
+        ? plainBody.includes(CTA_PLACEHOLDER)
+          ? plainBody.replace(CTA_PLACEHOLDER, cta.text)
+          : `${plainBody}${cta.text}`
+        : plainBody.replace(CTA_PLACEHOLDER, '');
+
+      const privacyToken = await this.customers.ensurePrivacyToken(communication.venueId, customer.email);
+      const footer = this.buildFooter(communication.venue, privacyToken);
+      html += footer.html;
+      text += footer.text;
+
       const openPixelUrl = venuePublicUrl(communication.venue, `/api/public/communications/${recipient.id}/open`);
       html += `<img src="${openPixelUrl}" width="1" height="1" alt="" style="display:none;" />`;
 
@@ -192,7 +279,7 @@ export class CommunicationsService {
         html,
         venueName: communication.venue.name,
         replyTo: communication.venue.email,
-        logoUrl: communication.venue.logoUrl,
+        logoUrl: venueLogoAbsoluteUrl(communication.venue),
       });
 
       await this.prisma.communicationRecipient.update({

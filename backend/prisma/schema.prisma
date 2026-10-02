@@ -1084,6 +1084,11 @@ model AuditLog {
 /// modale al click.
 model BoardMessage {
   id       String  @id @default(cuid())
+  // Vuoto per i messaggi creati prima dell'introduzione del campo
+  // (default per non rompere le righe già esistenti con un push dello
+  // schema senza migrazioni): per ogni nuovo messaggio è obbligatorio,
+  // v. CreateBoardMessageDto.
+  title    String  @default("")
   text     String
   photoUrl String?
   pinned   Boolean @default(false)

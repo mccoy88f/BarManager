@@ -13,6 +13,8 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
   let service: OnlineOrdersMailService;
 
   const order = {
+    dailyNumber: 7,
+    createdAt: new Date('2026-01-15T10:00:00Z'),
     firstName: 'Mario',
     lastName: 'Rossi',
     email: 'mario@example.com',
@@ -74,6 +76,31 @@ describe('OnlineOrdersMailService — riepilogo ordine nelle email al cliente', 
     expect(call.html).toContain('Margherita');
     expect(call.html).toContain('23.50');
     expect(call.html).toContain('Metodo di pagamento: <strong>Contanti alla consegna</strong>');
+  });
+
+  it('ogni email di notifica include numero progressivo e data dell\'ordine', () => {
+    service.sendReceived(order as never, 'Bar Test', 'https://example.com/traccia');
+    expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
+    expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
+
+    mail.send.mockClear();
+    service.sendReady(order as never, 'Bar Test', 'https://example.com/traccia');
+    expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
+    expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
+
+    mail.send.mockClear();
+    service.sendRejected(order as never, 'Bar Test', 'Chiusura imprevista');
+    expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
+    expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
+
+    mail.send.mockClear();
+    service.sendTimeChangeRequest(
+      { ...order, proposedRequestedAt: new Date('2026-01-15T20:00:00Z') } as never,
+      'Bar Test',
+      'https://example.com/traccia',
+    );
+    expect(mail.send.mock.calls[0][0].text).toContain('Ordine N. 7 del 15/01/2026');
+    expect(mail.send.mock.calls[0][0].html).toContain('Ordine N. 7 del 15/01/2026');
   });
 
   it('sendReady include il metodo di pagamento', () => {

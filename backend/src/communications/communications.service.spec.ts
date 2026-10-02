@@ -4,6 +4,7 @@ import { CommunicationsService } from './communications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { MailService } from '../common/mail/mail.service';
+import { CustomersService } from '../customers/customers.service';
 
 describe('CommunicationsService', () => {
   let prisma: {
@@ -19,6 +20,7 @@ describe('CommunicationsService', () => {
   };
   let audit: { log: jest.Mock };
   let mail: { send: jest.Mock };
+  let customersService: { ensurePrivacyToken: jest.Mock };
   let service: CommunicationsService;
 
   const customers = [
@@ -53,10 +55,13 @@ describe('CommunicationsService', () => {
     };
     audit = { log: jest.fn() };
     mail = { send: jest.fn() };
+    // null di default: la maggior parte dei test non riguarda il footer/link privacy.
+    customersService = { ensurePrivacyToken: jest.fn().mockResolvedValue(null) };
     service = new CommunicationsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       mail as unknown as MailService,
+      customersService as unknown as CustomersService,
     );
   });
 
@@ -169,9 +174,21 @@ describe('CommunicationsService', () => {
       customer: customers[0],
       communication: {
         id: 'comm-1',
+        venueId: 'venue-1',
         subject: 'Ciao {nome}',
         bodyHtml: '<p>Ciao {nome}</p>',
-        venue: { name: 'Bar Test', email: 'bar@test.it', logoUrl: null },
+        venue: {
+          slug: 'bar-test',
+          name: 'Bar Test',
+          email: 'bar@test.it',
+          logoUrl: null,
+          menuAddress: null,
+          city: null,
+          menuPhone: null,
+          menuWebsiteUrl: null,
+          menuInstagramUrl: null,
+          menuFacebookUrl: null,
+        },
       },
     };
 
@@ -251,13 +268,113 @@ describe('CommunicationsService', () => {
       expect(mail.send).toHaveBeenCalledWith(
         expect.objectContaining({
           html: expect.stringContaining('/public/communications/rec-1/click'),
-          text: expect.stringContaining('https://esterno.test/promo'),
+          text: expect.stringContaining('/public/communications/rec-1/click'),
         }),
       );
-      // Il link vero non è mai inviato direttamente nell'HTML: passa sempre dal redirect di tracciamento.
+      // Il link vero non è mai inviato direttamente, né in HTML né in testo semplice: passa sempre dal redirect di tracciamento.
       expect(mail.send).toHaveBeenCalledWith(
-        expect.objectContaining({ html: expect.not.stringContaining('https://esterno.test/promo') }),
+        expect.objectContaining({
+          html: expect.not.stringContaining('https://esterno.test/promo'),
+          text: expect.not.stringContaining('https://esterno.test/promo'),
+        }),
       );
+    });
+
+    it('se il corpo contiene il marcatore {cta} posiziona lì il pulsante, non in fondo', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue({
+        ...recipient,
+        communication: {
+          ...recipient.communication,
+          bodyHtml: '<p>Ciao {nome}</p><p>Prima parte</p>{cta}<p>Dopo il pulsante</p>',
+          ctaLabel: 'Prenota ora',
+          ctaUrl: 'https://esterno.test/promo',
+        },
+      });
+      mail.send.mockResolvedValue({ sent: true });
+
+      await service.processNext();
+
+      const call = mail.send.mock.calls[0][0];
+      expect(call.html).not.toContain('{cta}');
+      expect(call.html.indexOf('/click')).toBeLessThan(call.html.indexOf('Dopo il pulsante'));
+      expect(call.html.indexOf('Prima parte')).toBeLessThan(call.html.indexOf('/click'));
+    });
+
+    it('rimuove il marcatore {cta} dal testo se il CTA non è configurato', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue({
+        ...recipient,
+        communication: { ...recipient.communication, bodyHtml: '<p>Ciao {nome}</p>{cta}<p>Fine</p>' },
+      });
+      mail.send.mockResolvedValue({ sent: true });
+
+      await service.processNext();
+
+      const call = mail.send.mock.calls[0][0];
+      expect(call.html).not.toContain('{cta}');
+      expect(call.text).not.toContain('{cta}');
+    });
+
+    it('usa l\'URL assoluto del logo, non il percorso relativo salvato', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue({
+        ...recipient,
+        communication: {
+          ...recipient.communication,
+          venue: { ...recipient.communication.venue, logoUrl: '/uploads/logo.png' },
+        },
+      });
+      mail.send.mockResolvedValue({ sent: true });
+
+      await service.processNext();
+
+      expect(mail.send).toHaveBeenCalledWith(
+        expect.objectContaining({ logoUrl: expect.stringContaining('/uploads/logo.png') }),
+      );
+      const { logoUrl } = mail.send.mock.calls[0][0];
+      expect(logoUrl).toMatch(/^https?:\/\//);
+    });
+
+    it('include nel footer i dati del locale e, se il cliente ha un token, il link gestione privacy', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue({
+        ...recipient,
+        communication: {
+          ...recipient.communication,
+          venue: {
+            ...recipient.communication.venue,
+            menuAddress: 'Via Roma 1',
+            city: 'Milano',
+            menuPhone: '0212345',
+            menuWebsiteUrl: 'https://bartest.it',
+            menuInstagramUrl: 'https://instagram.com/bartest',
+          },
+        },
+      });
+      customersService.ensurePrivacyToken.mockResolvedValue('privacy-token-123');
+      mail.send.mockResolvedValue({ sent: true });
+
+      await service.processNext();
+
+      expect(customersService.ensurePrivacyToken).toHaveBeenCalledWith('venue-1', 'mario@test.it');
+      const call = mail.send.mock.calls[0][0];
+      expect(call.html).toContain('Via Roma 1');
+      expect(call.html).toContain('Milano');
+      expect(call.html).toContain('0212345');
+      expect(call.html).toContain('https://bartest.it');
+      expect(call.html).toContain('https://instagram.com/bartest');
+      expect(call.html).toContain('privacy-token-123');
+      expect(call.text).toContain('Via Roma 1');
+      expect(call.text).toContain('privacy-token-123');
+    });
+
+    it('non include il link privacy se il cliente non ha ancora un token', async () => {
+      prisma.communicationRecipient.findFirst.mockResolvedValue(recipient);
+      prisma.communicationRecipient.count.mockResolvedValue(0);
+      customersService.ensurePrivacyToken.mockResolvedValue(null);
+      mail.send.mockResolvedValue({ sent: true });
+
+      await service.processNext();
+
+      const call = mail.send.mock.calls[0][0];
+      expect(call.html).not.toContain('Gestisci i tuoi dati personali');
     });
   });
 

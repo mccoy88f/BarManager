@@ -9,6 +9,7 @@ import { ImageLightbox } from './ImageLightbox';
 import { formatDate } from '../utils/format';
 interface BoardMessageRow {
   id: string;
+  title: string;
   text: string;
   photoUrl?: string;
   pinned: boolean;
@@ -73,6 +74,11 @@ export function BoardWidget() {
                     {formatDate(msg.createdAt)}
                   </Typography>
                 </Stack>
+                {msg.title && (
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    {msg.title}
+                  </Typography>
+                )}
                 <Typography variant="body2">{msg.text}</Typography>
               </Box>
             </Box>

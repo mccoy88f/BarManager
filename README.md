@@ -47,7 +47,7 @@ Ogni locale dispone di un proprio ambiente isolato su sotto-dominio dedicato (es
 * Consenso marketing esplicito e pagina pubblica "gestisci i tuoi dati" per revocarlo o eliminare la propria scheda cliente in autonomia.
 * Statistiche per cliente: numero prenotazioni, numero ordini online, spesa totale cumulata e data ultima interazione.
 * Import/export xlsx dell'anagrafica, con paginazione e ricerca nell'elenco.
-* **Marketing/Comunicazioni:** wizard in 3 passi (tipo comunicazione/promozione → destinatari → contenuto) per inviare email a tutti i clienti o a una selezione, con editor di testo ricco, placeholder sui campi del cliente (nome, cognome, email) e un pulsante opzionale di invito all'azione (call to action) con link esterno.
+* **Marketing/Comunicazioni:** wizard in 3 passi (tipo comunicazione/promozione → destinatari → contenuto) per inviare email a tutti i clienti o a una selezione, con editor di testo ricco, placeholder sui campi del cliente (nome, cognome, email) e un pulsante opzionale di invito all'azione (call to action) con link esterno, posizionabile liberamente nel testo. Ogni email include in automatico logo, footer con i dati di contatto/social del locale e link per gestire i propri dati personali.
 * **Storico comunicazioni:** esito di invio per singolo destinatario (inviata/fallita/in coda), **tracciamento apertura email** e **tracciamento click sul pulsante CTA**, con il contenuto dell'email sempre rileggibile e i destinatari raggruppati per stato.
 
 ### 4. Menù Digitale & QR Code
@@ -82,7 +82,7 @@ Ogni locale dispone di un proprio ambiente isolato su sotto-dominio dedicato (es
 * Registrazione spese con metodi di pagamento e portafogli configurabili, filtri, totali e stampa; collegamento diretto tra un'attività di pagamento e la spesa registrata al suo completamento.
 
 ### 9. Bacheca & Knowledge Base
-* **Bacheca:** messaggi/avvisi interni per tutto il personale, con foto (ritagliabile prima dell'upload), possibilità di fissare in alto i messaggi più importanti e zoom sulle immagini.
+* **Bacheca:** messaggi/avvisi interni per tutto il personale con titolo e testo, foto (ritagliabile prima dell'upload), possibilità di fissare in alto i messaggi più importanti, zoom sulle immagini e notifica email automatica a tutti i dipendenti con link diretto al messaggio.
 * **KBpedia:** knowledge base interna con editor di testo ricco per procedure operative, ricette standard e manuali di sala/cucina, con immagini, brevi video e allegati (PDF, documenti Office) incorporabili negli articoli.
 
 ### 10. Impostazioni Locale & Multi-tenant

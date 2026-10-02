@@ -33,6 +33,7 @@ import { PhotoCropDialog } from '../../components/PhotoCropDialog';
 import { formatDate } from '../../utils/format';
 interface BoardMessageRow {
   id: string;
+  title: string;
   text: string;
   photoUrl?: string;
   pinned: boolean;
@@ -54,6 +55,7 @@ export function BoardPage() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [pinned, setPinned] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
@@ -62,6 +64,7 @@ export function BoardPage() {
   const [toDelete, setToDelete] = useState<BoardMessageRow | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [editing, setEditing] = useState<BoardMessageRow | null>(null);
+  const [editTitle, setEditTitle] = useState('');
   const [editText, setEditText] = useState('');
   const [editNewPhoto, setEditNewPhoto] = useState<File | null>(null);
   const [editRemovePhoto, setEditRemovePhoto] = useState(false);
@@ -80,6 +83,7 @@ export function BoardPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const { data: message } = await api.post<BoardMessageRow>('/board/messages', {
+        title: title.trim(),
         text: text.trim(),
         pinned,
       });
@@ -93,6 +97,7 @@ export function BoardPage() {
     onSuccess: () => {
       invalidate();
       showToast('Messaggio pubblicato');
+      setTitle('');
       setText('');
       setPinned(false);
       setPhoto(null);
@@ -115,6 +120,7 @@ export function BoardPage() {
     mutationFn: async () => {
       if (!editing) return;
       const { data: message } = await api.patch<BoardMessageRow>(`/board/messages/${editing.id}`, {
+        title: editTitle.trim(),
         text: editText.trim(),
       });
       if (editNewPhoto) {
@@ -145,6 +151,7 @@ export function BoardPage() {
   });
 
   const openCreate = () => {
+    setTitle('');
     setText('');
     setPinned(false);
     setPhoto(null);
@@ -234,6 +241,7 @@ export function BoardPage() {
                         title="Modifica"
                         onClick={() => {
                           setEditing(msg);
+                          setEditTitle(msg.title);
                           setEditText(msg.text);
                           setEditNewPhoto(null);
                           setEditRemovePhoto(false);
@@ -247,6 +255,11 @@ export function BoardPage() {
                     </Stack>
                   )}
                 </Stack>
+                {msg.title && (
+                  <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 0.5 }}>
+                    {msg.title}
+                  </Typography>
+                )}
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                   {msg.text}
                 </Typography>
@@ -265,12 +278,17 @@ export function BoardPage() {
         <DialogTitle>Nuovo messaggio</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
+            label="Titolo/Oggetto"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+          />
+          <TextField
             label="Testo"
             multiline
             minRows={3}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            autoFocus
           />
           <Button
             variant="outlined"
@@ -300,7 +318,7 @@ export function BoardPage() {
           <Button onClick={() => setOpen(false)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!text.trim() || createMutation.isPending}
+            disabled={!title.trim() || !text.trim() || createMutation.isPending}
             onClick={() => createMutation.mutate()}
           >
             Aggiungi
@@ -321,13 +339,19 @@ export function BoardPage() {
         <DialogTitle>Modifica messaggio</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <TextField
+            label="Titolo/Oggetto"
+            fullWidth
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            autoFocus
+          />
+          <TextField
             label="Testo"
             multiline
             minRows={3}
             fullWidth
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
-            autoFocus
           />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {editNewPhoto ? (
@@ -392,7 +416,7 @@ export function BoardPage() {
           <Button onClick={() => setEditing(null)}>Annulla</Button>
           <Button
             variant="contained"
-            disabled={!editText.trim() || editMutation.isPending}
+            disabled={!editTitle.trim() || !editText.trim() || editMutation.isPending}
             onClick={() => editMutation.mutate()}
           >
             Salva
