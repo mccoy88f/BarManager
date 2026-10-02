@@ -7,8 +7,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
-
-const MODULE_KEYS = ['haccp', 'inventory', 'menu', 'tasks'];
+import { MODULE_KEYS } from '../../common/decorators/require-module.decorator';
 
 export class CreateEmployeeDto {
   @IsString()
