@@ -425,7 +425,11 @@ Wrapper nativo Android (Capacitor, già annotato come possibile evoluzione in §
 
 **Perché serve un'app nativa per questo e non basta il sito**: già descritto in §9.2 — nessuna libreria browser può aprire un socket TCP diretto verso una stampante di rete (limite della piattaforma web, non del codice), quindi oggi la stampa da sito/PWA passa dal dialogo di stampa di sistema (`window.print()` o condivisione del PDF a un'app terza come RawBT via `shareReceiptPdf`). Un'app nativa non ha questo limite: un plugin Capacitor con socket TCP diretto (es. libreria Android `DantSu/ESCPOS-ThermalPrinter-Android`, wrapper `capacitor-thermal-printer`) stampa in silenzio, senza dialogo né app di terze parti, con controllo pieno sui comandi ESC/POS (grassetto, taglio automatico della carta) che il flusso via browser perde oggi.
 
-**Distribuzione**: APK installato manualmente (sideload) sui dispositivi del locale — non tramite Play Store in questa prima versione (nessuna revisione/policy Google da rispettare; aggiornamenti distribuiti direttamente, da gestire manualmente finché non si decide un meccanismo di auto-update, v. punti aperti sotto).
+**Nome app**: BarManager (nome/icona visibili su Android, non un nome white-label per singolo locale).
+
+**Distribuzione**: APK installato manualmente (sideload) sui dispositivi del locale — non tramite Play Store (nessuna revisione/policy Google da rispettare). Ogni versione viene pubblicata come **GitHub Release** del repository, con l'APK allegato come asset scaricabile: niente store terzi, l'aggiornamento è "scarica il nuovo APK dalla Release e reinstalla" finché non si deciderà, eventualmente, un controllo automatico "nuova versione disponibile" dentro l'app stessa.
+
+**Nuovo formato di versione — per tutta la piattaforma, non solo per l'app Android**: da ora `AAAA.MM.GG-N` (es. `2026.10.03-1`, senza zero padding), dove `N` è un contatore che **riparte da `1` a ogni nuovo giorno** (una seconda release lo stesso giorno è `...-2`, il giorno dopo si riparte da `...-1`). Sostituisce l'attuale stringa statica `v1.0.0` (`frontend/src/version.ts`, mostrata in fondo al menù laterale, §112) — da quel momento sia le Release GitHub dell'APK Android sia le release della piattaforma web useranno lo stesso schema data-based, invece di una numerazione semantica separata.
 
 **Configurazione del dominio** (quale sotto-dominio `{slug}.{ROOT_DOMAIN}` l'app carica nella WebView):
 - Vive **fuori dalla WebView**, in storage nativo Android (non nel `localStorage` della pagina web): deve esistere ed essere leggibile prima ancora che una pagina venga caricata, altrimenti l'app non saprebbe quale URL aprire.
@@ -445,7 +449,6 @@ Wrapper nativo Android (Capacitor, già annotato come possibile evoluzione in §
 **Cosa NON cambia**: tutto il resto (moduli, permessi, login, multi-tenant, aspetto) resta identico a sito/PWA — stesso frontend React, stesso backend, solo ospitato in una WebView invece che nel browser, con in più il bridge di stampa diretta e la schermata nativa di configurazione dominio.
 
 **Punti ancora aperti**:
-- Meccanismo di aggiornamento dell'APK (nessun negozio applicazioni in questa v1): ridistribuzione manuale ad ogni rilascio, oppure un controllo "nuova versione disponibile" che scarica l'APK da un URL del backend — da decidere prima del rilascio.
 - Libreria/plugin ESC/POS da adottare in pratica (`DantSu/ESCPOS-ThermalPrinter-Android` + `capacitor-thermal-printer` sono l'ipotesi di partenza da §9.2, non ancora verificata con un progetto Capacitor reale).
 - Se davvero serve coprire anche report HACCP/Spese con stampa ESC/POS fin dalla prima versione, o se può restare `window.print()` per quei due soltanto in un primo rilascio, rimandando l'adattatore tabella→righe a una fase successiva.
 
