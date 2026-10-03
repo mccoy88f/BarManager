@@ -46,7 +46,19 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # L'azione android-actions/setup-android@v3 falliva qui: prova a
+      # installare il pacchetto legacy "tools" ("sdkmanager tools"), da
+      # tempo rimosso dal repository SDK di Google ("Failed to find
+      # package 'tools'", exit code 1) — un problema noto dell'azione, non
+      # di questo progetto. Il runner ubuntu-latest di GitHub include già
+      # l'SDK Android (ANDROID_HOME preimpostato): basta accettare le
+      # licenze e assicurarsi che platform/build-tools richiesti ci siano,
+      # lasciando ad AGP lo scaricamento automatico di eventuali pacchetti
+      # mancanti durante la build vera e propria.
+      - name: Accetta le licenze SDK Android e installa i pacchetti richiesti
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
 
       - name: Calcola la versione (AAAA.MM.GG-N)
         id: version
