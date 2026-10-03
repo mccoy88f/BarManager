@@ -7,6 +7,16 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registrazione del service worker fatta a mano in main.tsx, non
+      // iniettata automaticamente in index.html: quest'ultima girava
+      // incondizionatamente anche dentro la WebView dell'app Android
+      // nativa, dove un service worker non serve a nulla (l'app è già
+      // "installata", non le serve funzionare offline) ma fa danni - la
+      // sua cache precache dei file sopravvive sia ai redeploy del sito
+      // sia alla reinstallazione dell'APK (l'update-install di un APK non
+      // svuota lo storage privato dell'app), facendo vedere all'app una
+      // versione del sito permanentemente vecchia.
+      injectRegister: null,
       includeAssets: ['favicon.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
