@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BarManager</string>
+    <string name="title_activity_main">BarManager</string>
+    <string name="package_name">it.mccoy88f.barmanager</string>
+    <string name="custom_url_scheme">it.mccoy88f.barmanager</string>
+
+    <string name="domain_setup_title">Configura il locale</string>
+    <string name="domain_setup_subtitle">Inserisci l\'indirizzo del tuo locale su BarManager (es. demo.bm.mccoy88f.link), senza "https://".</string>
+    <string name="domain_setup_hint">slug.tuodominio.it</string>
+    <string name="domain_setup_save">Salva</string>
+    <string name="domain_setup_error_empty">Inserisci un indirizzo valido.</string>
+</resources>

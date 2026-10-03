@@ -41,6 +41,7 @@ import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { printOrShare } from '../../printing/nativePrint';
 import { useOrderNotification } from '../../context/OrderNotificationContext';
 
 import { formatCurrency, formatDateAndTime } from '../../utils/format';
@@ -270,13 +271,23 @@ export function OnlineOrdersAdmin() {
     },
   });
 
-  /** Due scontrini distinti (§5.10): comanda cucina senza prezzi/indirizzo, scontrino completo per staff/rider — stesso schema di condivisione PDF già usato per gli ordini fornitori (§5.3). */
+  /** Due scontrini distinti (§5.10): comanda cucina senza prezzi/indirizzo, scontrino completo per staff/rider — stampa ESC/POS diretta nell'app nativa, condivisione PDF su sito/PWA (§5.11). */
   const printMutation = useMutation({
     mutationFn: async ({ id, kind }: { id: string; kind: 'kitchen-ticket' | 'receipt' }) => {
-      const response = await api.get(`/online-orders/${id}/${kind}/pdf`, { responseType: 'blob' });
-      await shareReceiptPdf(response.data, kind === 'kitchen-ticket' ? `Comanda ${id}` : `Scontrino ${id}`);
+      await printOrShare({
+        usage: kind === 'kitchen-ticket' ? 'ONLINE_ORDER_KITCHEN_TICKET' : 'ONLINE_ORDER_RECEIPT',
+        escposUrl: `/online-orders/${id}/${kind}/escpos`,
+        printPdf: async () => {
+          const response = await api.get(`/online-orders/${id}/${kind}/pdf`, { responseType: 'blob' });
+          await shareReceiptPdf(response.data, kind === 'kitchen-ticket' ? `Comanda ${id}` : `Scontrino ${id}`);
+        },
+      });
     },
-    onError: () => showToast({ message: 'Stampa non riuscita.', severity: 'error' }),
+    onError: (err) =>
+      showToast({
+        message: `Stampa non riuscita.${err instanceof Error ? ` ${err.message}` : ''}`,
+        severity: 'error',
+      }),
   });
 
   const renderOrderCard = (order: OrderRow) => (

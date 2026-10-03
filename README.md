@@ -87,7 +87,8 @@ Ogni locale dispone di un proprio ambiente isolato su sotto-dominio dedicato (es
 
 ### 10. Impostazioni Locale & Multi-tenant
 * Orari di apertura settimanali (pranzo/cena) con aperture speciali per singole date, tema con colore di accento personalizzabile (preset o colore libero) applicato a barra, pulsanti e icone, logo del locale per menù pubblico ed email.
-* Dati azienda per menù pubblico ed email (nome, città, indirizzo, telefono, partita IVA) e gestione stampanti di rete multiple (POS ESC/POS Epson), con stampa di prova.
+* Dati azienda per menù pubblico ed email (nome, città, indirizzo, telefono, partita IVA) e gestione stampanti di rete multiple (POS ESC/POS Epson), con stampa di prova e assegnazione libera a uno o più tipi di documento (comanda cucina, scontrino ordini online, checklist fornitori, report HACCP, report Spese).
+* **App Android nativa "BarManager"** (APK distribuito via GitHub Release): stesso frontend del sito/PWA, con stampa diretta via socket TCP sulle stampanti ESC/POS configurate (niente dialogo di stampa del sistema operativo) e dominio del locale configurabile dall'app.
 * **Super Admin** multi-locale: creazione/attivazione/disattivazione dei locali, ciascuno isolato sul proprio sotto-dominio e con dati completamente separati dagli altri.
 * Pagina "Il mio profilo" per ogni utente: dati propri e cambio password in autonomia, accessibile dall'icona utente nella barra superiore.
 

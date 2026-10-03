@@ -34,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { printOrShare } from '../../printing/nativePrint';
 
 import { formatCurrency, formatDate } from '../../utils/format';
 interface RefOption {
@@ -163,8 +164,23 @@ function ExpensesTab() {
     setOpen(true);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    try {
+      await printOrShare({
+        usage: 'EXPENSES_REPORT',
+        escposUrl: `/expenses/escpos?${new URLSearchParams(
+          Object.entries(filters).filter(([, v]) => v) as [string, string][],
+        ).toString()}`,
+        printPdf: async () => {
+          window.print();
+        },
+      });
+    } catch (err) {
+      showToast({
+        message: `Stampa non riuscita.${err instanceof Error ? ` ${err.message}` : ''}`,
+        severity: 'error',
+      });
+    }
   };
 
   return (

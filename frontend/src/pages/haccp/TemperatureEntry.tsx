@@ -26,6 +26,7 @@ import { formatDate } from '../../utils/format';
 import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { printOrShare } from '../../printing/nativePrint';
 import type { Fridge } from './Fridges';
 
 function todayIso() {
@@ -93,12 +94,20 @@ export function TemperatureEntry() {
 
   const printMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post(
-        '/haccp/report/print-job',
-        { reportDate: today },
-        { responseType: 'blob' },
-      );
-      await shareReceiptPdf(response.data, `Report HACCP ${today}`);
+      await printOrShare({
+        usage: 'HACCP_REPORT',
+        escposUrl: '/haccp/report/print-job/escpos',
+        escposMethod: 'post',
+        escposBody: { reportDate: today },
+        printPdf: async () => {
+          const response = await api.post(
+            '/haccp/report/print-job',
+            { reportDate: today },
+            { responseType: 'blob' },
+          );
+          await shareReceiptPdf(response.data, `Report HACCP ${today}`);
+        },
+      });
       await api.post('/haccp/report/print', {
         reportDate: today,
         printedOnPos: true,

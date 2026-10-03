@@ -29,6 +29,7 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { printOrShare } from '../../printing/nativePrint';
 import { useToast } from '../../components/ToastProvider';
 import { useAuthStore } from '../../store/authStore';
 import { canAccessModule } from '../../config/modules';
@@ -67,13 +68,23 @@ export function OrderDetail() {
 
   const printMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.get(`/inventory/orders/${id}/export/pdf`, {
-        responseType: 'blob',
+      await printOrShare({
+        usage: 'SUPPLIER_ORDER',
+        escposUrl: `/inventory/orders/${id}/export/escpos`,
+        printPdf: async () => {
+          const response = await api.get(`/inventory/orders/${id}/export/pdf`, {
+            responseType: 'blob',
+          });
+          await shareReceiptPdf(response.data, `Ordine ${id}`);
+        },
       });
-      await shareReceiptPdf(response.data, `Ordine ${id}`);
     },
     onSuccess: () => showToast('Ricevuta condivisa per la stampa.'),
-    onError: () => showToast({ message: 'Ristampa non riuscita.', severity: 'error' }),
+    onError: (err) =>
+      showToast({
+        message: `Ristampa non riuscita.${err instanceof Error ? ` ${err.message}` : ''}`,
+        severity: 'error',
+      }),
   });
 
   /** "Genera scadenza di pagamento" (§5.5): crea un'Attività collegata a questo ordine. */

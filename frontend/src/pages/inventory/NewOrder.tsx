@@ -26,6 +26,7 @@ import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { printOrShare } from '../../printing/nativePrint';
 import { useToast } from '../../components/ToastProvider';
 
 import { formatCurrency } from '../../utils/format';
@@ -257,10 +258,16 @@ export function NewOrder() {
   const sendMutation = useMutation({
     mutationFn: async () => {
       await api.post(`/inventory/orders/${createdOrderId}/send`);
-      const response = await api.get(`/inventory/orders/${createdOrderId}/export/pdf`, {
-        responseType: 'blob',
+      await printOrShare({
+        usage: 'SUPPLIER_ORDER',
+        escposUrl: `/inventory/orders/${createdOrderId}/export/escpos`,
+        printPdf: async () => {
+          const response = await api.get(`/inventory/orders/${createdOrderId}/export/pdf`, {
+            responseType: 'blob',
+          });
+          await shareReceiptPdf(response.data, `Ordine ${createdOrderId}`);
+        },
       });
-      await shareReceiptPdf(response.data, `Ordine ${createdOrderId}`);
     },
     onSuccess: () => showToast('Ordine inviato: ricevuta condivisa per la stampa.'),
   });

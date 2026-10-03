@@ -1,0 +1,95 @@
+name: Android release
+
+# Manuale (workflow_dispatch), non automatico ad ogni push: chi pubblica
+# decide quando farlo (§5.11 di docs/DEVELOPMENT.md). Calcola la versione
+# nel formato AAAA.MM.GG-N (N riparte da 1 a ogni giorno, letto dalle
+# Release già esistenti su GitHub per la data odierna), la inietta in
+# build.gradle e frontend/src/version.ts solo per questa build (non
+# committata nel repository), builda l'APK e lo allega a una nuova
+# GitHub Release con quella stessa versione come tag.
+#
+# NOTA SULLA FIRMA: questo workflow builda un APK di debug (nessun
+# keystore configurato). Installabile via sideload esattamente come un
+# APK di release — non va mai su Play Store, quindi la firma di debug
+# non è un problema per l'uso previsto — ma chi lo aggiorna in futuro con
+# un vero keystore di release dovrà disinstallare e reinstallare una
+# volta sola (Android non permette di aggiornare un'app cambiando la
+# firma). Per passare a una build di release firmata: aggiungere il
+# keystore come secret del repository, una signingConfig in
+# android/app/build.gradle, e sostituire "assembleDebug"/"app-debug.apk"
+# con "assembleRelease"/"app-release.apk" più i parametri di firma.
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Note di rilascio (facoltative)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Calcola la versione (AAAA.MM.GG-N)
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DATE=$(date -u +%Y.%m.%d)
+          COUNT=$(gh release list --limit 100 --json tagName -q ".[].tagName" | grep -c "^${DATE}-" || true)
+          N=$((COUNT + 1))
+          VERSION="${DATE}-${N}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Versione calcolata: ${VERSION}"
+
+      - name: Inietta la versione (solo per questa build, non committata)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/export const APP_VERSION = '.*';/export const APP_VERSION = '${VERSION}';/" frontend/src/version.ts
+          sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" frontend/android/app/build.gradle
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sincronizza il progetto Capacitor Android
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rinomina l'APK con la versione
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk "BarManager-${VERSION}.apk"
+
+      - name: Pubblica la GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "${VERSION}" "BarManager-${VERSION}.apk" \
+            --title "BarManager ${VERSION}" \
+            --notes "${{ inputs.notes }}"

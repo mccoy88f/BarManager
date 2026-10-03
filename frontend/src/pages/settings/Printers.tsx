@@ -31,6 +31,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { shareReceiptPdf } from '../../printing/printJob';
+import { printOrShare } from '../../printing/nativePrint';
 
 type PrinterUsage =
   | 'SUPPLIER_ORDER'
@@ -128,15 +129,26 @@ export function Printers() {
 
   const testMutation = useMutation({
     mutationFn: async (printer: PrinterRow) => {
-      const response = await api.post(`/printers/${printer.id}/test`, undefined, {
-        responseType: 'blob',
+      await printOrShare({
+        escposUrl: `/printers/${printer.id}/test/escpos`,
+        explicitPrinter: { host: printer.host, port: printer.port },
+        printPdf: async () => {
+          const response = await api.post(`/printers/${printer.id}/test`, undefined, {
+            responseType: 'blob',
+          });
+          await shareReceiptPdf(response.data, `Test di stampa - ${printer.name}`);
+        },
       });
-      await shareReceiptPdf(response.data, `Test di stampa - ${printer.name}`);
       return printer;
     },
-    onSuccess: (printer) => showToast(`Test di stampa condiviso per "${printer.name}".`),
-    onError: (_err, printer) =>
-      showToast({ message: `"${printer.name}": test di stampa non riuscito.`, severity: 'error' }),
+    onSuccess: (printer) => showToast(`Test di stampa inviato a "${printer.name}".`),
+    onError: (err, printer) => {
+      const detail = err instanceof Error ? err.message : undefined;
+      showToast({
+        message: `"${printer.name}": test di stampa non riuscito.${detail ? ` ${detail}` : ''}`,
+        severity: 'error',
+      });
+    },
   });
 
   const openCreate = () => {
