@@ -19,23 +19,25 @@ import com.getcapacitor.CapConfig
  * quindi `isNativeApp()` lato web e tutto ciò che ne dipende: voce
  * "Impostazioni app", stampa ESC/POS, barra di stato) SOLO sulle origin
  * presenti in `allowedOriginRules` — popolate da `setServerUrl` quando il
- * Bridge viene creato, mai aggiornabili dopo (bug reale riscontrato: con
- * solo `loadUrl()` la pagina si vedeva perfettamente ma senza alcuna delle
- * funzionalità native, perché il dominio del locale non vi era mai incluso).
+ * Bridge viene creato, mai aggiornabili dopo.
  *
  * Nessun dominio salvato (primo avvio) -> DomainSetupActivity, non la
- * WebView. launchMode="singleTask" (AndroidManifest) vuol dire che un
- * ritorno da quella schermata richiama onNewIntent(), non onCreate(): il
- * Bridge è però già stato costruito con la config (quindi l'origin
- * consentita) del dominio precedente, quindi l'unico modo corretto per
- * applicarne uno nuovo è `recreate()` (ricostruisce l'Activity da zero,
- * richiamando onCreate con il dominio aggiornato), non un altro `loadUrl`.
+ * WebView: questa Activity viene chiusa subito dopo (non resta in coda a
+ * ricaricare gli asset impacchettati di fallback sotto la schermata di
+ * configurazione).
  *
- * onResume() ricarica sempre la pagina (anche a dominio invariato): senza,
- * riaprire l'app dopo averla solo messa in background (non un vero
- * riavvio del processo) mostra lo stato già in memoria della WebView,
- * mai una richiesta di rete nuova — un redeploy del sito non si vedrebbe
- * mai finché l'app non viene forzatamente chiusa e riaperta da zero.
+ * launchMode="singleTask" (AndroidManifest) vuol dire che un cambio
+ * dominio ad app già aperta (da "Impostazioni app") richiama onNewIntent()
+ * su questa stessa istanza, non onCreate(): il Bridge è però già stato
+ * costruito con la config (quindi l'origin consentita) del dominio
+ * precedente, e l'unico modo corretto per applicarne uno nuovo è
+ * ricostruirlo da zero. NON farlo con `recreate()`: su un'Activity
+ * singleTask può innescare un loop onNewIntent() -> recreate() ->
+ * onNewIntent() -> ... (bug reale riscontrato: lampeggio bianco/nero
+ * continuo, app inutilizzabile). Si rilancia l'intero task con un nuovo
+ * Intent FLAG_ACTIVITY_NEW_TASK + FLAG_ACTIVITY_CLEAR_TASK, poi si chiude
+ * il task corrente con finishAffinity(): questo crea una MainActivity
+ * davvero nuova (onCreate puro, mai un altro onNewIntent nel mezzo).
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,18 +50,15 @@ class MainActivity : BridgeActivity() {
         super.onCreate(savedInstanceState)
         if (domain.isNullOrBlank()) {
             startActivity(Intent(this, DomainSetupActivity::class.java))
+            finish()
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        recreate()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (bridge.webView.url != null) {
-            bridge.webView.reload()
-        }
+        val restart = Intent(this, MainActivity::class.java)
+        restart.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(restart)
+        finishAffinity()
     }
 }
