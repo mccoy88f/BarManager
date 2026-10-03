@@ -37,6 +37,12 @@ describe('buildMailFooter', () => {
     expect(phoneIdx).toBeLessThan(instaIdx);
     expect(instaIdx).toBeLessThan(fbIdx);
     expect(fbIdx).toBeLessThan(siteIdx);
+
+    // Pulsanti rotondi (come il footer del menù pubblico/ordini online), non link testuali.
+    expect(footer.html).toContain('border-radius:50%');
+    expect(footer.html).not.toContain('>Instagram<');
+    expect(footer.html).not.toContain('>Facebook<');
+    expect(footer.html).not.toContain('>Sito web<');
   });
 
   it('omette ogni riga per cui il locale non ha dati, senza lasciare contenitori vuoti', () => {

@@ -688,6 +688,14 @@ Resta aperto: notifica push via PWA per gli avvisi urgenti (oggi solo in-app/ema
 - Test Jest aggiunti: nuovo `reservations-mail.service.spec.ts` (non esisteva ancora uno spec dedicato) e un test in più in `online-orders-mail.service.spec.ts`, entrambi verificano che la firma di chiusura preceda sempre il separatore del footer nel testo.
 - Verifica eseguita in questa fase: `tsc --noEmit` backend, intera suite Jest backend verde (30 suite, 451/452 test — unico fallimento preesistente e indipendente, v. fasi precedenti).
 
+**Fase 1-septvicies — Pulsanti rotondi per telefono/social nel footer email (completata, §5.7/§5.10/§1-septdecies)**
+
+- **Richiesta dell'utente**: il footer email (prenotazioni, ordini online, Marketing) mostrava i contatti (telefono/Instagram/Facebook/sito) come link testuali ("Instagram: https://..."), mentre il footer del menù pubblico e della pagina ordini online li mostra come pulsanti rotondi con icona. Uniformato in `buildMailFooter()` (`backend/src/common/mail/mail-footer.ts`), unico punto condiviso da tutti e tre i moduli: la versione HTML ora rende ogni contatto come un badge circolare (bordo, 34px, centrato) con un glifo al posto dell'icona — ☎ telefono, "IG" Instagram, "f" Facebook, 🌐 sito — invece del link testuale precedente.
+- **Perché un glifo di testo e non un'icona vera**: le icone Material usate nell'interfaccia sono componenti React/font-icon, non disponibili in HTML email; SVG e immagini remote/data-URI hanno supporto incoerente tra client di posta (in particolare Outlook desktop, che usa il motore di rendering di Word). Un carattere Unicode o una sigla breve dentro un cerchio con bordo è testo semplice: rende in modo identico ovunque, senza dipendere da asset esterni.
+- La versione testo dell'email resta invariata (`"{label}: {url}"` su una riga per contatto) — il vincolo di compatibilità riguarda solo l'HTML.
+- Test Jest aggiornato: `mail-footer.spec.ts` verifica la presenza di `border-radius:50%` sui pulsanti e l'assenza dei link testuali precedenti ("Instagram", "Facebook", "Sito web" come testo del link).
+- Verifica eseguita in questa fase: `tsc --noEmit` backend, intera suite Jest backend verde (30 suite, 451/452 test — unico fallimento preesistente e indipendente, v. fasi precedenti), anteprima HTML renderizzata manualmente e mostrata all'utente.
+
 **Fase 2 — Moduli complementari**
 - Dashboard analytics (anche aggregata multi-locale per il Super Admin), scadenzario documenti, manutenzioni, audit log UI, gestione turni base.
 - App Android via Capacitor.
