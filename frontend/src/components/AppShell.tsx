@@ -31,6 +31,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
+import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
 import { Outlet, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
@@ -38,6 +39,7 @@ import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
 import { canAccessModule } from '../config/modules';
 import { useOrderNotification } from '../context/OrderNotificationContext';
+import { isNativeApp, AppSettings } from '../printing/nativePrint';
 import { APP_VERSION } from '../version';
 
 const DRAWER_WIDTH = 260;
@@ -140,6 +142,14 @@ export function AppShell() {
           </Box>
         );
       })}
+      {isNativeApp() && (
+        <ListItemButton onClick={() => AppSettings.openDomainSettings()}>
+          <ListItemIcon>
+            <SettingsApplicationsIcon />
+          </ListItemIcon>
+          <ListItemText primary="Impostazioni app" />
+        </ListItemButton>
+      )}
     </List>
     <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
       <Typography variant="caption" color="text.secondary" display="block">

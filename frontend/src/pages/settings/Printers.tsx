@@ -181,9 +181,20 @@ export function Printers() {
         </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Assegna a ciascuna stampante uno o più tipi di documento (una stampante può servirne
-          più di uno insieme, e lo stesso documento può andare a più stampanti). Da sito e PWA la
-          stampa parte comunque dal browser con la stampa standard del dispositivo: su PC usa la
-          stampante di sistema, su Android serve un'app come{' '}
+          più di uno insieme, e lo stesso documento può andare a più stampanti).
+        </Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Host e porta configurati qui servono solo alla stampa diretta via rete locale (LAN)
+          dell'app Android nativa <strong>BarManager</strong> — scaricala dalla pagina delle{' '}
+          <a
+            href="https://github.com/mccoy88f/BarManager/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Release su GitHub
+          </a>
+          . Da sito e PWA la stampa parte invece dal dialogo di stampa standard del dispositivo:
+          su PC usa la stampante di sistema, su Android serve un'app come{' '}
           <a
             href="https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter"
             target="_blank"
@@ -192,7 +203,7 @@ export function Printers() {
             RawBT
           </a>{' '}
           per collegare la stampante ESC/POS di rete al dialogo di stampa.
-        </Typography>
+        </Alert>
 
         <Stack spacing={1} sx={{ mt: 2 }}>
           {printersQuery.data?.map((printer) => (
