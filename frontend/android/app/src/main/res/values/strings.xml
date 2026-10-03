@@ -10,4 +10,6 @@
     <string name="domain_setup_hint">slug.tuodominio.it</string>
     <string name="domain_setup_save">Salva</string>
     <string name="domain_setup_error_empty">Inserisci un indirizzo valido.</string>
+    <string name="domain_setup_error_unreachable">Impossibile raggiungere questo indirizzo: controlla che sia scritto giusto e che il dispositivo sia connesso a internet.</string>
+    <string name="domain_setup_checking">Verifica in corso…</string>
 </resources>
