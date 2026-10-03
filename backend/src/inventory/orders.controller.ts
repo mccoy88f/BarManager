@@ -109,4 +109,10 @@ export class OrdersController {
     });
     res.send(buffer);
   }
+
+  /** Stesso contenuto di export/pdf, come sezioni strutturate per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Get(':id/export/escpos')
+  async exportEscpos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return { sections: await this.ordersService.getSections(requireVenueId(user), id) };
+  }
 }

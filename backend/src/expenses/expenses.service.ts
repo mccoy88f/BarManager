@@ -7,6 +7,7 @@ import { CreateWalletDto } from './dto/create-wallet.dto';
 import { UpdateWalletDto } from './dto/update-wallet.dto';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { ReceiptSection } from '../reports/pdf.service';
 
 export interface ExpenseFilters {
   dateFrom?: string;
@@ -169,6 +170,30 @@ export class ExpensesService {
       include: EXPENSE_INCLUDE,
       orderBy: { date: 'desc' },
     });
+  }
+
+  /**
+   * Stesso elenco filtrato di list(), come sezione strutturata a larghezza
+   * scontrino: usato dall'app Android nativa (§5.11 di docs/DEVELOPMENT.md)
+   * per la stampa ESC/POS diretta, al posto del window.print() del browser
+   * sulla tabella a video.
+   */
+  async getEscposSections(venueId: string, filters: ExpenseFilters): Promise<ReceiptSection[]> {
+    const expenses = await this.list(venueId, filters);
+    const lines = expenses.flatMap((e) => [
+      `${e.date.toLocaleDateString('it-IT')}  € ${e.amount.toFixed(2)}`,
+      `  ${e.description}`,
+      `  ${e.paymentMethod.name} — ${e.wallet.name}`,
+    ]);
+    const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+    return [
+      {
+        title: 'Report Spese',
+        lines: lines.length ? lines : ['Nessuna spesa nel periodo selezionato.'],
+        footer: [{ text: `TOTALE: € ${total.toFixed(2)}`, bold: true }],
+      },
+    ];
   }
 
   async updateExpense(venueId: string, id: string, dto: UpdateExpenseDto) {

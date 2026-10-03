@@ -1241,20 +1241,36 @@ export class OnlineOrdersService {
 
   /** PDF comanda cucina di un ordine, largo come uno scontrino: v. buildKitchenTicketPayload. */
   async exportKitchenTicketPdf(venueId: string, id: string): Promise<Buffer> {
+    return this.pdf.buildReceiptDocument(await this.getKitchenTicketSections(venueId, id));
+  }
+
+  /**
+   * Stesso contenuto di exportKitchenTicketPdf, come sezione strutturata:
+   * usato dall'app Android nativa (§5.11) per la stampa ESC/POS diretta.
+   */
+  async getKitchenTicketSections(venueId: string, id: string) {
     const order = await this.requireOrder(venueId, id);
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId }, select: { name: true, timezone: true } });
     if (!venue) throw new NotFoundException('Locale non trovato');
-    return this.pdf.buildReceiptDocument([this.buildKitchenTicketPayload(venue.name, order, venue.timezone)]);
+    return [this.buildKitchenTicketPayload(venue.name, order, venue.timezone)];
   }
 
   /** PDF scontrino completo di un ordine, largo come uno scontrino: v. buildFullReceiptPayload. */
   async exportFullReceiptPdf(venueId: string, id: string): Promise<Buffer> {
+    return this.pdf.buildReceiptDocument(await this.getFullReceiptSections(venueId, id));
+  }
+
+  /**
+   * Stesso contenuto di exportFullReceiptPdf, come sezione strutturata:
+   * usato dall'app Android nativa (§5.11) per la stampa ESC/POS diretta.
+   */
+  async getFullReceiptSections(venueId: string, id: string) {
     const order = await this.requireOrder(venueId, id);
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
       select: { name: true, menuAddress: true, city: true, vatNumber: true, timezone: true },
     });
     if (!venue) throw new NotFoundException('Locale non trovato');
-    return this.pdf.buildReceiptDocument([this.buildFullReceiptPayload(venue, order, venue.timezone)]);
+    return [this.buildFullReceiptPayload(venue, order, venue.timezone)];
   }
 }

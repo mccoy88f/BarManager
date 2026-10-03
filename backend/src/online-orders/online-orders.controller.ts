@@ -89,6 +89,12 @@ export class OnlineOrdersController {
     res.send(buffer);
   }
 
+  /** Stesso contenuto della comanda cucina, come sezioni strutturate per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Get(':id/kitchen-ticket/escpos')
+  async kitchenTicketEscpos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return { sections: await this.onlineOrdersService.getKitchenTicketSections(requireVenueId(user), id) };
+  }
+
   /** Scontrino completo (§5.10): dati cliente, indirizzo, prezzi, totale, pagamento. */
   @Get(':id/receipt/pdf')
   async fullReceiptPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
@@ -98,5 +104,11 @@ export class OnlineOrdersController {
       'Content-Disposition': `attachment; filename="scontrino-${id}.pdf"`,
     });
     res.send(buffer);
+  }
+
+  /** Stesso contenuto dello scontrino completo, come sezioni strutturate per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Get(':id/receipt/escpos')
+  async fullReceiptEscpos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return { sections: await this.onlineOrdersService.getFullReceiptSections(requireVenueId(user), id) };
   }
 }

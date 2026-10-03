@@ -586,10 +586,18 @@ model CleaningLog {
 // Stampanti
 // ---------------------------------------------------------------------------
 
+// Un valore per ciascun documento stampabile del progetto (non più le tre
+// categorie generiche HACCP/ORDERS/GENERIC): l'app nativa Android (§5.11
+// di docs/DEVELOPMENT.md) instrada ogni stampa verso tutte le stampanti
+// del locale che includono quel tipo in "usages" — assegnazione libera
+// molti-a-molti decisa dall'admin, non dedotta dal nome della stampante.
+// Migrazione dai vecchi valori: v. prisma/scripts/auto-migrate-printer-usage-types.ts.
 enum PrinterUsage {
-  HACCP
-  ORDERS
-  GENERIC
+  SUPPLIER_ORDER
+  ONLINE_ORDER_KITCHEN_TICKET
+  ONLINE_ORDER_RECEIPT
+  HACCP_REPORT
+  EXPENSES_REPORT
 }
 
 model Printer {
@@ -597,10 +605,10 @@ model Printer {
   name   String
   host   String // IP di rete
   port   Int            @default(9100)
-  // Una stampante può servire più usi insieme (es. HACCP e ordini sulla
-  // stessa stampante di sala). Migrato da un valore singolo "usage": v.
-  // prisma/scripts/auto-migrate-printer-usages.ts.
-  usages PrinterUsage[] @default([GENERIC])
+  // Una stampante può servire più usi insieme (es. report HACCP e comanda
+  // cucina sulla stessa stampante di sala). Nessun default: l'admin sceglie
+  // esplicitamente i tipi alla creazione (v. CreatePrinterDto, ArrayMinSize(1)).
+  usages PrinterUsage[] @default([])
   active Boolean        @default(true)
 
   venueId String

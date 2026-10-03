@@ -94,6 +94,26 @@ export class ExpensesController {
     });
   }
 
+  /** Stesso elenco filtrato di list(), come sezione strutturata per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Get('escpos')
+  async escpos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('paymentMethodId') paymentMethodId?: string,
+    @Query('walletId') walletId?: string,
+    @Query('origin') origin?: 'linked' | 'standalone',
+  ) {
+    const sections = await this.expenses.getEscposSections(requireVenueId(user), {
+      dateFrom,
+      dateTo,
+      paymentMethodId,
+      walletId,
+      origin,
+    });
+    return { sections };
+  }
+
   @Patch(':id')
   update(
     @CurrentUser() user: AuthenticatedUser,

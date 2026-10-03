@@ -32,7 +32,12 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { shareReceiptPdf } from '../../printing/printJob';
 
-type PrinterUsage = 'HACCP' | 'ORDERS' | 'GENERIC';
+type PrinterUsage =
+  | 'SUPPLIER_ORDER'
+  | 'ONLINE_ORDER_KITCHEN_TICKET'
+  | 'ONLINE_ORDER_RECEIPT'
+  | 'HACCP_REPORT'
+  | 'EXPENSES_REPORT';
 
 interface PrinterRow {
   id: string;
@@ -43,13 +48,16 @@ interface PrinterRow {
   active: boolean;
 }
 
+/** Un valore per ciascun documento stampabile: l'admin assegna liberamente una o più stampanti a ciascun tipo (§5.11 di docs/DEVELOPMENT.md). */
 const usageLabels: Record<PrinterUsage, string> = {
-  HACCP: 'Report HACCP',
-  ORDERS: 'Checklist ordini',
-  GENERIC: 'Generico',
+  SUPPLIER_ORDER: 'Checklist ordini fornitori',
+  ONLINE_ORDER_KITCHEN_TICKET: 'Comanda cucina (ordini online)',
+  ONLINE_ORDER_RECEIPT: 'Scontrino ordini online',
+  HACCP_REPORT: 'Report HACCP',
+  EXPENSES_REPORT: 'Report Spese',
 };
 
-const emptyForm = { name: '', host: '', port: '9100', usages: ['GENERIC'] as PrinterUsage[] };
+const emptyForm = { name: '', host: '', port: '9100', usages: [] as PrinterUsage[] };
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response
@@ -160,9 +168,10 @@ export function Printers() {
           </Button>
         </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          Usate per il report HACCP giornaliero e la checklist degli ordini fornitori. La stampa
-          parte dal browser con la stampa standard del dispositivo: su PC usa la stampante di
-          sistema, su Android serve un'app come{' '}
+          Assegna a ciascuna stampante uno o più tipi di documento (una stampante può servirne
+          più di uno insieme, e lo stesso documento può andare a più stampanti). Da sito e PWA la
+          stampa parte comunque dal browser con la stampa standard del dispositivo: su PC usa la
+          stampante di sistema, su Android serve un'app come{' '}
           <a
             href="https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter"
             target="_blank"

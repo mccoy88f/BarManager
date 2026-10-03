@@ -104,6 +104,32 @@ export class HaccpController {
     res.send(buffer);
   }
 
+  /** Stesso contenuto di report/print-job, come sezione strutturata per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Post('report/print-job/escpos')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  async printJobEscpos(@CurrentUser() user: AuthenticatedUser, @Body() body: { reportDate: string }) {
+    const venueId = requireVenueId(user);
+    const [readings, signedByName] = await Promise.all([
+      this.haccpService.listReadings(venueId, body.reportDate, body.reportDate),
+      this.haccpService.resolveSignerName(user.userId),
+    ]);
+
+    const lines = readings.map(
+      (r) =>
+        `${r.fridge.label.padEnd(20)} ${r.value}°C ${r.outOfRange ? '[FUORI SOGLIA]' : ''} - ${r.recordedAt.toLocaleTimeString('it-IT')}`,
+    );
+
+    return {
+      sections: [
+        {
+          title: `Report HACCP - ${new Date(body.reportDate).toLocaleDateString('it-IT')}`,
+          lines,
+          footer: [`Firmato da: ${signedByName}`, '', '_________________________'],
+        },
+      ],
+    };
+  }
+
   /**
    * Registra la firma del report giornaliero. `printedOnPos` riflette
    * l'esito della stampa già tentata dal browser (v. `report/print-job`),

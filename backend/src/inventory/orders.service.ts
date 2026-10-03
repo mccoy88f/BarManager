@@ -343,6 +343,17 @@ export class OrdersService {
   }
 
   /**
+   * Stesso contenuto di exportPdf, ma come sezione strutturata invece che
+   * già renderizzata in PDF: usato dall'app Android nativa (§5.11 di
+   * docs/DEVELOPMENT.md) per tradurlo in comandi ESC/POS e stamparlo via
+   * socket TCP, invece di condividere un PDF con un'app terza.
+   */
+  async getSections(venueId: string, orderId: string) {
+    const order = await this.getOrder(venueId, orderId);
+    return [this.buildPrintPayload(order)];
+  }
+
+  /**
    * PDF di più ordini (uno per fornitore, dopo una creazione "per
    * categoria"), con una pagina separata per ciascuno, stesso formato a
    * scontrino del singolo ordine.

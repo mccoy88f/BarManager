@@ -87,6 +87,13 @@ export class PrinterController {
     res.send(buffer);
   }
 
+  /** Stesso contenuto del test di stampa, come sezione strutturata per la stampa ESC/POS dall'app nativa (§5.11). */
+  @Get(':id/test/escpos')
+  async testEscpos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    await this.assertOwnership(requireVenueId(user), id);
+    return { sections: [await this.printing.buildTestJob(id)] };
+  }
+
   private async assertOwnership(venueId: string, printerId: string) {
     const printer = await this.prisma.printer.findUnique({ where: { id: printerId } });
     if (!printer || printer.venueId !== venueId) {

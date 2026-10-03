@@ -82,15 +82,16 @@ services:
     # live con dati reali conviene passare a migrazioni versionate
     # ("prisma migrate deploy", vedi docs/DEVELOPMENT.md §10).
     #
-    # "npm run prisma:auto-migrate" e "npm run prisma:auto-migrate-printer-usages"
-    # girano prima e non fanno nulla su un database già aggiornato: esistono
-    # solo per passaggi storici che "db push" da solo applicherebbe perdendo
-    # dati già salvati (prezzo unico -> varianti di menù; uso singolo -> lista
-    # di usi per stampante, v. commenti negli script). Da qui in avanti
-    # "db push" gira con --accept-data-loss perché questi passaggi lo rendono
-    # sicuro; resta comunque prudente rivedere il diff di schema.prisma prima
-    # di un deploy che tocca colonne con dati importanti.
-    command: sh -c "npm run prisma:auto-migrate && npm run prisma:auto-migrate-printer-usages && npx prisma db push --accept-data-loss && node dist/main"
+    # Gli script "npm run prisma:auto-migrate*" girano prima e non fanno
+    # nulla su un database già aggiornato: esistono solo per passaggi
+    # storici che "db push" da solo applicherebbe perdendo dati già salvati
+    # (prezzo unico -> varianti di menù; uso singolo -> lista di usi per
+    # stampante; le tre categorie generiche di stampa -> un tipo per
+    # documento, v. commenti nei singoli script). Da qui in avanti "db push"
+    # gira con --accept-data-loss perché questi passaggi lo rendono sicuro;
+    # resta comunque prudente rivedere il diff di schema.prisma prima di un
+    # deploy che tocca colonne con dati importanti.
+    command: sh -c "npm run prisma:auto-migrate && npm run prisma:auto-migrate-printer-usages && npm run prisma:auto-migrate-printer-usage-types && npx prisma db push --accept-data-loss && node dist/main"
     # GET /api/health verifica anche la connessione al database (§health
     # in backend/src/health): se Postgres diventa irraggiungibile dopo
     # l'avvio, il container viene segnalato "unhealthy". Node invece di
