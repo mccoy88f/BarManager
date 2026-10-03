@@ -104,8 +104,15 @@ jobs:
       - name: Pubblica la GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          # Passata come variabile d'ambiente, non interpolata direttamente nello
+          # script: la run precedente è fallita perché le note contenevano un
+          # carattere " che chiudeva anticipatamente la stringa tra doppi apici
+          # (il resto veniva interpretato come comando/glob dalla shell) -
+          # oltre a essere comunque il pattern sicuro contro l'injection di
+          # script quando il testo interpolato arriva da un input esterno.
+          RELEASE_NOTES: ${{ inputs.notes }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           gh release create "${VERSION}" "BarManager-${VERSION}.apk" \
             --title "BarManager ${VERSION}" \
-            --notes "${{ inputs.notes }}"
+            --notes "${RELEASE_NOTES}"
