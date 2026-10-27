@@ -68,6 +68,7 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
   const [name, setName] = useState('');
   const [selectionType, setSelectionType] = useState<'SINGLE' | 'MULTIPLE'>('SINGLE');
   const [minSelections, setMinSelections] = useState('0');
+  const [maxSelections, setMaxSelections] = useState('');
   const [optionForms, setOptionForms] = useState<OptionForm[]>([emptyOption]);
   const [toDelete, setToDelete] = useState<ModifierGroup | null>(null);
 
@@ -81,12 +82,21 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        name: name.trim(),
         selectionType,
         minSelections: Number(minSelections),
-        options: optionForms
-          .filter((o) => o.name.trim())
-          .map((o) => ({ name: o.name.trim(), price: Number(o.price) || 0 })),
+        maxSelections: maxSelections.trim() ? Number(maxSelections) : null,
+        // Nome e opzioni sono di Loyverse quando il gruppo è sincronizzato
+        // (locked): non li includiamo nella patch perché il backend blocca
+        // qualunque modifica di contenuto su un gruppo gestito da Loyverse,
+        // anche se qui il valore inviato sarebbe identico a quello attuale.
+        ...(locked
+          ? {}
+          : {
+              name: name.trim(),
+              options: optionForms
+                .filter((o) => o.name.trim())
+                .map((o) => ({ name: o.name.trim(), price: Number(o.price) || 0 })),
+            }),
       };
       return editing
         ? (await api.patch(`/menu/modifier-groups/${editing.id}`, payload)).data
@@ -122,6 +132,7 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
     setName('');
     setSelectionType('SINGLE');
     setMinSelections('0');
+    setMaxSelections('');
     setOptionForms([emptyOption]);
     setDialogOpen(true);
   };
@@ -131,6 +142,7 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
     setName(group.name);
     setSelectionType(group.selectionType);
     setMinSelections(String(group.minSelections));
+    setMaxSelections(group.maxSelections != null ? String(group.maxSelections) : '');
     setOptionForms(
       group.options.length > 0
         ? group.options.map((o) => ({ name: o.name, price: String(o.price) }))
@@ -159,7 +171,7 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
             <Typography variant="h6">Modificatori</Typography>
             <Typography variant="body2" color="text.secondary">
               {locked
-                ? 'Sincronizzati da Loyverse: nome e opzioni non modificabili qui, ma puoi comunque disattivarne uno per gli ordini online (§5.10).'
+                ? 'Sincronizzati da Loyverse: nome e opzioni non modificabili qui. Minimo/massimo selezioni, tipo di selezione e attivazione per gli ordini online restano invece sempre impostabili da qui (§5.10).'
                 : 'Gruppi come "Estras", riusabili su più voci di menù — l\'interruttore decide se il gruppo è offerto negli ordini online (§5.10)'}
             </Typography>
           </Box>
@@ -199,15 +211,13 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
                   title={group.active ? 'Attivo per gli ordini online' : 'Disattivato per gli ordini online'}
                   onChange={(e) => toggleActiveMutation.mutate({ id: group.id, active: e.target.checked })}
                 />
+                <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
                 {!locked && (
-                  <>
-                    <IconButton size="small" title="Modifica" onClick={() => openEdit(group)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </>
+                  <IconButton size="small" color="error" title="Elimina" onClick={() => setToDelete(group)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 )}
               </Box>
             </Box>
@@ -223,7 +233,13 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Modifica gruppo di modificatori' : 'Nuovo gruppo di modificatori'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
-          <TextField label="Nome (es. Estras)" value={name} onChange={(e) => setName(e.target.value)} />
+          <TextField
+            label="Nome (es. Estras)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={locked}
+            helperText={locked ? 'Sincronizzato da Loyverse: modificabile solo da lì.' : undefined}
+          />
           <Stack direction="row" spacing={2}>
             <TextField
               select
@@ -244,6 +260,15 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
               value={minSelections}
               onChange={(e) => setMinSelections(e.target.value)}
             />
+            <TextField
+              label="Selezioni massime"
+              type="number"
+              fullWidth
+              inputProps={{ min: 1 }}
+              helperText="vuoto = nessun limite"
+              value={maxSelections}
+              onChange={(e) => setMaxSelections(e.target.value)}
+            />
           </Stack>
 
           <Typography variant="body2" fontWeight={600}>
@@ -257,6 +282,7 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
                   size="small"
                   value={option.name}
                   onChange={(e) => updateOptionForm(index, { name: e.target.value })}
+                  disabled={locked}
                   sx={{ flex: 1 }}
                 />
                 <TextField
@@ -266,9 +292,10 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
                   inputProps={{ min: 0, step: 0.5 }}
                   value={option.price}
                   onChange={(e) => updateOptionForm(index, { price: e.target.value })}
+                  disabled={locked}
                   sx={{ width: 120 }}
                 />
-                {optionForms.length > 1 && (
+                {!locked && optionForms.length > 1 && (
                   <IconButton size="small" title="Rimuovi opzione" onClick={() => removeOptionForm(index)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -276,9 +303,11 @@ export function ModifierGroupsCard({ locked }: { locked: boolean }) {
               </Stack>
             ))}
           </Stack>
-          <Button size="small" startIcon={<AddIcon />} onClick={addOptionForm} sx={{ justifySelf: 'flex-start' }}>
-            Aggiungi opzione
-          </Button>
+          {!locked && (
+            <Button size="small" startIcon={<AddIcon />} onClick={addOptionForm} sx={{ justifySelf: 'flex-start' }}>
+              Aggiungi opzione
+            </Button>
+          )}
 
           {saveMutation.isError && <Alert severity="error">{extractErrorMessage(saveMutation.error)}</Alert>}
         </DialogContent>

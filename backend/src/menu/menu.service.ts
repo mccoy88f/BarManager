@@ -719,10 +719,19 @@ export class MenuService {
     if (!group || group.venueId !== venueId) throw new NotFoundException('Gruppo di modificatori non trovato');
   }
 
-  /** Le opzioni si sostituiscono sempre tutte insieme, come le varianti di una voce di menù. */
+  /**
+   * Le opzioni si sostituiscono sempre tutte insieme, come le varianti di
+   * una voce di menù. Come in updateItem, il blocco Loyverse scatta solo
+   * sui campi di contenuto (nome, opzioni): selectionType/minSelections/
+   * maxSelections non hanno equivalente nel modificatore di Loyverse e il
+   * sync non li tocca mai dopo la creazione, quindi restano sempre
+   * impostabili anche su un gruppo sincronizzato.
+   */
   async updateModifierGroup(venueId: string, groupId: string, dto: UpdateMenuModifierGroupDto) {
-    await this.assertNotLoyverseManaged(venueId);
     await this.assertModifierGroupOwnership(venueId, groupId);
+    if (dto.name !== undefined || dto.options !== undefined) {
+      await this.assertNotLoyverseManaged(venueId);
+    }
     const { options, ...group } = dto;
     return this.prisma.$transaction(async (tx) => {
       if (options) {
