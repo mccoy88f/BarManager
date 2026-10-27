@@ -71,6 +71,7 @@ interface MenuCategory {
   name: string;
   visible: boolean;
   orderableOnline: boolean;
+  availability: 'LUNCH' | 'DINNER' | 'ALL_DAY';
 }
 interface MenuItemVariant {
   id: string;
@@ -169,6 +170,7 @@ function SortableCategorySection({
   onDeleteRequest,
   onToggleVisible,
   onToggleOrderableOnline,
+  onChangeAvailability,
   renderItem,
 }: {
   category: MenuCategory;
@@ -182,6 +184,7 @@ function SortableCategorySection({
   onDeleteRequest: () => void;
   onToggleVisible: (visible: boolean) => void;
   onToggleOrderableOnline: (orderableOnline: boolean) => void;
+  onChangeAvailability: (availability: 'LUNCH' | 'DINNER' | 'ALL_DAY') => void;
   renderItem: (item: MenuItemRow) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -239,6 +242,21 @@ function SortableCategorySection({
                 checkedIcon={<DeliveryDiningIcon fontSize="small" />}
               />
             )}
+            <TextField
+              select
+              size="small"
+              variant="standard"
+              value={category.availability}
+              onChange={(e) => onChangeAvailability(e.target.value as 'LUNCH' | 'DINNER' | 'ALL_DAY')}
+              title="Fascia del menù: nasconde l'intera categoria fuori orario"
+              sx={{ minWidth: 112 }}
+            >
+              {Object.entries(availabilityLabels).map(([value, label]) => (
+                <MuiMenuItem key={value} value={value}>
+                  {label}
+                </MuiMenuItem>
+              ))}
+            </TextField>
             {!locked && (
               <>
                 <IconButton size="small" title="Modifica" onClick={onEdit}>
@@ -400,6 +418,12 @@ export function MenuAdmin() {
   const setCategoryOrderableOnlineMutation = useMutation({
     mutationFn: async ({ id, orderableOnline }: { id: string; orderableOnline: boolean }) =>
       (await api.patch(`/menu/categories/${id}/orderable-online`, { orderableOnline })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
+  });
+
+  const setCategoryAvailabilityMutation = useMutation({
+    mutationFn: async ({ id, availability }: { id: string; availability: string }) =>
+      (await api.patch(`/menu/categories/${id}/availability`, { availability })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['menu-categories'] }),
   });
 
@@ -744,6 +768,9 @@ export function MenuAdmin() {
                     }
                     onToggleOrderableOnline={(orderableOnline) =>
                       setCategoryOrderableOnlineMutation.mutate({ id: category.id, orderableOnline })
+                    }
+                    onChangeAvailability={(availability) =>
+                      setCategoryAvailabilityMutation.mutate({ id: category.id, availability })
                     }
                     renderItem={(item) => (
                       <Card key={item.id} variant="outlined">

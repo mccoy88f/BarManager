@@ -772,6 +772,12 @@ model MenuCategory {
   // /menu) non ne tiene conto, come per il flag equivalente sulla voce.
   orderableOnline Boolean @default(false)
 
+  // Fascia del menù (§5.10, come MenuItem.availability sotto, ma per
+  // l'intera categoria): una voce resta nascosta se è fuori fascia lei
+  // stessa O la sua categoria lo è. Nessun equivalente in Loyverse, quindi
+  // mai impostata/toccata dal sync.
+  availability MenuAvailability @default(ALL_DAY)
+
   // Popolata solo dal sync Loyverse: chiave per aggiornare la categoria
   // senza duplicarla ai sync successivi, mai impostata a mano.
   loyverseCategoryId String?

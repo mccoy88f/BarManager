@@ -207,6 +207,35 @@ describe('MenuService categorie', () => {
   });
 });
 
+describe('MenuService.setCategoryAvailability', () => {
+  let prisma: { menuCategory: { findUnique: jest.Mock; update: jest.Mock } };
+  let service: MenuService;
+
+  beforeEach(() => {
+    prisma = { menuCategory: { findUnique: jest.fn(), update: jest.fn() } };
+    service = new MenuService(prisma as unknown as PrismaService, {} as never);
+  });
+
+  it('imposta la fascia di una categoria, permesso anche con integrazione Loyverse attiva', async () => {
+    prisma.menuCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-1' });
+    prisma.menuCategory.update.mockResolvedValue({ id: 'cat-1', availability: 'LUNCH' });
+
+    await service.setCategoryAvailability('venue-1', 'cat-1', 'LUNCH' as never);
+
+    expect(prisma.menuCategory.update).toHaveBeenCalledWith({
+      where: { id: 'cat-1' },
+      data: { availability: 'LUNCH' },
+    });
+  });
+
+  it('rifiuta di impostare la fascia di una categoria di un altro locale', async () => {
+    prisma.menuCategory.findUnique.mockResolvedValue({ id: 'cat-1', venueId: 'venue-2' });
+
+    await expect(service.setCategoryAvailability('venue-1', 'cat-1', 'LUNCH' as never)).rejects.toThrow();
+    expect(prisma.menuCategory.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('MenuService.setFeatured', () => {
   let prisma: { menuItem: { findUnique: jest.Mock; update: jest.Mock } };
   let service: MenuService;
@@ -418,7 +447,9 @@ describe('MenuService.getPublicMenu', () => {
     const result = await service.getPublicMenu('venue-1');
 
     expect(prisma.menuCategory.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { venueId: 'venue-1', visible: true } }),
+      expect.objectContaining({
+        where: { venueId: 'venue-1', visible: true, availability: { in: ['LUNCH', 'ALL_DAY'] } },
+      }),
     );
     const itemsWhere = prisma.menuCategory.findMany.mock.calls[0][0].include.items.where;
     expect(itemsWhere.visible).toBe(true);
@@ -498,6 +529,10 @@ describe('MenuService.getPublicMenu — fascia pranzo/cena (§5.10, orari menù 
 
     const allowed = prisma.menuCategory.findMany.mock.calls[0][0].include.items.where.availability.in;
     expect(allowed).toEqual(['LUNCH', 'ALL_DAY']);
+    // Stessa fascia applicata anche alla categoria: una categoria "solo
+    // cena" resta nascosta anche se contenesse voci "tutto il giorno".
+    const categoryAllowed = prisma.menuCategory.findMany.mock.calls[0][0].where.availability.in;
+    expect(categoryAllowed).toEqual(['LUNCH', 'ALL_DAY']);
   });
 
   it('un\'apertura speciale (§5.10) può sovrascrivere solo gli orari menù, indipendentemente dall\'orario reale', async () => {

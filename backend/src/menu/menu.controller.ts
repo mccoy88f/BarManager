@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage, memoryStorage } from 'multer';
 import { Response } from 'express';
+import { MenuAvailability } from '@prisma/client';
 import { safeExtension } from '../common/upload/safe-extension';
 import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -80,6 +81,15 @@ export class MenuController {
     @Body('orderableOnline') orderableOnline: boolean,
   ) {
     return this.menuService.setCategoryOrderableOnline(requireVenueId(user), id, orderableOnline);
+  }
+
+  @Patch('categories/:id/availability')
+  setCategoryAvailability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('availability') availability: MenuAvailability,
+  ) {
+    return this.menuService.setCategoryAvailability(requireVenueId(user), id, availability);
   }
 
   @Patch('categories/:id')

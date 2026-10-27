@@ -1,4 +1,5 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { MenuAvailability } from '@prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateMenuCategoryDto {
   @IsString()
@@ -7,4 +8,8 @@ export class CreateMenuCategoryDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsEnum(MenuAvailability)
+  availability?: MenuAvailability;
 }

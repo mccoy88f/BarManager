@@ -168,6 +168,19 @@ export class MenuService {
   }
 
   /**
+   * Fascia del menù (§5.10): flag di presentazione come "visible", senza
+   * equivalente in Loyverse e mai toccato dal sync, quindi sempre
+   * impostabile anche con l'integrazione attiva.
+   */
+  async setCategoryAvailability(venueId: string, categoryId: string, availability: MenuAvailability) {
+    const category = await this.prisma.menuCategory.findUnique({ where: { id: categoryId } });
+    if (!category || category.venueId !== venueId) {
+      throw new NotFoundException('Categoria non trovata');
+    }
+    return this.prisma.menuCategory.update({ where: { id: categoryId }, data: { availability } });
+  }
+
+  /**
    * Scorciatoia richiesta dall'admin (§5.10): attiva "ordinabile online"
    * per tutte le categorie/voci già visibili sul menù, senza doverlo fare
    * una per una nel dialog di modifica. Solo additiva (mai un
@@ -652,7 +665,7 @@ export class MenuService {
           : [MenuAvailability.ALL_DAY];
 
     const categories = await this.prisma.menuCategory.findMany({
-      where: { venueId, visible: true },
+      where: { venueId, visible: true, availability: { in: allowedAvailabilities } },
       orderBy: { sortOrder: 'asc' },
       include: {
         items: {
