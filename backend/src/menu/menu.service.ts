@@ -624,6 +624,28 @@ export class MenuService {
   // ---- Menù pubblico (nessun login) --------------------------------------
 
   /**
+   * Fasce di MenuAvailability visibili nella fascia corrente del locale
+   * (§5.10): usata sia dal menù pubblico di sola consultazione
+   * (getPublicMenu sotto) sia dal checkout /ordina
+   * (PublicOnlineOrdersController), così che una voce o categoria "solo
+   * pranzo"/"solo cena" scompaia fuori dalla sua fascia ovunque sul sito,
+   * non solo sul menù di sola consultazione.
+   */
+  async getAllowedAvailabilities(venueId: string): Promise<MenuAvailability[]> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { menuMealPeriodsHours: true, timezone: true },
+    });
+    if (!venue) return [MenuAvailability.ALL_DAY];
+    const period = await this.currentPeriod(venueId, venue.menuMealPeriodsHours, venue.timezone);
+    return period === 'LUNCH'
+      ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]
+      : period === 'DINNER'
+        ? [MenuAvailability.DINNER, MenuAvailability.ALL_DAY]
+        : [MenuAvailability.ALL_DAY];
+  }
+
+  /**
    * Determina la fascia corrente (pranzo/cena/nessuna) in base alle fasce
    * pranzo/cena del MENÙ configurate dal locale per il giorno corrente
    * (`Venue.menuMealPeriodsHours`, indipendenti dall'orario reale di

@@ -6,6 +6,7 @@ import { LocationIqApiError, locationIqClient } from '../common/geo/locationiq-c
 import { OnlineOrdersService } from './online-orders.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
+import { MenuService } from '../menu/menu.service';
 
 /**
  * Pagina pubblica di ordinazione /ordina, nessun login: risolta dal
@@ -17,6 +18,7 @@ export class PublicOnlineOrdersController {
   constructor(
     private onlineOrdersService: OnlineOrdersService,
     private prisma: PrismaService,
+    private menuService: MenuService,
   ) {}
 
   private async resolveVenueId(req: Request, venueSlug?: string): Promise<string> {
@@ -64,21 +66,28 @@ export class PublicOnlineOrdersController {
     return { ...venue, openingHours: resolveOpeningHours(venue.onlineOrdersOpeningHours ?? venue.openingHours) };
   }
 
-  /** Solo le voci di menù ordinabili online, con varianti e gruppi di modificatori. */
+  /**
+   * Solo le voci di menù ordinabili online, con varianti e gruppi di
+   * modificatori. Stessa fascia pranzo/cena di getPublicMenu (§5.10): una
+   * voce o categoria "solo pranzo"/"solo cena" scompare da qui fuori dalla
+   * sua fascia esattamente come sul menù di sola consultazione.
+   */
   @Get('menu')
   async menu(@Req() req: Request, @Query('venueSlug') venueSlug?: string) {
     const venueId = await this.resolveVenueId(req, venueSlug);
+    const allowedAvailabilities = await this.menuService.getAllowedAvailabilities(venueId);
     const categories = await this.prisma.menuCategory.findMany({
       where: {
         venueId,
         visible: true,
         orderableOnline: true,
-        items: { some: { orderableOnline: true, visible: true } },
+        availability: { in: allowedAvailabilities },
+        items: { some: { orderableOnline: true, visible: true, availability: { in: allowedAvailabilities } } },
       },
       orderBy: { sortOrder: 'asc' },
       include: {
         items: {
-          where: { orderableOnline: true, visible: true },
+          where: { orderableOnline: true, visible: true, availability: { in: allowedAvailabilities } },
           orderBy: { sortOrder: 'asc' },
           include: {
             variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } },

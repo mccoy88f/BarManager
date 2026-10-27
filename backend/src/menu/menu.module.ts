@@ -6,5 +6,6 @@ import { PublicMenuController } from './public-menu.controller';
 @Module({
   controllers: [MenuController, PublicMenuController],
   providers: [MenuService],
+  exports: [MenuService],
 })
 export class MenuModule {}
