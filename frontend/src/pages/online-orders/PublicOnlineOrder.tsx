@@ -227,6 +227,16 @@ function MenuItemRow({
                   {item.description}
                 </Typography>
               )}
+              {item.variants.length > 1 && (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {item.variants.map((v) => v.name || 'Standard').join(', ')}
+                </Typography>
+              )}
+              {item.modifierGroups.length > 0 && (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {item.modifierGroups.map((g) => g.modifierGroup.name).join(' · ')}
+                </Typography>
+              )}
             </Box>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
               <Typography variant="subtitle1" fontWeight={600}>

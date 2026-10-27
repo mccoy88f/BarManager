@@ -671,7 +671,15 @@ export class MenuService {
         items: {
           where: { visible: true, availability: { in: allowedAvailabilities } },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-          include: { variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } } },
+          include: {
+            variants: { where: { active: true }, orderBy: { sortOrder: 'asc' } },
+            // Solo a scopo informativo: il menù pubblico non ha un carrello,
+            // quindi qui si mostrano ma non si possono selezionare (§5.10).
+            modifierGroups: {
+              where: { modifierGroup: { active: true } },
+              include: { modifierGroup: { include: { options: { orderBy: { sortOrder: 'asc' } } } } },
+            },
+          },
         },
       },
     });
@@ -699,6 +707,11 @@ export class MenuService {
             name: item.name,
             description: item.description,
             variants: item.variants.map((v) => ({ id: v.id, name: v.name, price: v.price })),
+            modifierGroups: item.modifierGroups.map((g) => ({
+              id: g.modifierGroup.id,
+              name: g.modifierGroup.name,
+              options: g.modifierGroup.options.map((o) => ({ id: o.id, name: o.name, price: o.price })),
+            })),
             photoUrl: item.photoUrl,
             allergens: item.allergens,
             featured: item.featured,

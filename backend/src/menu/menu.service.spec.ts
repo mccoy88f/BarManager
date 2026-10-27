@@ -439,6 +439,7 @@ describe('MenuService.getPublicMenu', () => {
             allergens: [],
             unavailableUntil: null,
             variants: [{ id: 'var-1', name: '', price: 4.5 }],
+            modifierGroups: [],
           },
         ],
       },
@@ -463,10 +464,56 @@ describe('MenuService.getPublicMenu', () => {
             name: 'Birra',
             description: null,
             variants: [{ id: 'var-1', name: '', price: 4.5 }],
+            modifierGroups: [],
             photoUrl: null,
             allergens: [],
             available: true,
           },
+        ],
+      },
+    ]);
+  });
+
+  it('mostra i gruppi di modificatori attivi di una voce, a scopo informativo (nessun carrello su questo menù)', async () => {
+    prisma.menuCategory.findMany.mockResolvedValue([
+      {
+        id: 'cat-1',
+        name: 'Panini',
+        items: [
+          {
+            id: 'item-1',
+            name: 'Panino',
+            description: null,
+            photoUrl: null,
+            allergens: [],
+            unavailableUntil: null,
+            variants: [],
+            modifierGroups: [
+              {
+                modifierGroup: {
+                  id: 'grp-1',
+                  name: 'Estras',
+                  options: [
+                    { id: 'opt-1', name: 'Formaggio extra', price: 1 },
+                    { id: 'opt-2', name: 'Olive', price: 0.5 },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const result = await service.getPublicMenu('venue-1');
+
+    expect(result.categories[0].items[0].modifierGroups).toEqual([
+      {
+        id: 'grp-1',
+        name: 'Estras',
+        options: [
+          { id: 'opt-1', name: 'Formaggio extra', price: 1 },
+          { id: 'opt-2', name: 'Olive', price: 0.5 },
         ],
       },
     ]);

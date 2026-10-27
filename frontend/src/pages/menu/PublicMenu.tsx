@@ -33,11 +33,22 @@ interface PublicMenuVariant {
   /** null = prezzo variabile (deciso in cassa, o a peso). */
   price: number | null;
 }
+interface PublicMenuModifierOption {
+  id: string;
+  name: string;
+  price: number;
+}
+interface PublicMenuModifierGroup {
+  id: string;
+  name: string;
+  options: PublicMenuModifierOption[];
+}
 interface PublicMenuItem {
   id: string;
   name: string;
   description?: string;
   variants: PublicMenuVariant[];
+  modifierGroups: PublicMenuModifierGroup[];
   photoUrl?: string;
   allergens: string[];
   featured: boolean;
@@ -142,6 +153,18 @@ function MenuItemCard({
                   size="small"
                   label={`${v.name || 'Standard'}: ${v.price != null ? `${formatCurrency(v.price)}` : 'variabile'}`}
                 />
+              ))}
+            </Box>
+          )}
+          {item.modifierGroups.length > 0 && (
+            <Box sx={{ mt: 0.5 }}>
+              {item.modifierGroups.map((group) => (
+                <Typography key={group.id} variant="caption" color="text.secondary" display="block">
+                  {group.name}:{' '}
+                  {group.options
+                    .map((o) => (o.price > 0 ? `${o.name} (+${formatCurrency(o.price)})` : o.name))
+                    .join(', ')}
+                </Typography>
               ))}
             </Box>
           )}
