@@ -1,4 +1,5 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { DisplayPromoInfoBarTheme, DisplayPromoTransition } from '@prisma/client';
+import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateScreenDto {
   @IsOptional()
@@ -15,4 +16,14 @@ export class UpdateScreenDto {
   @IsOptional()
   @IsBoolean()
   showInfoBar?: boolean;
+
+  /** Rilevante solo se showInfoBar è true. */
+  @IsOptional()
+  @IsEnum(DisplayPromoInfoBarTheme)
+  infoBarTheme?: DisplayPromoInfoBarTheme;
+
+  /** Indipendente da showInfoBar: si applica anche a schermo intero senza la fascia. */
+  @IsOptional()
+  @IsEnum(DisplayPromoTransition)
+  transitionEffect?: DisplayPromoTransition;
 }

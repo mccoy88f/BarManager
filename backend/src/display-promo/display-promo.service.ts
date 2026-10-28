@@ -237,8 +237,10 @@ export class DisplayPromoService {
     return {
       venueName: screen.venue.name,
       playlist,
+      transitionEffect: screen.transitionEffect,
       infoBar: {
         enabled: screen.showInfoBar,
+        theme: screen.infoBarTheme,
         weather:
           screen.showInfoBar && screen.venue.gpsLat != null && screen.venue.gpsLng != null
             ? { lat: screen.venue.gpsLat, lng: screen.venue.gpsLng }
