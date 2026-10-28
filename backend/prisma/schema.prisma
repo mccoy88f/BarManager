@@ -319,6 +319,24 @@ enum DisplayPromoMediaType {
   VIDEO
 }
 
+/// Aspetto delle barre orologio/meteo/notizie (§5.12): BLACK_WHITE è lo
+/// sfondo scuro opaco con testo bianco di sempre, GLASS è trasparente con
+/// sfocatura (il carosello si vede attraverso le barre, che diventano
+/// overlay a schermo intero invece di dividere lo schermo in tre fasce).
+enum DisplayPromoInfoBarTheme {
+  BLACK_WHITE
+  GLASS
+}
+
+/// Transizione tra un contenuto e il successivo del carosello (§5.12).
+enum DisplayPromoTransition {
+  NONE
+  FADE
+  SLIDE_HORIZONTAL
+  SLIDE_VERTICAL
+  ZOOM
+}
+
 model DisplayPromoPlaylist {
   id   String @id @default(cuid())
   name String
@@ -376,6 +394,15 @@ model DisplayPromoScreen {
   // Meteo e feed notizie restano impostazioni del locale (Venue sotto),
   // condivise da tutti i suoi schermi.
   showInfoBar Boolean @default(false)
+
+  // Aspetto delle barre superiore/inferiore della fascia sopra: rilevante
+  // solo se showInfoBar è true, ma tenuto come campo proprio (non
+  // annidabile in Prisma comunque) per semplicità.
+  infoBarTheme DisplayPromoInfoBarTheme @default(BLACK_WHITE)
+
+  // Transizione tra un contenuto e il successivo del carosello: indipendente
+  // da showInfoBar, si applica anche a schermo intero senza la fascia.
+  transitionEffect DisplayPromoTransition @default(NONE)
 
   schedules DisplayPromoSchedule[]
 

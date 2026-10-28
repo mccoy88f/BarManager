@@ -34,6 +34,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
 type Shift = 'LUNCH' | 'DINNER';
+type InfoBarTheme = 'BLACK_WHITE' | 'GLASS';
+type TransitionEffect = 'NONE' | 'FADE' | 'SLIDE_HORIZONTAL' | 'SLIDE_VERTICAL' | 'ZOOM';
 
 interface DisplayPromoPlaylist {
   id: string;
@@ -49,12 +51,22 @@ interface DisplayPromoScreen {
   name: string;
   defaultPlaylistId: string | null;
   showInfoBar: boolean;
+  infoBarTheme: InfoBarTheme;
+  transitionEffect: TransitionEffect;
   schedules: ScheduleSlot[];
 }
 
 const DAY_LABELS = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 const SHIFT_LABELS: Record<Shift, string> = { LUNCH: 'Pranzo', DINNER: 'Cena' };
 const NO_PLAYLIST = '__none__';
+const INFO_BAR_THEME_LABELS: Record<InfoBarTheme, string> = { BLACK_WHITE: 'Bianco e nero', GLASS: 'Vetro (trasparente)' };
+const TRANSITION_LABELS: Record<TransitionEffect, string> = {
+  NONE: 'Nessuna (taglio netto)',
+  FADE: 'Dissolvenza',
+  SLIDE_HORIZONTAL: 'Scorrimento orizzontale',
+  SLIDE_VERTICAL: 'Scorrimento verticale',
+  ZOOM: 'Zoom',
+};
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
@@ -246,6 +258,18 @@ export function DisplayPromoAdmin() {
     onSuccess: invalidateScreens,
   });
 
+  const setInfoBarThemeMutation = useMutation({
+    mutationFn: async ({ id, infoBarTheme }: { id: string; infoBarTheme: InfoBarTheme }) =>
+      (await api.patch(`/display-promo/screens/${id}`, { infoBarTheme })).data,
+    onSuccess: invalidateScreens,
+  });
+
+  const setTransitionEffectMutation = useMutation({
+    mutationFn: async ({ id, transitionEffect }: { id: string; transitionEffect: TransitionEffect }) =>
+      (await api.patch(`/display-promo/screens/${id}`, { transitionEffect })).data,
+    onSuccess: invalidateScreens,
+  });
+
   const openCreate = () => {
     setEditing(null);
     setName('');
@@ -350,6 +374,40 @@ export function DisplayPromoAdmin() {
               }
               label="Mostra orologio, meteo e notizie attorno al carosello (stile telegiornale)"
             />
+
+            {screen.showInfoBar && (
+              <TextField
+                select
+                label="Tema delle barre"
+                value={screen.infoBarTheme}
+                onChange={(e) =>
+                  setInfoBarThemeMutation.mutate({ id: screen.id, infoBarTheme: e.target.value as InfoBarTheme })
+                }
+                sx={{ maxWidth: 280 }}
+              >
+                {(Object.entries(INFO_BAR_THEME_LABELS) as [InfoBarTheme, string][]).map(([value, label]) => (
+                  <MenuItem key={value} value={value}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+
+            <TextField
+              select
+              label="Animazione tra i contenuti"
+              value={screen.transitionEffect}
+              onChange={(e) =>
+                setTransitionEffectMutation.mutate({ id: screen.id, transitionEffect: e.target.value as TransitionEffect })
+              }
+              sx={{ maxWidth: 280 }}
+            >
+              {(Object.entries(TRANSITION_LABELS) as [TransitionEffect, string][]).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </TextField>
 
             <Divider />
 

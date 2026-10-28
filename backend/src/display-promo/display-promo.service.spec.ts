@@ -15,6 +15,8 @@ describe('DisplayPromoService.getActivePlaylist', () => {
   const baseScreen = {
     id: 'screen-1',
     showInfoBar: false,
+    infoBarTheme: 'BLACK_WHITE',
+    transitionEffect: 'NONE',
     venue: {
       id: 'venue-1',
       name: 'Bar Demo',
@@ -113,21 +115,38 @@ describe('DisplayPromoService.getActivePlaylist', () => {
     menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
 
     prisma.displayPromoScreen.findUnique.mockResolvedValue(baseScreen); // showInfoBar: false
-    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({ enabled: false, weather: null });
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
+      enabled: false,
+      theme: 'BLACK_WHITE',
+      weather: null,
+    });
 
     prisma.displayPromoScreen.findUnique.mockResolvedValue({
       ...baseScreen,
       showInfoBar: true,
+      infoBarTheme: 'GLASS',
       venue: { ...baseScreen.venue, gpsLat: 45.07, gpsLng: 7.69 },
     });
     expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
       enabled: true,
+      theme: 'GLASS',
       weather: { lat: 45.07, lng: 7.69 },
     });
 
     // showInfoBar attivo ma nessuna coordinata salvata per il locale: niente meteo, non un errore.
     prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, showInfoBar: true });
-    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({ enabled: true, weather: null });
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
+      enabled: true,
+      theme: 'BLACK_WHITE',
+      weather: null,
+    });
+  });
+
+  it('transitionEffect dello schermo è sempre incluso nella risposta', async () => {
+    menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, transitionEffect: 'ZOOM' });
+
+    expect((await service.getActivePlaylist('screen-1')).transitionEffect).toBe('ZOOM');
   });
 });
 
