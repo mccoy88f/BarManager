@@ -1,12 +1,8 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional } from 'class-validator';
 
+/** La playlist di default è per singolo schermo (DisplayPromoScreen), non qui: v. PATCH /display-promo/screens/:id. */
 export class UpdateDisplayPromoSettingsDto {
   @IsOptional()
   @IsBoolean()
   displayPromoEnabled?: boolean;
-
-  /** null = nessuna playlist di default impostata (schermo vuoto fuori dai turni programmati). */
-  @IsOptional()
-  @IsString()
-  displayPromoDefaultPlaylistId?: string | null;
 }

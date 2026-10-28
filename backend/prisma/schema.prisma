@@ -161,14 +161,11 @@ model Venue {
 
   // Display Promo (§5.12 di DEVELOPMENT.md): playlist di foto/video a
   // tutto schermo per schermi pubblicitari pubblici, modulo opzionale
-  // come prenotazioni/ordini online. La playlist di default copre le ore
-  // fuori dai turni pranzo/cena (sotto, Venue.menuMealPeriodsHours) e
-  // quando per il turno corrente non c'è un DisplayPromoSchedule assegnato;
-  // SetNull perché eliminare quella playlist non deve bloccare il locale,
-  // solo svuotare l'impostazione.
-  displayPromoEnabled              Boolean                  @default(false)
-  displayPromoDefaultPlaylistId    String?
-  displayPromoDefaultPlaylist      DisplayPromoPlaylist?    @relation("VenueDisplayPromoDefaultPlaylist", fields: [displayPromoDefaultPlaylistId], references: [id], onDelete: SetNull)
+  // come prenotazioni/ordini online. Un locale può avere più display
+  // (DisplayPromoScreen sotto), ciascuno con una propria programmazione
+  // e playlist di default — questo flag è solo l'interruttore generale
+  // del modulo per il locale.
+  displayPromoEnabled Boolean @default(false)
 
   // Ordini online (§5.10 di DEVELOPMENT.md): asporto e consegna a domicilio
   // dal menù pubblico, modulo opzionale come le prenotazioni.
@@ -264,8 +261,8 @@ model Venue {
   expensePaymentMethods ExpensePaymentMethod[]
   wallets               Wallet[]
   expenses              Expense[]
-  displayPromoPlaylists DisplayPromoPlaylist[]  @relation("VenueDisplayPromoPlaylists")
-  displayPromoSchedules DisplayPromoSchedule[]
+  displayPromoPlaylists DisplayPromoPlaylist[] @relation("VenueDisplayPromoPlaylists")
+  displayPromoScreens   DisplayPromoScreen[]
 }
 
 /// Apertura/chiusura straordinaria per una singola data (§5.10 di
@@ -298,10 +295,14 @@ model VenueSpecialDay {
 
 /// Display Promo (§5.12 di DEVELOPMENT.md): schermi pubblicitari pubblici
 /// (TV/tablet in loop, orizzontali o verticali) che mostrano una playlist
-/// di foto/video. Asse di programmazione ortogonale a quello del menù
+/// di foto/video. Un locale può avere PIÙ display fisici diversi (es. "Sala",
+/// "Vetrina"), ciascuno con una propria programmazione: le playlist sono
+/// un pool di contenuti condiviso per locale, ma quale playlist va in onda
+/// per quale turno è una scelta per singolo DisplayPromoScreen, non per
+/// locale. Asse di programmazione ortogonale a quello del menù
 /// (MenuAvailability) ma stessi turni: qui sono solo LUNCH/DINNER perché il
 /// "fuori turno" non è un valore della playlist programmata, è la playlist
-/// di default del locale (Venue.displayPromoDefaultPlaylistId).
+/// di default dello specifico schermo (DisplayPromoScreen.defaultPlaylistId).
 enum DisplayPromoShift {
   LUNCH
   DINNER
@@ -321,10 +322,8 @@ model DisplayPromoPlaylist {
 
   items     DisplayPromoMedia[]
   schedules DisplayPromoSchedule[]
-  // Venue che hanno scelto questa playlist come fallback fuori turno
-  // (0 o 1 nella pratica, dato che ogni locale ha un solo locale — ma la
-  // relazione Prisma non lo sa, è solo l'altro lato di displayPromoDefaultPlaylist).
-  venueDefaultFor Venue[] @relation("VenueDisplayPromoDefaultPlaylist")
+  // Schermi che hanno scelto questa playlist come fallback fuori turno.
+  screenDefaultFor DisplayPromoScreen[] @relation("ScreenDisplayPromoDefaultPlaylist")
 
   createdAt DateTime @default(now())
 
@@ -348,23 +347,48 @@ model DisplayPromoMedia {
   @@index([playlistId])
 }
 
-/// Una riga per ogni (giorno della settimana, turno) con una playlist
-/// assegnata esplicitamente: righe assenti = nessuna playlist specifica per
-/// quello slot, si usa la playlist di default del locale (§5.12). Stesso
-/// dayOfWeek di OpeningHoursDay/MenuAvailability (0 = domenica, convenzione
-/// Date.getDay(), risolto nel fuso orario del locale).
+/// Un display fisico (TV/tablet) collegato alla pagina pubblica
+/// `/display/:screenId`: l'id stesso è l'URL/QR dato a quel dispositivo,
+/// nessuna risoluzione per sottodominio necessaria qui (a differenza delle
+/// altre pagine pubbliche) perché identifica già univocamente sia il
+/// display sia, tramite esso, il locale.
+model DisplayPromoScreen {
+  id   String @id @default(cuid())
+  name String
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  // Playlist di riserva per questo schermo, mostrata fuori da pranzo/cena
+  // e per i turni senza una riga di programmazione sotto.
+  defaultPlaylistId String?
+  defaultPlaylist   DisplayPromoPlaylist? @relation("ScreenDisplayPromoDefaultPlaylist", fields: [defaultPlaylistId], references: [id], onDelete: SetNull)
+
+  schedules DisplayPromoSchedule[]
+
+  createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+/// Una riga per ogni (schermo, giorno della settimana, turno) con una
+/// playlist assegnata esplicitamente: righe assenti = nessuna playlist
+/// specifica per quello slot, si usa la playlist di default DELLO STESSO
+/// SCHERMO (§5.12). Stesso dayOfWeek di OpeningHoursDay/MenuAvailability
+/// (0 = domenica, convenzione Date.getDay(), risolto nel fuso orario del
+/// locale a cui appartiene lo schermo).
 model DisplayPromoSchedule {
   id        String            @id @default(cuid())
   dayOfWeek Int
   shift     DisplayPromoShift
 
-  venueId String
-  venue   Venue  @relation(fields: [venueId], references: [id])
+  screenId String
+  screen   DisplayPromoScreen @relation(fields: [screenId], references: [id], onDelete: Cascade)
 
   playlistId String
   playlist   DisplayPromoPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
-  @@unique([venueId, dayOfWeek, shift])
+  @@unique([screenId, dayOfWeek, shift])
 }
 
 enum OnlineOrdersSlotMode {

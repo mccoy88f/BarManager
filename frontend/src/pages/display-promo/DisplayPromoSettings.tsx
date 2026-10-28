@@ -1,33 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  FormControlLabel,
-  MenuItem,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
 
-interface DisplayPromoPlaylist {
-  id: string;
-  name: string;
-}
 interface VenueDisplayPromoSettings {
   displayPromoEnabled: boolean;
-  displayPromoDefaultPlaylistId: string | null;
 }
-
-const NO_PLAYLIST = '__none__';
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
@@ -37,7 +18,12 @@ function extractErrorMessage(error: unknown): string {
   return 'Errore durante il salvataggio.';
 }
 
-/** Impostazioni del modulo Display Promo (§5.12): attivazione e playlist di default fuori turno. */
+/**
+ * Impostazioni del modulo Display Promo (§5.12): solo l'attivazione
+ * generale. La playlist di default e la programmazione sono per singolo
+ * display (un locale può averne più di uno), gestite nella pagina
+ * principale "Display Promo", non qui.
+ */
 export function DisplayPromoSettings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -48,28 +34,16 @@ export function DisplayPromoSettings() {
     queryFn: async () => (await api.get<VenueDisplayPromoSettings>('/venues/me')).data,
   });
 
-  const playlistsQuery = useQuery({
-    queryKey: ['display-promo-playlists'],
-    queryFn: async () => (await api.get<DisplayPromoPlaylist[]>('/display-promo/playlists')).data,
-  });
-
   const [enabled, setEnabled] = useState(false);
-  const [defaultPlaylistId, setDefaultPlaylistId] = useState(NO_PLAYLIST);
 
   useEffect(() => {
     if (!venueQuery.data) return;
     setEnabled(venueQuery.data.displayPromoEnabled);
-    setDefaultPlaylistId(venueQuery.data.displayPromoDefaultPlaylistId ?? NO_PLAYLIST);
   }, [venueQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: async () =>
-      (
-        await api.patch('/venues/me/display-promo-settings', {
-          displayPromoEnabled: enabled,
-          displayPromoDefaultPlaylistId: defaultPlaylistId === NO_PLAYLIST ? null : defaultPlaylistId,
-        })
-      ).data,
+      (await api.patch('/venues/me/display-promo-settings', { displayPromoEnabled: enabled })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['venue-me'] });
       showToast('Impostazioni salvate');
@@ -90,25 +64,8 @@ export function DisplayPromoSettings() {
         <CardContent sx={{ display: 'grid', gap: 2 }}>
           <FormControlLabel
             control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
-            label="Modulo attivo (pagina pubblica /display raggiungibile)"
+            label="Modulo attivo (pagine pubbliche /display/:id raggiungibili)"
           />
-
-          <TextField
-            select
-            label="Playlist di default"
-            helperText="Mostrata fuori dai turni pranzo/cena programmati, e per gli slot senza playlist assegnata."
-            value={defaultPlaylistId}
-            onChange={(e) => setDefaultPlaylistId(e.target.value)}
-          >
-            <MenuItem value={NO_PLAYLIST}>
-              <em>Nessuna (schermo vuoto)</em>
-            </MenuItem>
-            {playlistsQuery.data?.map((playlist) => (
-              <MenuItem key={playlist.id} value={playlist.id}>
-                {playlist.name}
-              </MenuItem>
-            ))}
-          </TextField>
 
           {saveMutation.isError && <Alert severity="error">{extractErrorMessage(saveMutation.error)}</Alert>}
 

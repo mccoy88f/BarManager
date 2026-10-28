@@ -32,11 +32,13 @@ import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { UpdateMediaDto } from './dto/update-media.dto';
 import { ReorderMediaDto } from './dto/reorder-media.dto';
 import { SetScheduleSlotDto } from './dto/set-schedule-slot.dto';
+import { CreateScreenDto } from './dto/create-screen.dto';
+import { UpdateScreenDto } from './dto/update-screen.dto';
 
 /** Foto e video a tutto schermo: niente documenti/PDF come in KB, qui sono solo contenuti da proiettare. */
 const ALLOWED_MEDIA_MIME = /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg))$/;
 
-/** Gestione admin delle playlist Display Promo (§5.12): CRUD playlist/contenuti e programmazione settimanale. */
+/** Gestione admin di Display Promo (§5.12): CRUD playlist/contenuti (pool per locale) e CRUD display con la relativa programmazione settimanale (per schermo). */
 @Controller('display-promo')
 @UseGuards(JwtAuthGuard, RolesGuard, ModuleAccessGuard)
 @RequireModule('displayPromo')
@@ -121,19 +123,55 @@ export class DisplayPromoController {
     return this.displayPromoService.reorderMedia(requireVenueId(user), playlistId, dto.mediaIds);
   }
 
-  @Get('schedule')
-  listSchedule(@CurrentUser() user: AuthenticatedUser) {
-    return this.displayPromoService.listSchedule(requireVenueId(user));
+  // ---- Display (schermi fisici) ------------------------------------------
+
+  @Post('screens')
+  @Roles(Role.ADMIN)
+  createScreen(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateScreenDto) {
+    return this.displayPromoService.createScreen(requireVenueId(user), dto);
   }
 
-  @Patch('schedule/:dayOfWeek/:shift')
+  @Get('screens')
+  listScreens(@CurrentUser() user: AuthenticatedUser) {
+    return this.displayPromoService.listScreens(requireVenueId(user));
+  }
+
+  @Patch('screens/:id')
+  @Roles(Role.ADMIN)
+  updateScreen(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateScreenDto,
+  ) {
+    return this.displayPromoService.updateScreen(requireVenueId(user), id, dto);
+  }
+
+  @Delete('screens/:id')
+  @Roles(Role.ADMIN)
+  removeScreen(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.displayPromoService.removeScreen(requireVenueId(user), id);
+  }
+
+  @Get('screens/:id/schedule')
+  listSchedule(@CurrentUser() user: AuthenticatedUser, @Param('id') screenId: string) {
+    return this.displayPromoService.listSchedule(requireVenueId(user), screenId);
+  }
+
+  @Patch('screens/:id/schedule/:dayOfWeek/:shift')
   @Roles(Role.ADMIN)
   setScheduleSlot(
     @CurrentUser() user: AuthenticatedUser,
+    @Param('id') screenId: string,
     @Param('dayOfWeek') dayOfWeek: string,
     @Param('shift') shift: DisplayPromoShift,
     @Body() dto: SetScheduleSlotDto,
   ) {
-    return this.displayPromoService.setScheduleSlot(requireVenueId(user), Number(dayOfWeek), shift, dto.playlistId);
+    return this.displayPromoService.setScheduleSlot(
+      requireVenueId(user),
+      screenId,
+      Number(dayOfWeek),
+      shift,
+      dto.playlistId,
+    );
   }
 }

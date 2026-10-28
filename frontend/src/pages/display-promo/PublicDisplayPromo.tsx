@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Box, Typography } from '@mui/material';
 import { api } from '../../api/client';
@@ -29,26 +30,23 @@ function playlistSignature(playlist: DisplayPromoPlaylist | null | undefined): s
 }
 
 /**
- * Pagina pubblica /display (§5.12 di DEVELOPMENT.md): a tutto schermo, per
- * TV/tablet collegati in loop (orizzontali o verticali, nessun vincolo di
- * orientamento lato pagina — il layout si adatta al viewport del
- * dispositivo). Nessun login, risolta via sottodominio o `?venueSlug=`
- * come le altre pagine pubbliche.
+ * Pagina pubblica /display/:screenId (§5.12 di DEVELOPMENT.md): a tutto
+ * schermo, per TV/tablet collegati in loop (orizzontali o verticali,
+ * nessun vincolo di orientamento lato pagina — il layout si adatta al
+ * viewport del dispositivo). Nessun login; a differenza delle altre
+ * pagine pubbliche l'id dello schermo identifica già il locale, non serve
+ * sottodominio/`?venueSlug=` — ogni display ha il proprio link/QR
+ * (DisplayPromoAdmin.tsx), dato che un locale può averne più di uno.
  */
 export function PublicDisplayPromo() {
-  const params = new URLSearchParams(window.location.search);
-  const venueSlug = params.get('venueSlug');
+  const { screenId } = useParams<{ screenId: string }>();
   const [index, setIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const playlistQuery = useQuery({
-    queryKey: ['public-display-promo', venueSlug],
-    queryFn: async () =>
-      (
-        await api.get<DisplayPromoPlaylist | null>('/public/display-promo', {
-          params: venueSlug ? { venueSlug } : undefined,
-        })
-      ).data,
+    queryKey: ['public-display-promo', screenId],
+    queryFn: async () => (await api.get<DisplayPromoPlaylist | null>(`/public/display-promo/${screenId}`)).data,
+    enabled: !!screenId,
     refetchInterval: POLL_INTERVAL_MS,
   });
 

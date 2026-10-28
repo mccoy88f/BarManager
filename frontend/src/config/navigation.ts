@@ -271,23 +271,15 @@ export const navigation: NavItem[] = [
     label: 'Display Promo',
     path: '/display-promo',
     icon: SlideshowIcon,
-    description: 'Playlist foto/video per schermi pubblicitari pubblici',
+    description: 'Schermi pubblicitari pubblici: uno o più display, ciascuno con la propria playlist',
     moduleKey: 'displayPromo',
     children: [
       {
-        key: 'display-promo-schedule',
-        label: 'Programmazione',
-        path: '/display-promo/schedule',
+        key: 'display-promo-playlists',
+        label: 'Playlist',
+        path: '/display-promo/playlists',
         icon: SlideshowIcon,
-        description: 'Quale playlist per ogni giorno e turno pranzo/cena',
-      },
-      {
-        key: 'display-promo-link',
-        label: 'Link e QR',
-        path: '/display-promo/link',
-        icon: SlideshowIcon,
-        description: 'Indirizzo e QR code della pagina pubblica /display',
-        roles: ['ADMIN'],
+        description: 'Foto/video condivisi, da assegnare ai display',
       },
       {
         key: 'display-promo-settings',

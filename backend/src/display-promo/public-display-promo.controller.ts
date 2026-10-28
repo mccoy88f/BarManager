@@ -1,33 +1,19 @@
-import { Controller, Get, NotFoundException, Query, Req } from '@nestjs/common';
-import { Request } from 'express';
-import { PrismaService } from '../prisma/prisma.service';
+import { Controller, Get, Param } from '@nestjs/common';
 import { DisplayPromoService } from './display-promo.service';
 
 /**
- * Pagina pubblica /display (schermi pubblicitari, nessun login): stessa
- * risoluzione multi-tenant delle altre pagine pubbliche (sottodominio via
- * TenantMiddleware, o `?venueSlug=` in sviluppo locale).
+ * Pagina pubblica /display/:screenId (schermi pubblicitari, nessun login):
+ * a differenza delle altre pagine pubbliche, l'id dello schermo stesso
+ * identifica già il locale — nessuna risoluzione per sottodominio o
+ * `?venueSlug=` necessaria qui (ogni display fisico ha un link/QR proprio,
+ * generato in DisplayPromoAdmin.tsx).
  */
 @Controller('public/display-promo')
 export class PublicDisplayPromoController {
-  constructor(
-    private displayPromoService: DisplayPromoService,
-    private prisma: PrismaService,
-  ) {}
+  constructor(private displayPromoService: DisplayPromoService) {}
 
-  private async resolveVenueId(req: Request, venueSlug?: string): Promise<string> {
-    let venueId = req.venue?.id;
-    if (!venueId && venueSlug) {
-      const venue = await this.prisma.venue.findFirst({ where: { slug: venueSlug, active: true } });
-      venueId = venue?.id;
-    }
-    if (!venueId) throw new NotFoundException('Locale non trovato');
-    return venueId;
-  }
-
-  @Get()
-  async get(@Req() req: Request, @Query('venueSlug') venueSlug?: string) {
-    const venueId = await this.resolveVenueId(req, venueSlug);
-    return this.displayPromoService.getActivePlaylist(venueId);
+  @Get(':screenId')
+  get(@Param('screenId') screenId: string) {
+    return this.displayPromoService.getActivePlaylist(screenId);
   }
 }

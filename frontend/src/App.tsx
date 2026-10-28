@@ -54,9 +54,8 @@ import { OnlineOrdersPublicLink } from './pages/online-orders/OnlineOrdersPublic
 import { OrderNotificationProvider } from './context/OrderNotificationContext';
 import { PublicDisplayPromo } from './pages/display-promo/PublicDisplayPromo';
 import { DisplayPromoAdmin } from './pages/display-promo/DisplayPromoAdmin';
-import { DisplayPromoSchedule } from './pages/display-promo/DisplayPromoSchedule';
+import { DisplayPromoPlaylists } from './pages/display-promo/DisplayPromoPlaylists';
 import { DisplayPromoSettings } from './pages/display-promo/DisplayPromoSettings';
-import { DisplayPromoLink } from './pages/display-promo/DisplayPromoLink';
 
 export default function App() {
   return (
@@ -71,7 +70,7 @@ export default function App() {
       <Route path="/privacy" element={<PublicPrivacyManage />} />
       <Route path="/ordina" element={<PublicOnlineOrder />} />
       <Route path="/ordina/traccia/:id" element={<PublicOnlineOrderTrack />} />
-      <Route path="/display" element={<PublicDisplayPromo />} />
+      <Route path="/display/:screenId" element={<PublicDisplayPromo />} />
 
       <Route path="/login" element={<Login />} />
 
@@ -158,10 +157,9 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute moduleKey="displayPromo" />}>
             <Route path="/display-promo" element={<DisplayPromoAdmin />} />
-            <Route path="/display-promo/schedule" element={<DisplayPromoSchedule />} />
+            <Route path="/display-promo/playlists" element={<DisplayPromoPlaylists />} />
           </Route>
           <Route element={<ProtectedRoute moduleKey="displayPromo" allow={['ADMIN']} />}>
-            <Route path="/display-promo/link" element={<DisplayPromoLink />} />
             <Route path="/display-promo/settings" element={<DisplayPromoSettings />} />
           </Route>
 
