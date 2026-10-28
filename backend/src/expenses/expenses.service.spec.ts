@@ -20,6 +20,7 @@ describe('ExpensesService', () => {
       update: jest.Mock;
     };
     task: { findUnique: jest.Mock };
+    supplier: { findUnique: jest.Mock; findMany: jest.Mock };
     expense: {
       create: jest.Mock;
       findMany: jest.Mock;
@@ -33,6 +34,7 @@ describe('ExpensesService', () => {
   const paymentMethod = { id: 'pm-1', venueId: 'venue-1', name: 'Contanti', active: true };
   const wallet = { id: 'w-1', venueId: 'venue-1', name: 'Cassa contanti', active: true };
   const task = { id: 'task-1', venueId: 'venue-1' };
+  const supplier = { id: 'sup-1', venueId: 'venue-1', name: 'Fornitore Birra' };
 
   beforeEach(() => {
     prisma = {
@@ -51,6 +53,7 @@ describe('ExpensesService', () => {
         update: jest.fn(),
       },
       task: { findUnique: jest.fn() },
+      supplier: { findUnique: jest.fn(), findMany: jest.fn() },
       expense: {
         create: jest.fn(),
         findMany: jest.fn(),
@@ -82,6 +85,7 @@ describe('ExpensesService', () => {
           { name: 'Bancomat', venueId: 'venue-1' },
           { name: 'Carta di credito', venueId: 'venue-1' },
           { name: 'Bonifico', venueId: 'venue-1' },
+          { name: 'Assegno', venueId: 'venue-1' },
         ],
       });
       expect(prisma.wallet.createMany).toHaveBeenCalledWith({
@@ -173,6 +177,92 @@ describe('ExpensesService', () => {
     });
   });
 
+  describe('createExpense — fornitore associato (§5.5, "pagamenti")', () => {
+    it('crea una spesa/pagamento associato a un fornitore dello stesso locale', async () => {
+      prisma.expensePaymentMethod.findUnique.mockResolvedValue(paymentMethod);
+      prisma.wallet.findUnique.mockResolvedValue(wallet);
+      prisma.supplier.findUnique.mockResolvedValue(supplier);
+      prisma.expense.create.mockResolvedValue({ id: 'exp-1' });
+
+      await service.createExpense('venue-1', 'user-1', baseExpenseDto({ supplierId: 'sup-1' }));
+
+      expect(prisma.expense.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ supplierId: 'sup-1' }) }),
+      );
+    });
+
+    it('rifiuta un fornitore di un altro locale', async () => {
+      prisma.expensePaymentMethod.findUnique.mockResolvedValue(paymentMethod);
+      prisma.wallet.findUnique.mockResolvedValue(wallet);
+      prisma.supplier.findUnique.mockResolvedValue({ ...supplier, venueId: 'venue-2' });
+
+      await expect(
+        service.createExpense('venue-1', 'user-1', baseExpenseDto({ supplierId: 'sup-1' })),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('senza supplierId resta un pagamento libero (supplierId null)', async () => {
+      prisma.expensePaymentMethod.findUnique.mockResolvedValue(paymentMethod);
+      prisma.wallet.findUnique.mockResolvedValue(wallet);
+      prisma.expense.create.mockResolvedValue({ id: 'exp-1' });
+
+      await service.createExpense('venue-1', 'user-1', baseExpenseDto());
+
+      expect(prisma.supplier.findUnique).not.toHaveBeenCalled();
+      expect(prisma.expense.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ supplierId: null }) }),
+      );
+    });
+  });
+
+  describe('updateExpense — fornitore', () => {
+    it('assegna un fornitore a un pagamento già registrato', async () => {
+      prisma.expense.findUnique.mockResolvedValue({ id: 'exp-1', venueId: 'venue-1' });
+      prisma.supplier.findUnique.mockResolvedValue(supplier);
+      prisma.expense.update.mockResolvedValue({ id: 'exp-1' });
+
+      await service.updateExpense('venue-1', 'exp-1', { supplierId: 'sup-1' });
+
+      expect(prisma.expense.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ supplierId: 'sup-1' }) }),
+      );
+    });
+
+    it('un supplierId vuoto rende di nuovo libero il pagamento', async () => {
+      prisma.expense.findUnique.mockResolvedValue({ id: 'exp-1', venueId: 'venue-1' });
+      prisma.expense.update.mockResolvedValue({ id: 'exp-1' });
+
+      await service.updateExpense('venue-1', 'exp-1', { supplierId: '' });
+
+      expect(prisma.expense.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ supplierId: null }) }),
+      );
+    });
+
+    it('omettere supplierId non tocca il fornitore già assegnato', async () => {
+      prisma.expense.findUnique.mockResolvedValue({ id: 'exp-1', venueId: 'venue-1' });
+      prisma.expense.update.mockResolvedValue({ id: 'exp-1' });
+
+      await service.updateExpense('venue-1', 'exp-1', { description: 'Nuova descrizione' });
+
+      const call = prisma.expense.update.mock.calls[0][0];
+      expect(call.data).not.toHaveProperty('supplierId');
+    });
+  });
+
+  describe('listSuppliersBasic', () => {
+    it('torna solo i fornitori attivi del locale, come il selettore filtro', async () => {
+      prisma.supplier.findMany.mockResolvedValue([supplier]);
+
+      const result = await service.listSuppliersBasic('venue-1');
+
+      expect(result).toEqual([supplier]);
+      expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { venueId: 'venue-1', active: true } }),
+      );
+    });
+  });
+
   describe('list — filtri', () => {
     it('applica intervallo date, metodo, portafoglio e origine', async () => {
       prisma.expense.findMany.mockResolvedValue([]);
@@ -199,6 +289,20 @@ describe('ExpensesService', () => {
       await service.list('venue-1', { origin: 'standalone' });
       const call = prisma.expense.findMany.mock.calls[0][0];
       expect(call.where.taskId).toBeNull();
+    });
+
+    it('filtra per un fornitore specifico', async () => {
+      prisma.expense.findMany.mockResolvedValue([]);
+      await service.list('venue-1', { supplierId: 'sup-1' });
+      const call = prisma.expense.findMany.mock.calls[0][0];
+      expect(call.where.supplierId).toBe('sup-1');
+    });
+
+    it('"onlyManual" filtra solo i pagamenti senza fornitore, anche se supplierId è impostato per errore', async () => {
+      prisma.expense.findMany.mockResolvedValue([]);
+      await service.list('venue-1', { onlyManual: true, supplierId: 'sup-1' });
+      const call = prisma.expense.findMany.mock.calls[0][0];
+      expect(call.where.supplierId).toBeNull();
     });
   });
 

@@ -800,6 +800,7 @@ model Supplier {
 
   products Product[]
   orders   Order[]
+  expenses Expense[]
 
   createdAt DateTime @default(now())
 }
@@ -1200,6 +1201,14 @@ model Expense {
 
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id])
+
+  // Fornitore associato, facoltativo (§5.5): una spesa/pagamento può essere
+  // libero (null, es. utenze, affitto) o riferito a un fornitore per i
+  // report filtrabili per fornitore. Indipendente da taskId sotto — una
+  // spesa generata da una scadenza collegata a un ordine potrebbe comunque
+  // non avere qui il fornitore se non assegnato esplicitamente.
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
   // Scadenza che ha generato questa spesa, se registrata da lì (§5.5) —
   // al più una spesa per scadenza. Assente per le spese autonome.

@@ -16,11 +16,16 @@ export interface ExpenseFilters {
   walletId?: string;
   /** 'linked' = solo spese collegate a una scadenza, 'standalone' = solo autonome. */
   origin?: 'linked' | 'standalone';
+  /** Un fornitore specifico. Ignorato se onlyManual è true. */
+  supplierId?: string;
+  /** Solo spese/pagamenti senza fornitore (liberi/manuali). */
+  onlyManual?: boolean;
 }
 
 const EXPENSE_INCLUDE = {
   paymentMethod: true,
   wallet: true,
+  supplier: { select: { id: true, name: true } },
   task: { select: { id: true, title: true, orderId: true } },
   createdBy: { select: { email: true } },
 } as const;
@@ -36,7 +41,7 @@ export class ExpensesService {
    */
   async seedDefaults(venueId: string) {
     await this.prisma.expensePaymentMethod.createMany({
-      data: ['Contanti', 'Bancomat', 'Carta di credito', 'Bonifico'].map((name) => ({
+      data: ['Contanti', 'Bancomat', 'Carta di credito', 'Bonifico', 'Assegno'].map((name) => ({
         name,
         venueId,
       })),
@@ -109,6 +114,22 @@ export class ExpensesService {
 
   // --- Spese -------------------------------------------------------------
 
+  /** Elenco leggero per il filtro/selettore fornitore in Spese — niente @RequireModule('inventory'), un dipendente può avere "expenses" senza "inventory". */
+  listSuppliersBasic(venueId: string) {
+    return this.prisma.supplier.findMany({
+      where: { venueId, active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  private async assertSupplierOwnership(venueId: string, supplierId: string) {
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier || supplier.venueId !== venueId) {
+      throw new BadRequestException('Fornitore non valido');
+    }
+  }
+
   async createExpense(venueId: string, createdById: string, dto: CreateExpenseDto) {
     const [paymentMethod, wallet] = await Promise.all([
       this.prisma.expensePaymentMethod.findUnique({ where: { id: dto.paymentMethodId } }),
@@ -119,6 +140,9 @@ export class ExpensesService {
     }
     if (!wallet || wallet.venueId !== venueId) {
       throw new BadRequestException('Portafoglio non valido');
+    }
+    if (dto.supplierId) {
+      await this.assertSupplierOwnership(venueId, dto.supplierId);
     }
     if (dto.taskId) {
       const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
@@ -136,6 +160,7 @@ export class ExpensesService {
           venueId,
           paymentMethodId: dto.paymentMethodId,
           walletId: dto.walletId,
+          supplierId: dto.supplierId || null,
           taskId: dto.taskId,
           createdById,
         },
@@ -156,6 +181,7 @@ export class ExpensesService {
       ...(filters.walletId ? { walletId: filters.walletId } : {}),
       ...(filters.origin === 'linked' ? { taskId: { not: null } } : {}),
       ...(filters.origin === 'standalone' ? { taskId: null } : {}),
+      ...(filters.onlyManual ? { supplierId: null } : filters.supplierId ? { supplierId: filters.supplierId } : {}),
       ...(filters.dateFrom || filters.dateTo
         ? {
             date: {
@@ -184,6 +210,7 @@ export class ExpensesService {
       `${e.date.toLocaleDateString('it-IT')}  € ${e.amount.toFixed(2)}`,
       `  ${e.description}`,
       `  ${e.paymentMethod.name} — ${e.wallet.name}`,
+      ...(e.supplier ? [`  Fornitore: ${e.supplier.name}`] : []),
     ]);
     const total = expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -215,6 +242,9 @@ export class ExpensesService {
         throw new BadRequestException('Portafoglio non valido');
       }
     }
+    if (dto.supplierId) {
+      await this.assertSupplierOwnership(venueId, dto.supplierId);
+    }
     return this.prisma.expense.update({
       where: { id },
       data: {
@@ -223,6 +253,8 @@ export class ExpensesService {
         ...(dto.date !== undefined ? { date: new Date(dto.date) } : {}),
         ...(dto.paymentMethodId !== undefined ? { paymentMethodId: dto.paymentMethodId } : {}),
         ...(dto.walletId !== undefined ? { walletId: dto.walletId } : {}),
+        // null esplicito = rende la spesa libera; undefined (campo assente) = non tocca il fornitore attuale.
+        ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId || null } : {}),
       },
       include: EXPENSE_INCLUDE,
     });
