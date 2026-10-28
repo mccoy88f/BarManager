@@ -150,6 +150,11 @@ export class DisplayPromoService {
     return this.prisma.displayPromoScreen.update({ where: { id: screenId }, data: dto });
   }
 
+  async setHeaderLogo(venueId: string, screenId: string, headerLogoUrl: string) {
+    await this.assertScreenOwnership(venueId, screenId);
+    return this.prisma.displayPromoScreen.update({ where: { id: screenId }, data: { headerLogoUrl } });
+  }
+
   async removeScreen(venueId: string, screenId: string) {
     await this.assertScreenOwnership(venueId, screenId);
     // onDelete: Cascade su DisplayPromoSchedule di questo schermo.
@@ -236,6 +241,9 @@ export class DisplayPromoService {
 
     return {
       venueName: screen.venue.name,
+      // Precedenza: logo > testo personalizzato > nome del locale (gestita lato frontend, qui solo i dati grezzi).
+      headerText: screen.headerText,
+      headerLogoUrl: screen.headerLogoUrl,
       playlist,
       transitionEffect: screen.transitionEffect,
       infoBar: {

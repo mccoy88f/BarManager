@@ -337,6 +337,12 @@ enum DisplayPromoTransition {
   ZOOM
 }
 
+/// Solo organizzativo (§5.12): v. commento su DisplayPromoScreen.orientation.
+enum DisplayPromoOrientation {
+  HORIZONTAL
+  VERTICAL
+}
+
 model DisplayPromoPlaylist {
   id   String @id @default(cuid())
   name String
@@ -403,6 +409,18 @@ model DisplayPromoScreen {
   // Transizione tra un contenuto e il successivo del carosello: indipendente
   // da showInfoBar, si applica anche a schermo intero senza la fascia.
   transitionEffect DisplayPromoTransition @default(NONE)
+
+  // Solo organizzativo/informativo (il layout pubblico si adatta già da
+  // solo al viewport reale del dispositivo via CSS, object-fit: cover):
+  // aiuta l'admin a ricordare come è montato fisicamente ogni schermo.
+  orientation DisplayPromoOrientation @default(HORIZONTAL)
+
+  // Intestazione personalizzata in alto a sinistra nella fascia "da
+  // telegiornale" (rilevante solo se showInfoBar è true): se headerLogoUrl
+  // è impostato ha sempre la precedenza su headerText; se nessuno dei due
+  // è impostato si usa il nome del locale (comportamento storico).
+  headerText    String?
+  headerLogoUrl String?
 
   schedules DisplayPromoSchedule[]
 

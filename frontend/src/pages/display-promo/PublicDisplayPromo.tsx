@@ -25,6 +25,8 @@ interface DisplayPromoPlaylist {
 }
 interface DisplayPromoScreenData {
   venueName: string;
+  headerText: string | null;
+  headerLogoUrl: string | null;
   playlist: DisplayPromoPlaylist | null;
   transitionEffect: TransitionEffect;
   infoBar: {
@@ -43,7 +45,7 @@ const POLL_INTERVAL_MS = 60000;
 const WEATHER_POLL_MS = 30 * 60000;
 const NEWS_POLL_MS = 15 * 60000;
 const TRANSITION_MS = 800;
-const HEADER_HEIGHT = 100;
+const HEADER_HEIGHT = 56;
 const TICKER_HEIGHT = 56;
 
 /** Firma leggera per sapere se la playlist attiva è cambiata (nuova playlist O contenuti riordinati/aggiunti dentro la stessa). */
@@ -246,14 +248,14 @@ function LiveClock() {
   }, []);
 
   const time = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const date = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const date = now.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
 
   return (
-    <Box sx={{ textAlign: 'right' }}>
-      <Typography variant="h4" fontWeight={700} sx={{ color: 'white', lineHeight: 1 }}>
+    <Box sx={{ textAlign: 'right', lineHeight: 1.1 }}>
+      <Typography variant="subtitle1" fontWeight={700} sx={{ color: 'white', lineHeight: 1.1 }}>
         {time}
       </Typography>
-      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'capitalize' }}>
+      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'capitalize' }}>
         {date}
       </Typography>
     </Box>
@@ -294,9 +296,9 @@ function WeatherWidget({ lat, lng }: { lat: number; lng: number }) {
   const Icon = weatherIcon(weatherQuery.data.weathercode);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'white' }}>
-      <Icon sx={{ fontSize: 40 }} />
-      <Typography variant="h4" fontWeight={700}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'white' }}>
+      <Icon sx={{ fontSize: 24 }} />
+      <Typography variant="subtitle1" fontWeight={700}>
         {Math.round(weatherQuery.data.temperature)}°
       </Typography>
     </Box>
@@ -444,15 +446,24 @@ export function PublicDisplayPromo() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          px: 3,
+          px: 2,
           zIndex: 3,
           ...(glass ? { bgcolor: 'rgba(15,23,42,0.35)', backdropFilter: 'blur(14px)' } : { bgcolor: 'rgba(0,0,0,0.85)' }),
         }}
       >
-        <Typography variant="h5" fontWeight={700} sx={{ color: 'white' }}>
-          {data.venueName}
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        {data.headerLogoUrl ? (
+          <Box
+            component="img"
+            src={data.headerLogoUrl}
+            alt={data.venueName}
+            sx={{ height: '70%', maxWidth: '40%', objectFit: 'contain' }}
+          />
+        ) : (
+          <Typography variant="subtitle1" fontWeight={700} sx={{ color: 'white' }} noWrap>
+            {data.headerText || data.venueName}
+          </Typography>
+        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {data.infoBar.weather && <WeatherWidget lat={data.infoBar.weather.lat} lng={data.infoBar.weather.lng} />}
           <LiveClock />
         </Box>

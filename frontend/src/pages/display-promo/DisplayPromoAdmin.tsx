@@ -36,6 +36,7 @@ import { useToast } from '../../components/ToastProvider';
 type Shift = 'LUNCH' | 'DINNER';
 type InfoBarTheme = 'BLACK_WHITE' | 'GLASS';
 type TransitionEffect = 'NONE' | 'FADE' | 'SLIDE_HORIZONTAL' | 'SLIDE_VERTICAL' | 'ZOOM';
+type Orientation = 'HORIZONTAL' | 'VERTICAL';
 
 interface DisplayPromoPlaylist {
   id: string;
@@ -53,6 +54,9 @@ interface DisplayPromoScreen {
   showInfoBar: boolean;
   infoBarTheme: InfoBarTheme;
   transitionEffect: TransitionEffect;
+  orientation: Orientation;
+  headerText: string | null;
+  headerLogoUrl: string | null;
   schedules: ScheduleSlot[];
 }
 
@@ -60,6 +64,7 @@ const DAY_LABELS = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì',
 const SHIFT_LABELS: Record<Shift, string> = { LUNCH: 'Pranzo', DINNER: 'Cena' };
 const NO_PLAYLIST = '__none__';
 const INFO_BAR_THEME_LABELS: Record<InfoBarTheme, string> = { BLACK_WHITE: 'Bianco e nero', GLASS: 'Vetro (trasparente)' };
+const ORIENTATION_LABELS: Record<Orientation, string> = { HORIZONTAL: 'Orizzontale', VERTICAL: 'Verticale' };
 const TRANSITION_LABELS: Record<TransitionEffect, string> = {
   NONE: 'Nessuna (taglio netto)',
   FADE: 'Dissolvenza',
@@ -270,6 +275,33 @@ export function DisplayPromoAdmin() {
     onSuccess: invalidateScreens,
   });
 
+  const setOrientationMutation = useMutation({
+    mutationFn: async ({ id, orientation }: { id: string; orientation: Orientation }) =>
+      (await api.patch(`/display-promo/screens/${id}`, { orientation })).data,
+    onSuccess: invalidateScreens,
+  });
+
+  const setHeaderTextMutation = useMutation({
+    mutationFn: async ({ id, headerText }: { id: string; headerText: string | null }) =>
+      (await api.patch(`/display-promo/screens/${id}`, { headerText })).data,
+    onSuccess: invalidateScreens,
+  });
+
+  const uploadHeaderLogoMutation = useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const form = new FormData();
+      form.append('file', file);
+      return (await api.post(`/display-promo/screens/${id}/header-logo`, form)).data;
+    },
+    onSuccess: invalidateScreens,
+  });
+
+  const removeHeaderLogoMutation = useMutation({
+    mutationFn: async (id: string) =>
+      (await api.patch(`/display-promo/screens/${id}`, { headerLogoUrl: null })).data,
+    onSuccess: invalidateScreens,
+  });
+
   const openCreate = () => {
     setEditing(null);
     setName('');
@@ -365,6 +397,23 @@ export function DisplayPromoAdmin() {
               ))}
             </TextField>
 
+            <TextField
+              select
+              label="Orientamento"
+              helperText="Solo organizzativo: la pagina si adatta già da sola al dispositivo reale."
+              value={screen.orientation}
+              onChange={(e) =>
+                setOrientationMutation.mutate({ id: screen.id, orientation: e.target.value as Orientation })
+              }
+              sx={{ maxWidth: 280 }}
+            >
+              {(Object.entries(ORIENTATION_LABELS) as [Orientation, string][]).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </TextField>
+
             <FormControlLabel
               control={
                 <Switch
@@ -391,6 +440,53 @@ export function DisplayPromoAdmin() {
                   </MenuItem>
                 ))}
               </TextField>
+            )}
+
+            {screen.showInfoBar && (
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary">
+                  In alto a sinistra nella barra: un logo (se caricato) ha sempre la precedenza su un
+                  testo personalizzato, che a sua volta ha la precedenza sul nome del locale.
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {screen.headerLogoUrl && (
+                    <Box
+                      component="img"
+                      src={screen.headerLogoUrl}
+                      alt="Logo intestazione"
+                      sx={{ height: 40, maxWidth: 160, objectFit: 'contain', bgcolor: 'black', borderRadius: 1, p: 0.5 }}
+                    />
+                  )}
+                  <Button component="label" size="small" variant="outlined">
+                    {screen.headerLogoUrl ? 'Cambia logo' : 'Carica logo'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadHeaderLogoMutation.mutate({ id: screen.id, file });
+                        e.target.value = '';
+                      }}
+                    />
+                  </Button>
+                  {screen.headerLogoUrl && (
+                    <Button size="small" color="error" onClick={() => removeHeaderLogoMutation.mutate(screen.id)}>
+                      Rimuovi logo
+                    </Button>
+                  )}
+                </Stack>
+                <TextField
+                  label="Testo personalizzato (se niente logo)"
+                  placeholder={screen.headerLogoUrl ? 'Ignorato: è caricato un logo' : 'Es. Offerte di oggi'}
+                  disabled={!!screen.headerLogoUrl}
+                  defaultValue={screen.headerText ?? ''}
+                  onBlur={(e) =>
+                    setHeaderTextMutation.mutate({ id: screen.id, headerText: e.target.value.trim() || null })
+                  }
+                  sx={{ maxWidth: 360 }}
+                />
+              </Stack>
             )}
 
             <TextField
