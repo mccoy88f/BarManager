@@ -17,6 +17,8 @@ describe('DisplayPromoService.getActivePlaylist', () => {
     showInfoBar: false,
     infoBarTheme: 'BLACK_WHITE',
     transitionEffect: 'NONE',
+    headerText: null,
+    headerLogoUrl: null,
     venue: {
       id: 'venue-1',
       name: 'Bar Demo',
@@ -148,6 +150,20 @@ describe('DisplayPromoService.getActivePlaylist', () => {
 
     expect((await service.getActivePlaylist('screen-1')).transitionEffect).toBe('ZOOM');
   });
+
+  it('headerText/headerLogoUrl grezzi sono sempre inclusi, la precedenza la decide il frontend', async () => {
+    menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      ...baseScreen,
+      headerText: 'Offerte di oggi',
+      headerLogoUrl: '/uploads/display-promo/logo.png',
+    });
+
+    const result = await service.getActivePlaylist('screen-1');
+
+    expect(result.headerText).toBe('Offerte di oggi');
+    expect(result.headerLogoUrl).toBe('/uploads/display-promo/logo.png');
+  });
 });
 
 describe('DisplayPromoService.getNewsHeadlines', () => {
@@ -223,6 +239,26 @@ describe('DisplayPromoService — CRUD con isolamento per locale', () => {
 
     await expect(
       service.updateScreen('venue-1', 's1', { defaultPlaylistId: 'p1' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.displayPromoScreen.update).not.toHaveBeenCalled();
+  });
+
+  it('setHeaderLogo imposta il logo solo per uno schermo del proprio locale', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ id: 's1', venueId: 'venue-1' });
+
+    await service.setHeaderLogo('venue-1', 's1', '/uploads/display-promo/logo.png');
+
+    expect(prisma.displayPromoScreen.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { headerLogoUrl: '/uploads/display-promo/logo.png' },
+    });
+  });
+
+  it('rifiuta di impostare il logo su uno schermo di un altro locale', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ id: 's1', venueId: 'venue-2' });
+
+    await expect(
+      service.setHeaderLogo('venue-1', 's1', '/uploads/display-promo/logo.png'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.displayPromoScreen.update).not.toHaveBeenCalled();
   });

@@ -37,6 +37,8 @@ import { UpdateScreenDto } from './dto/update-screen.dto';
 
 /** Foto e video a tutto schermo: niente documenti/PDF come in KB, qui sono solo contenuti da proiettare. */
 const ALLOWED_MEDIA_MIME = /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg))$/;
+/** Solo immagini per il logo dell'intestazione, niente video. */
+const ALLOWED_LOGO_MIME = /^image\/(jpe?g|png|webp|gif|svg\+xml)$/;
 
 /** Gestione admin di Display Promo (§5.12): CRUD playlist/contenuti (pool per locale) e CRUD display con la relativa programmazione settimanale (per schermo). */
 @Controller('display-promo')
@@ -144,6 +146,31 @@ export class DisplayPromoController {
     @Body() dto: UpdateScreenDto,
   ) {
     return this.displayPromoService.updateScreen(requireVenueId(user), id, dto);
+  }
+
+  /** Logo personalizzato per l'intestazione in alto a sinistra (§5.12): ha sempre la precedenza su headerText/nome del locale. */
+  @Post('screens/:id/header-logo')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: `${process.env.UPLOADS_DIR || './uploads'}/display-promo`,
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB, un logo non ha bisogno di più
+      fileFilter: (_req, file, cb) => cb(null, ALLOWED_LOGO_MIME.test(file.mimetype)),
+    }),
+  )
+  uploadHeaderLogo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') screenId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.displayPromoService.setHeaderLogo(
+      requireVenueId(user),
+      screenId,
+      `/uploads/display-promo/${file.filename}`,
+    );
   }
 
   @Delete('screens/:id')

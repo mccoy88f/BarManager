@@ -30,6 +30,8 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PrintIcon from '@mui/icons-material/Print';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -49,8 +51,11 @@ interface ExpenseRow {
   date: string;
   paymentMethod: RefOption;
   wallet: RefOption;
+  supplier: RefOption | null;
   task: { id: string; title: string; orderId: string | null } | null;
 }
+
+const ONLY_MANUAL = '__manual__';
 
 const emptyFilters = {
   dateFrom: '',
@@ -58,6 +63,7 @@ const emptyFilters = {
   paymentMethodId: '',
   walletId: '',
   origin: '' as '' | 'linked' | 'standalone',
+  supplier: '' as '' | typeof ONLY_MANUAL | string,
 };
 
 const emptyExpenseForm = {
@@ -66,6 +72,7 @@ const emptyExpenseForm = {
   date: new Date().toISOString().slice(0, 10),
   paymentMethodId: '',
   walletId: '',
+  supplierId: '',
 };
 
 function extractErrorMessage(error: unknown): string {
@@ -98,6 +105,16 @@ function ExpensesTab() {
     queryFn: async () => (await api.get<RefOption[]>('/expenses/wallets')).data,
   });
 
+  const suppliersQuery = useQuery({
+    queryKey: ['expense-suppliers'],
+    queryFn: async () => (await api.get<RefOption[]>('/expenses/suppliers')).data,
+  });
+
+  const supplierParams = {
+    supplierId: filters.supplier && filters.supplier !== ONLY_MANUAL ? filters.supplier : undefined,
+    onlyManual: filters.supplier === ONLY_MANUAL ? true : undefined,
+  };
+
   const expensesQuery = useQuery({
     queryKey: ['expenses', filters],
     queryFn: async () =>
@@ -109,6 +126,7 @@ function ExpensesTab() {
             paymentMethodId: filters.paymentMethodId || undefined,
             walletId: filters.walletId || undefined,
             origin: filters.origin || undefined,
+            ...supplierParams,
           },
         })
       ).data,
@@ -123,7 +141,7 @@ function ExpensesTab() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...form, amount: Number(form.amount) };
+      const payload = { ...form, amount: Number(form.amount), supplierId: form.supplierId || null };
       return editing
         ? (await api.patch(`/expenses/${editing.id}`, payload)).data
         : (await api.post('/expenses', payload)).data;
@@ -160,6 +178,7 @@ function ExpensesTab() {
       date: expense.date.slice(0, 10),
       paymentMethodId: expense.paymentMethod.id,
       walletId: expense.wallet.id,
+      supplierId: expense.supplier?.id ?? '',
     });
     setOpen(true);
   };
@@ -169,7 +188,7 @@ function ExpensesTab() {
       await printOrShare({
         usage: 'EXPENSES_REPORT',
         escposUrl: `/expenses/escpos?${new URLSearchParams(
-          Object.entries(filters).filter(([, v]) => v) as [string, string][],
+          Object.entries({ ...filters, ...supplierParams }).filter(([, v]) => v) as [string, string][],
         ).toString()}`,
         printPdf: async () => {
           window.print();
@@ -183,6 +202,33 @@ function ExpensesTab() {
     }
   };
 
+  const download = async (format: 'xlsx' | 'pdf') => {
+    try {
+      const response = await api.get(`/expenses/export/${format}`, {
+        params: {
+          dateFrom: filters.dateFrom || undefined,
+          dateTo: filters.dateTo || undefined,
+          paymentMethodId: filters.paymentMethodId || undefined,
+          walletId: filters.walletId || undefined,
+          origin: filters.origin || undefined,
+          ...supplierParams,
+        },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pagamenti.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast({
+        message: `Esportazione non riuscita.${err instanceof Error ? ` ${err.message}` : ''}`,
+        severity: 'error',
+      });
+    }
+  };
+
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -190,6 +236,12 @@ function ExpensesTab() {
         <Stack direction="row" spacing={1}>
           <Button startIcon={<PrintIcon />} onClick={handlePrint}>
             Stampa
+          </Button>
+          <Button startIcon={<FileDownloadIcon />} onClick={() => download('xlsx')}>
+            Esporta XLS
+          </Button>
+          <Button startIcon={<PictureAsPdfIcon />} onClick={() => download('pdf')}>
+            Esporta PDF
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
             Aggiungi spesa
@@ -260,7 +312,29 @@ function ExpensesTab() {
             <MenuItem value="standalone">Solo autonome</MenuItem>
             <MenuItem value="linked">Solo da scadenza</MenuItem>
           </TextField>
-          {(filters.dateFrom || filters.dateTo || filters.paymentMethodId || filters.walletId || filters.origin) && (
+          <TextField
+            select
+            label="Fornitore"
+            size="small"
+            sx={{ minWidth: 180 }}
+            InputLabelProps={{ shrink: true }}
+            value={filters.supplier}
+            onChange={(e) => setFilters((f) => ({ ...f, supplier: e.target.value }))}
+          >
+            <MenuItem value="">Tutti</MenuItem>
+            <MenuItem value={ONLY_MANUAL}>Manuali (senza fornitore)</MenuItem>
+            {suppliersQuery.data?.map((s) => (
+              <MenuItem key={s.id} value={s.id}>
+                {s.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          {(filters.dateFrom ||
+            filters.dateTo ||
+            filters.paymentMethodId ||
+            filters.walletId ||
+            filters.origin ||
+            filters.supplier) && (
             <Button size="small" onClick={() => setFilters(emptyFilters)}>
               Azzera filtri
             </Button>
@@ -283,6 +357,7 @@ function ExpensesTab() {
               <TableRow>
                 <TableCell>Data</TableCell>
                 <TableCell>Descrizione</TableCell>
+                <TableCell>Fornitore</TableCell>
                 <TableCell>Metodo</TableCell>
                 <TableCell>Portafoglio</TableCell>
                 <TableCell>Origine</TableCell>
@@ -297,6 +372,15 @@ function ExpensesTab() {
                 <TableRow key={expense.id}>
                   <TableCell>{formatDate(expense.date)}</TableCell>
                   <TableCell>{expense.description}</TableCell>
+                  <TableCell>
+                    {expense.supplier ? (
+                      expense.supplier.name
+                    ) : (
+                      <Typography component="span" variant="body2" color="text.secondary">
+                        Libero
+                      </Typography>
+                    )}
+                  </TableCell>
                   <TableCell>{expense.paymentMethod.name}</TableCell>
                   <TableCell>{expense.wallet.name}</TableCell>
                   <TableCell>
@@ -319,7 +403,7 @@ function ExpensesTab() {
               ))}
               {expensesQuery.data?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
                       Nessuna spesa nel periodo selezionato.
                     </Typography>
@@ -382,6 +466,22 @@ function ExpensesTab() {
             {walletsQuery.data?.map((w) => (
               <MenuItem key={w.id} value={w.id}>
                 {w.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Fornitore"
+            helperText="Facoltativo: lascia vuoto per un pagamento libero"
+            InputLabelProps={{ shrink: true }}
+            value={form.supplierId}
+            onChange={(e) => setForm((f) => ({ ...f, supplierId: e.target.value }))}
+            sx={{ gridColumn: '1 / -1' }}
+          >
+            <MenuItem value="">Nessuno (libero)</MenuItem>
+            {suppliersQuery.data?.map((s) => (
+              <MenuItem key={s.id} value={s.id}>
+                {s.name}
               </MenuItem>
             ))}
           </TextField>

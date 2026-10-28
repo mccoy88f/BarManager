@@ -17,6 +17,11 @@ export class CreateExpenseDto {
   @IsString()
   walletId: string;
 
+  /** Fornitore associato, facoltativo (§5.5): omesso/null = spesa/pagamento libero. */
+  @IsOptional()
+  @IsString()
+  supplierId?: string | null;
+
   /** Scadenza (Attività) che genera questa spesa, se registrata da lì (§5.5). Omesso per una spesa autonoma. */
   @IsOptional()
   @IsString()

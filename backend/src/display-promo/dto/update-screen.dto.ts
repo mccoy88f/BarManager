@@ -1,4 +1,4 @@
-import { DisplayPromoInfoBarTheme, DisplayPromoTransition } from '@prisma/client';
+import { DisplayPromoInfoBarTheme, DisplayPromoOrientation, DisplayPromoTransition } from '@prisma/client';
 import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateScreenDto {
@@ -26,4 +26,19 @@ export class UpdateScreenDto {
   @IsOptional()
   @IsEnum(DisplayPromoTransition)
   transitionEffect?: DisplayPromoTransition;
+
+  /** Solo organizzativo: come è montato fisicamente questo schermo. */
+  @IsOptional()
+  @IsEnum(DisplayPromoOrientation)
+  orientation?: DisplayPromoOrientation;
+
+  /** null = torna al nome del locale. Ignorato se headerLogoUrl è impostato. */
+  @IsOptional()
+  @IsString()
+  headerText?: string | null;
+
+  /** null = rimuove il logo (torna al testo/nome del locale). Per impostarlo, v. POST .../header-logo. */
+  @IsOptional()
+  @IsString()
+  headerLogoUrl?: string | null;
 }

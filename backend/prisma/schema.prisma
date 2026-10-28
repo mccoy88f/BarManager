@@ -337,6 +337,12 @@ enum DisplayPromoTransition {
   ZOOM
 }
 
+/// Solo organizzativo (§5.12): v. commento su DisplayPromoScreen.orientation.
+enum DisplayPromoOrientation {
+  HORIZONTAL
+  VERTICAL
+}
+
 model DisplayPromoPlaylist {
   id   String @id @default(cuid())
   name String
@@ -403,6 +409,18 @@ model DisplayPromoScreen {
   // Transizione tra un contenuto e il successivo del carosello: indipendente
   // da showInfoBar, si applica anche a schermo intero senza la fascia.
   transitionEffect DisplayPromoTransition @default(NONE)
+
+  // Solo organizzativo/informativo (il layout pubblico si adatta già da
+  // solo al viewport reale del dispositivo via CSS, object-fit: cover):
+  // aiuta l'admin a ricordare come è montato fisicamente ogni schermo.
+  orientation DisplayPromoOrientation @default(HORIZONTAL)
+
+  // Intestazione personalizzata in alto a sinistra nella fascia "da
+  // telegiornale" (rilevante solo se showInfoBar è true): se headerLogoUrl
+  // è impostato ha sempre la precedenza su headerText; se nessuno dei due
+  // è impostato si usa il nome del locale (comportamento storico).
+  headerText    String?
+  headerLogoUrl String?
 
   schedules DisplayPromoSchedule[]
 
@@ -800,6 +818,7 @@ model Supplier {
 
   products Product[]
   orders   Order[]
+  expenses Expense[]
 
   createdAt DateTime @default(now())
 }
@@ -1200,6 +1219,14 @@ model Expense {
 
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id])
+
+  // Fornitore associato, facoltativo (§5.5): una spesa/pagamento può essere
+  // libero (null, es. utenze, affitto) o riferito a un fornitore per i
+  // report filtrabili per fornitore. Indipendente da taskId sotto — una
+  // spesa generata da una scadenza collegata a un ordine potrebbe comunque
+  // non avere qui il fornitore se non assegnato esplicitamente.
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
   // Scadenza che ha generato questa spesa, se registrata da lì (§5.5) —
   // al più una spesa per scadenza. Assente per le spese autonome.
