@@ -44,52 +44,102 @@ function playlistSignature(playlist: DisplayPromoPlaylist | null | undefined): s
   return `${playlist.id}:${playlist.items.map((i) => i.id).join(',')}`;
 }
 
+/**
+ * Immagine di riserva, caricata una volta e tenuta in cache dal browser
+ * (è anche fra gli asset precaricati dal service worker della PWA, v.
+ * `includeAssets` in vite.config.ts): mostrata finché non c'è altro da
+ * mostrare — nessun contenuto caricato, playlist vuota, errore di rete —
+ * mai un riquadro nero o rotto su un display pubblico incustodito.
+ */
+function FallbackScreen() {
+  const fillStyle = { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' as const };
+  return <Box component="img" src="/display-promo-fallback.svg" sx={fillStyle} />;
+}
+
 /** Carosello foto/video a schermo intero (o nell'area centrale, se è attiva la fascia orologio/meteo/notizie). */
 function Carousel({ playlist }: { playlist: DisplayPromoPlaylist | null }) {
   const [index, setIndex] = useState(0);
+  const [showFallback, setShowFallback] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failCountRef = useRef(0);
   const items = playlist?.items ?? [];
   const signature = playlistSignature(playlist);
 
   // Una modifica dal gestionale (nuova playlist per il turno, contenuto
   // aggiunto/rimosso) riparte sempre dal primo contenuto invece di tenere
-  // un indice che potrebbe non esistere più nella nuova lista.
+  // un indice che potrebbe non esistere più nella nuova lista, e azzera
+  // anche lo stato di fallback: è una playlist diversa, merita un
+  // tentativo pulito.
   useEffect(() => {
     setIndex(0);
+    failCountRef.current = 0;
+    setShowFallback(false);
   }, [signature]);
+
+  // Finché siamo sul fallback, riprova a caricare un contenuto vero ogni
+  // minuto (stesso ritmo del polling della playlist sotto) invece di
+  // restare bloccati lì per sempre una volta tornata la connessione.
+  useEffect(() => {
+    if (!showFallback) return;
+    const id = setInterval(() => {
+      failCountRef.current = 0;
+      setShowFallback(false);
+      setRetryTick((t) => t + 1);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [showFallback]);
 
   const current = items.length > 0 ? items[index % items.length] : null;
 
   const advance = () => setIndex((i) => (items.length > 0 ? (i + 1) % items.length : 0));
 
+  const handleError = () => {
+    failCountRef.current += 1;
+    // Se è andato in errore un intero giro di contenuti, probabilmente non
+    // è un singolo file rotto ma la rete: meglio fermarsi sul fallback che
+    // continuare a lampeggiare tra contenuti rotti all'infinito.
+    if (failCountRef.current >= items.length) {
+      setShowFallback(true);
+    } else {
+      advance();
+    }
+  };
+
+  const handleLoaded = () => {
+    failCountRef.current = 0;
+  };
+
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (!current || current.type !== 'PHOTO') return;
+    if (!current || current.type !== 'PHOTO' || showFallback) return;
     const seconds = current.durationSeconds ?? DEFAULT_PHOTO_SECONDS;
     timerRef.current = setTimeout(advance, seconds * 1000);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }, [current?.id, showFallback]);
 
-  if (!current) return null;
+  if (!current || showFallback) return <FallbackScreen />;
 
   const fillStyle = { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' as const };
+  const key = `${current.id}-${retryTick}`;
 
   return current.type === 'VIDEO' ? (
     <video
-      key={current.id}
+      key={key}
       src={current.url}
       autoPlay
       muted
       playsInline
       onEnded={advance}
-      onError={advance}
+      onLoadedData={handleLoaded}
+      onError={handleError}
       style={fillStyle}
     />
   ) : (
-    <Box key={current.id} component="img" src={current.url} onError={advance} sx={fillStyle} />
+    <Box key={key} component="img" src={current.url} onLoad={handleLoaded} onError={handleError} sx={fillStyle} />
   );
 }
 
@@ -254,16 +304,10 @@ export function PublicDisplayPromo() {
     [],
   );
 
-  if (screenQuery.isLoading) {
-    return <Box sx={containerStyle} />;
-  }
-
-  if (screenQuery.isError || !screenQuery.data) {
+  if (screenQuery.isLoading || screenQuery.isError || !screenQuery.data) {
     return (
-      <Box sx={{ ...containerStyle, alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-          Display non disponibile.
-        </Typography>
+      <Box sx={containerStyle}>
+        <FallbackScreen />
       </Box>
     );
   }

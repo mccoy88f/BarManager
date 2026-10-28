@@ -17,7 +17,7 @@ export default defineConfig({
       // svuota lo storage privato dell'app), facendo vedere all'app una
       // versione del sito permanentemente vecchia.
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'display-promo-fallback.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Senza questa esclusione, il service worker intercetta come

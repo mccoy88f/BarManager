@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)" />
+  <g transform="translate(800,380)" stroke="#64748b" stroke-width="6" fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-90" y="-66" width="180" height="132" rx="14" />
+    <circle cx="-48" cy="-28" r="16" />
+    <path d="M -90 48 L -30 -4 L 20 32 L 56 2 L 90 36" />
+  </g>
+  <text x="800" y="520" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#94a3b8">
+    Display Promo
+  </text>
+</svg>
