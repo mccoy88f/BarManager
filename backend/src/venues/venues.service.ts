@@ -122,6 +122,7 @@ export class VenuesService {
         reservationOverbookingExtraSeats: true,
         reservationMinLeadMinutes: true,
         displayPromoEnabled: true,
+        displayPromoNewsFeedUrl: true,
         onlineOrdersEnabled: true,
         onlineOrdersPickupEnabled: true,
         onlineOrdersDeliveryEnabled: true,

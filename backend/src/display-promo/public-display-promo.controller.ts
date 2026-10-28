@@ -16,4 +16,10 @@ export class PublicDisplayPromoController {
   get(@Param('screenId') screenId: string) {
     return this.displayPromoService.getActivePlaylist(screenId);
   }
+
+  /** Separato da sopra: un feed RSS impiega secondi a volte, non deve bloccare il caricamento della playlist. */
+  @Get(':screenId/news')
+  async getNews(@Param('screenId') screenId: string) {
+    return { headlines: await this.displayPromoService.getNewsHeadlines(screenId) };
+  }
 }

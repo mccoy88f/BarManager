@@ -164,8 +164,14 @@ model Venue {
   // come prenotazioni/ordini online. Un locale può avere più display
   // (DisplayPromoScreen sotto), ciascuno con una propria programmazione
   // e playlist di default — questo flag è solo l'interruttore generale
-  // del modulo per il locale.
-  displayPromoEnabled Boolean @default(false)
+  // del modulo per il locale. URL di un feed RSS (es. ANSA), condiviso da
+  // tutti gli schermi del locale per il ticker della fascia "da
+  // telegiornale" (DisplayPromoScreen.showInfoBar) — il meteo usa invece
+  // le coordinate già presenti sotto (gpsLat/gpsLng, impostate per il
+  // raggio del timbro presenze ma rappresentano comunque la posizione
+  // fisica del locale).
+  displayPromoEnabled     Boolean @default(false)
+  displayPromoNewsFeedUrl String?
 
   // Ordini online (§5.10 di DEVELOPMENT.md): asporto e consegna a domicilio
   // dal menù pubblico, modulo opzionale come le prenotazioni.
@@ -363,6 +369,13 @@ model DisplayPromoScreen {
   // e per i turni senza una riga di programmazione sotto.
   defaultPlaylistId String?
   defaultPlaylist   DisplayPromoPlaylist? @relation("ScreenDisplayPromoDefaultPlaylist", fields: [defaultPlaylistId], references: [id], onDelete: SetNull)
+
+  // Fascia "da telegiornale" attorno al carosello (orologio, meteo, ticker
+  // notizie — §5.12): opzionale per singolo schermo, chi vuole solo la
+  // playlist a schermo intero la lascia disattivata (default storico).
+  // Meteo e feed notizie restano impostazioni del locale (Venue sotto),
+  // condivise da tutti i suoi schermi.
+  showInfoBar Boolean @default(false)
 
   schedules DisplayPromoSchedule[]
 

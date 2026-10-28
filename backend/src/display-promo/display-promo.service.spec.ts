@@ -14,7 +14,16 @@ describe('DisplayPromoService.getActivePlaylist', () => {
   const defaultPlaylist = { id: 'default-playlist', name: 'Default', items: [] };
   const baseScreen = {
     id: 'screen-1',
-    venue: { id: 'venue-1', active: true, displayPromoEnabled: true, timezone: 'Europe/Rome' },
+    showInfoBar: false,
+    venue: {
+      id: 'venue-1',
+      name: 'Bar Demo',
+      active: true,
+      displayPromoEnabled: true,
+      timezone: 'Europe/Rome',
+      gpsLat: null,
+      gpsLng: null,
+    },
     defaultPlaylist,
   };
 
@@ -50,7 +59,8 @@ describe('DisplayPromoService.getActivePlaylist', () => {
 
     const result = await service.getActivePlaylist('screen-1');
 
-    expect(result).toEqual(scheduledPlaylist);
+    expect(result.playlist).toEqual(scheduledPlaylist);
+    expect(result.venueName).toBe('Bar Demo');
     const call = prisma.displayPromoSchedule.findUnique.mock.calls[0][0];
     expect(call.where.screenId_dayOfWeek_shift.screenId).toBe('screen-1');
     expect(call.where.screenId_dayOfWeek_shift.shift).toBe('LUNCH');
@@ -63,7 +73,7 @@ describe('DisplayPromoService.getActivePlaylist', () => {
 
     const result = await service.getActivePlaylist('screen-1');
 
-    expect(result).toEqual(defaultPlaylist);
+    expect(result.playlist).toEqual(defaultPlaylist);
   });
 
   it('torna alla playlist di default fuori da pranzo/cena, senza nemmeno interrogare la programmazione', async () => {
@@ -72,17 +82,17 @@ describe('DisplayPromoService.getActivePlaylist', () => {
 
     const result = await service.getActivePlaylist('screen-1');
 
-    expect(result).toEqual(defaultPlaylist);
+    expect(result.playlist).toEqual(defaultPlaylist);
     expect(prisma.displayPromoSchedule.findUnique).not.toHaveBeenCalled();
   });
 
-  it('torna null se non c\'è né uno slot programmato né una playlist di default per questo schermo', async () => {
+  it('torna playlist null se non c\'è né uno slot programmato né una playlist di default per questo schermo', async () => {
     prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, defaultPlaylist: null });
     menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
 
     const result = await service.getActivePlaylist('screen-1');
 
-    expect(result).toBeNull();
+    expect(result.playlist).toBeNull();
   });
 
   it('due schermi dello stesso locale possono avere programmazioni/default diversi (isolamento per schermo)', async () => {
@@ -92,11 +102,56 @@ describe('DisplayPromoService.getActivePlaylist', () => {
 
     prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, id: 'screen-a' });
     prisma.displayPromoSchedule.findUnique.mockResolvedValue({ playlist: playlistA });
-    expect(await service.getActivePlaylist('screen-a')).toEqual(playlistA);
+    expect((await service.getActivePlaylist('screen-a')).playlist).toEqual(playlistA);
 
     prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, id: 'screen-b' });
     prisma.displayPromoSchedule.findUnique.mockResolvedValue({ playlist: playlistB });
-    expect(await service.getActivePlaylist('screen-b')).toEqual(playlistB);
+    expect((await service.getActivePlaylist('screen-b')).playlist).toEqual(playlistB);
+  });
+
+  it('infoBar.enabled segue showInfoBar dello schermo, meteo presente solo se attivo e con coordinate', async () => {
+    menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
+
+    prisma.displayPromoScreen.findUnique.mockResolvedValue(baseScreen); // showInfoBar: false
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({ enabled: false, weather: null });
+
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      ...baseScreen,
+      showInfoBar: true,
+      venue: { ...baseScreen.venue, gpsLat: 45.07, gpsLng: 7.69 },
+    });
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
+      enabled: true,
+      weather: { lat: 45.07, lng: 7.69 },
+    });
+
+    // showInfoBar attivo ma nessuna coordinata salvata per il locale: niente meteo, non un errore.
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, showInfoBar: true });
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({ enabled: true, weather: null });
+  });
+});
+
+describe('DisplayPromoService.getNewsHeadlines', () => {
+  let prisma: { displayPromoScreen: { findUnique: jest.Mock } };
+  let service: DisplayPromoService;
+
+  beforeEach(() => {
+    prisma = { displayPromoScreen: { findUnique: jest.fn() } };
+    service = new DisplayPromoService(prisma as unknown as PrismaService, {} as unknown as MenuService);
+  });
+
+  it('rifiuta se il display non è disponibile', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue(null);
+
+    await expect(service.getNewsHeadlines('screen-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('torna un elenco vuoto se il locale non ha configurato un feed, senza fare richieste esterne', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      venue: { active: true, displayPromoEnabled: true, displayPromoNewsFeedUrl: null },
+    });
+
+    expect(await service.getNewsHeadlines('screen-1')).toEqual([]);
   });
 });
 

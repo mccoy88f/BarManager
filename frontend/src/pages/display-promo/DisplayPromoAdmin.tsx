@@ -15,9 +15,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -46,6 +48,7 @@ interface DisplayPromoScreen {
   id: string;
   name: string;
   defaultPlaylistId: string | null;
+  showInfoBar: boolean;
   schedules: ScheduleSlot[];
 }
 
@@ -237,6 +240,12 @@ export function DisplayPromoAdmin() {
     onSuccess: invalidateScreens,
   });
 
+  const setShowInfoBarMutation = useMutation({
+    mutationFn: async ({ id, showInfoBar }: { id: string; showInfoBar: boolean }) =>
+      (await api.patch(`/display-promo/screens/${id}`, { showInfoBar })).data,
+    onSuccess: invalidateScreens,
+  });
+
   const openCreate = () => {
     setEditing(null);
     setName('');
@@ -331,6 +340,16 @@ export function DisplayPromoAdmin() {
                 </MenuItem>
               ))}
             </TextField>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={screen.showInfoBar}
+                  onChange={(e) => setShowInfoBarMutation.mutate({ id: screen.id, showInfoBar: e.target.checked })}
+                />
+              }
+              label="Mostra orologio, meteo e notizie attorno al carosello (stile telegiornale)"
+            />
 
             <Divider />
 

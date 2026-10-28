@@ -8,6 +8,7 @@ import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { UpdateMediaDto } from './dto/update-media.dto';
 import { CreateScreenDto } from './dto/create-screen.dto';
 import { UpdateScreenDto } from './dto/update-screen.dto';
+import { fetchHeadlines } from '../common/news/rss';
 
 const MEDIA_INCLUDE = { items: { orderBy: { sortOrder: 'asc' as const } } };
 
@@ -192,13 +193,28 @@ export class DisplayPromoService {
    * di default DELLO STESSO SCHERMO — stessa logica usata fuori da
    * pranzo/cena, quando non c'è alcun turno attivo. L'id dello schermo
    * identifica già il locale: nessuna risoluzione per sottodominio
-   * necessaria, a differenza delle altre pagine pubbliche.
+   * necessaria, a differenza delle altre pagine pubbliche. Include anche
+   * nome locale e, se questo schermo ha la fascia "da telegiornale"
+   * attiva, le coordinate per il meteo (chiamato direttamente dal
+   * frontend a Open-Meteo, nessun proxy backend necessario) — il ticker
+   * notizie passa invece da getNewsHeadlines sotto, perché un feed RSS non
+   * si può leggere da browser per CORS.
    */
   async getActivePlaylist(screenId: string) {
     const screen = await this.prisma.displayPromoScreen.findUnique({
       where: { id: screenId },
       include: {
-        venue: { select: { id: true, active: true, displayPromoEnabled: true, timezone: true } },
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+            displayPromoEnabled: true,
+            timezone: true,
+            gpsLat: true,
+            gpsLng: true,
+          },
+        },
         defaultPlaylist: { include: MEDIA_INCLUDE },
       },
     });
@@ -207,6 +223,7 @@ export class DisplayPromoService {
     }
 
     const period = await this.menuService.getCurrentMealPeriod(screen.venue.id);
+    let playlist = screen.defaultPlaylist ?? null;
     if (period === 'LUNCH' || period === 'DINNER') {
       const dayOfWeek = jsWeekdayInZone(new Date(), screen.venue.timezone);
       const shift = period as DisplayPromoShift;
@@ -214,9 +231,36 @@ export class DisplayPromoService {
         where: { screenId_dayOfWeek_shift: { screenId, dayOfWeek, shift } },
         include: { playlist: { include: MEDIA_INCLUDE } },
       });
-      if (slot) return slot.playlist;
+      if (slot) playlist = slot.playlist;
     }
 
-    return screen.defaultPlaylist ?? null;
+    return {
+      venueName: screen.venue.name,
+      playlist,
+      infoBar: {
+        enabled: screen.showInfoBar,
+        weather:
+          screen.showInfoBar && screen.venue.gpsLat != null && screen.venue.gpsLng != null
+            ? { lat: screen.venue.gpsLat, lng: screen.venue.gpsLng }
+            : null,
+      },
+    };
+  }
+
+  /**
+   * Titoli dal feed RSS del locale (impostazione condivisa da tutti i
+   * suoi schermi, §5.12): array vuoto se non configurato o irraggiungibile
+   * — mai un errore, il ticker semplicemente non mostra nulla.
+   */
+  async getNewsHeadlines(screenId: string): Promise<string[]> {
+    const screen = await this.prisma.displayPromoScreen.findUnique({
+      where: { id: screenId },
+      include: { venue: { select: { active: true, displayPromoEnabled: true, displayPromoNewsFeedUrl: true } } },
+    });
+    if (!screen || !screen.venue.active || !screen.venue.displayPromoEnabled) {
+      throw new NotFoundException('Display non disponibile');
+    }
+    if (!screen.venue.displayPromoNewsFeedUrl) return [];
+    return fetchHeadlines(screen.venue.displayPromoNewsFeedUrl);
   }
 }

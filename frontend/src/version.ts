@@ -3,4 +3,4 @@
  * che riparte da 1 a ogni nuovo giorno, non un numero di versione
  * semantico. Aggiornare ad ogni release pubblicata (sito e app Android).
  */
-export const APP_VERSION = '2026.10.28-2';
+export const APP_VERSION = '2026.10.28-3';

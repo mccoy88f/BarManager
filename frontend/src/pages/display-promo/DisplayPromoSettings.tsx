@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
 
 interface VenueDisplayPromoSettings {
   displayPromoEnabled: boolean;
+  displayPromoNewsFeedUrl: string | null;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -19,10 +20,11 @@ function extractErrorMessage(error: unknown): string {
 }
 
 /**
- * Impostazioni del modulo Display Promo (§5.12): solo l'attivazione
- * generale. La playlist di default e la programmazione sono per singolo
- * display (un locale può averne più di uno), gestite nella pagina
- * principale "Display Promo", non qui.
+ * Impostazioni del modulo Display Promo (§5.12): attivazione generale e
+ * feed RSS per il ticker notizie (condiviso da tutti i display del
+ * locale). La playlist di default, la programmazione e la fascia
+ * "orologio/meteo/notizie" sono invece per singolo display (un locale può
+ * averne più di uno), gestite nella pagina principale "Display Promo".
  */
 export function DisplayPromoSettings() {
   const navigate = useNavigate();
@@ -35,15 +37,22 @@ export function DisplayPromoSettings() {
   });
 
   const [enabled, setEnabled] = useState(false);
+  const [newsFeedUrl, setNewsFeedUrl] = useState('');
 
   useEffect(() => {
     if (!venueQuery.data) return;
     setEnabled(venueQuery.data.displayPromoEnabled);
+    setNewsFeedUrl(venueQuery.data.displayPromoNewsFeedUrl ?? '');
   }, [venueQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: async () =>
-      (await api.patch('/venues/me/display-promo-settings', { displayPromoEnabled: enabled })).data,
+      (
+        await api.patch('/venues/me/display-promo-settings', {
+          displayPromoEnabled: enabled,
+          displayPromoNewsFeedUrl: newsFeedUrl.trim() || null,
+        })
+      ).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['venue-me'] });
       showToast('Impostazioni salvate');
@@ -66,6 +75,20 @@ export function DisplayPromoSettings() {
             control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
             label="Modulo attivo (pagine pubbliche /display/:id raggiungibili)"
           />
+
+          <TextField
+            label="Feed RSS notizie (es. ANSA)"
+            placeholder="https://www.ansa.it/sito/ansait_rss.xml"
+            helperText={'Usato per il ticker "ultim\'ora" sui display che hanno attivato la fascia orologio/meteo/notizie. Vuoto = nessun ticker.'}
+            value={newsFeedUrl}
+            onChange={(e) => setNewsFeedUrl(e.target.value)}
+          />
+
+          <Alert severity="info">
+            Il meteo nella stessa fascia usa le coordinate GPS del locale già impostate in
+            Impostazioni → Timbrature (pensate per il raggio di timbratura, ma rappresentano
+            comunque la posizione del locale): se non sono impostate, il meteo non viene mostrato.
+          </Alert>
 
           {saveMutation.isError && <Alert severity="error">{extractErrorMessage(saveMutation.error)}</Alert>}
 

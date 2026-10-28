@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateScreenDto {
   @IsOptional()
@@ -10,4 +10,9 @@ export class UpdateScreenDto {
   @IsOptional()
   @IsString()
   defaultPlaylistId?: string | null;
+
+  /** Fascia "da telegiornale" (orologio/meteo/ticker notizie) attorno al carosello, §5.12. */
+  @IsOptional()
+  @IsBoolean()
+  showInfoBar?: boolean;
 }
