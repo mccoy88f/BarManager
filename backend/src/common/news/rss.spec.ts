@@ -23,6 +23,23 @@ describe('fetchHeadlines', () => {
     expect(headlines).toEqual(['Prima notizia & qualcosa', 'Seconda notizia "importante"']);
   });
 
+  it('decodifica &nbsp; e le altre entità comuni nei titoli (bug segnalato: compariva "&nbsp;" letterale a video)', async () => {
+    const xml = `<rss><channel>
+      <item><title>L'apertura&nbsp;dell'hotel Thompson</title></item>
+      <item><title>Prezzi alle stelle&hellip; crolla il mercato</title></item>
+      <item><title>Apostrofo numerico&#39;qui e lettera accentata&#232;</title></item>
+    </channel></rss>`;
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => xml }) as never;
+
+    const headlines = await fetchHeadlines('https://example.com/feed-nbsp.xml');
+
+    expect(headlines).toEqual([
+      "L'apertura dell'hotel Thompson",
+      'Prezzi alle stelle… crolla il mercato',
+      "Apostrofo numerico'qui e lettera accentataè",
+    ]);
+  });
+
   it('torna un elenco vuoto, senza lanciare, se il feed risponde con un errore HTTP', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, text: async () => '' }) as never;
 

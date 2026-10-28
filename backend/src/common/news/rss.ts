@@ -13,21 +13,39 @@
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache = new Map<string, { fetchedAt: number; headlines: string[] }>();
 
-const ENTITIES: Record<string, string> = {
+/**
+ * Solo le entità nominate più comuni nei titoli di un feed di news: tutte
+ * le altre (es. lettere accentate codificate come entità numeriche invece
+ * che UTF-8 diretto) passano dal ramo numerico sotto, non da questa
+ * tabella — non è una lista esaustiva delle ~250 entità HTML nominate.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
   amp: '&',
   lt: '<',
   gt: '>',
   quot: '"',
   apos: "'",
-  '#39': "'",
-  '#8217': '’',
-  '#8216': '‘',
-  '#8220': '“',
-  '#8221': '”',
+  nbsp: ' ',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  laquo: '«',
+  raquo: '»',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
 };
 
+/** Entità nominate (tabella sopra) + numeriche `&#39;`/`&#x27;` in forma generica, non solo i pochi codici usati più spesso. */
 function decodeEntities(text: string): string {
-  return text.replace(/&(#?\w+);/g, (match, code) => ENTITIES[code] ?? match);
+  return text.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (match, code: string) => {
+    if (code[0] === '#') {
+      const codePoint = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return NAMED_ENTITIES[code] ?? match;
+  });
 }
 
 function stripCdata(text: string): string {
