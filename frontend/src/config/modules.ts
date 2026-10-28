@@ -14,7 +14,8 @@ export type ModuleKey =
   | 'expenses'
   | 'reservations'
   | 'customers'
-  | 'onlineOrders';
+  | 'onlineOrders'
+  | 'displayPromo';
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   haccp: 'Controlli',
@@ -25,6 +26,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   reservations: 'Prenotazioni',
   customers: 'Clienti',
   onlineOrders: 'Ordini online',
+  displayPromo: 'Display Promo',
 };
 
 // Permessi di default quando il dipendente non ha mai avuto un elenco

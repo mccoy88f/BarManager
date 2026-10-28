@@ -52,6 +52,11 @@ import { OnlineOrdersHistory } from './pages/online-orders/OnlineOrdersHistory';
 import { OnlineOrdersSettings } from './pages/online-orders/OnlineOrdersSettings';
 import { OnlineOrdersPublicLink } from './pages/online-orders/OnlineOrdersPublicLink';
 import { OrderNotificationProvider } from './context/OrderNotificationContext';
+import { PublicDisplayPromo } from './pages/display-promo/PublicDisplayPromo';
+import { DisplayPromoAdmin } from './pages/display-promo/DisplayPromoAdmin';
+import { DisplayPromoSchedule } from './pages/display-promo/DisplayPromoSchedule';
+import { DisplayPromoSettings } from './pages/display-promo/DisplayPromoSettings';
+import { DisplayPromoLink } from './pages/display-promo/DisplayPromoLink';
 
 export default function App() {
   return (
@@ -66,6 +71,7 @@ export default function App() {
       <Route path="/privacy" element={<PublicPrivacyManage />} />
       <Route path="/ordina" element={<PublicOnlineOrder />} />
       <Route path="/ordina/traccia/:id" element={<PublicOnlineOrderTrack />} />
+      <Route path="/display" element={<PublicDisplayPromo />} />
 
       <Route path="/login" element={<Login />} />
 
@@ -149,6 +155,14 @@ export default function App() {
           </Route>
           <Route element={<ProtectedRoute moduleKey="onlineOrders" allow={['ADMIN']} />}>
             <Route path="/online-orders/settings" element={<OnlineOrdersSettings />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="displayPromo" />}>
+            <Route path="/display-promo" element={<DisplayPromoAdmin />} />
+            <Route path="/display-promo/schedule" element={<DisplayPromoSchedule />} />
+          </Route>
+          <Route element={<ProtectedRoute moduleKey="displayPromo" allow={['ADMIN']} />}>
+            <Route path="/display-promo/link" element={<DisplayPromoLink />} />
+            <Route path="/display-promo/settings" element={<DisplayPromoSettings />} />
           </Route>
 
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>

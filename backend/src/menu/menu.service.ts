@@ -632,17 +632,27 @@ export class MenuService {
    * non solo sul menù di sola consultazione.
    */
   async getAllowedAvailabilities(venueId: string): Promise<MenuAvailability[]> {
-    const venue = await this.prisma.venue.findUnique({
-      where: { id: venueId },
-      select: { menuMealPeriodsHours: true, timezone: true },
-    });
-    if (!venue) return [MenuAvailability.ALL_DAY];
-    const period = await this.currentPeriod(venueId, venue.menuMealPeriodsHours, venue.timezone);
+    const period = await this.getCurrentMealPeriod(venueId);
     return period === 'LUNCH'
       ? [MenuAvailability.LUNCH, MenuAvailability.ALL_DAY]
       : period === 'DINNER'
         ? [MenuAvailability.DINNER, MenuAvailability.ALL_DAY]
         : [MenuAvailability.ALL_DAY];
+  }
+
+  /**
+   * Stessa fascia di sopra, ma come valore grezzo (pranzo/cena/nessuna)
+   * invece della lista di MenuAvailability permesse: usata da moduli che
+   * hanno un proprio asse di programmazione sugli stessi turni ma senza il
+   * concetto di MenuAvailability (es. Display Promo, §5.12).
+   */
+  async getCurrentMealPeriod(venueId: string): Promise<'LUNCH' | 'DINNER' | 'NONE'> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { menuMealPeriodsHours: true, timezone: true },
+    });
+    if (!venue) return 'NONE';
+    return this.currentPeriod(venueId, venue.menuMealPeriodsHours, venue.timezone);
   }
 
   /**

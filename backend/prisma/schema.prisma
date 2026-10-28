@@ -159,6 +159,17 @@ model Venue {
   // si applica all'aggiunta manuale in backoffice.
   reservationMinLeadMinutes        Int     @default(0)
 
+  // Display Promo (§5.12 di DEVELOPMENT.md): playlist di foto/video a
+  // tutto schermo per schermi pubblicitari pubblici, modulo opzionale
+  // come prenotazioni/ordini online. La playlist di default copre le ore
+  // fuori dai turni pranzo/cena (sotto, Venue.menuMealPeriodsHours) e
+  // quando per il turno corrente non c'è un DisplayPromoSchedule assegnato;
+  // SetNull perché eliminare quella playlist non deve bloccare il locale,
+  // solo svuotare l'impostazione.
+  displayPromoEnabled              Boolean                  @default(false)
+  displayPromoDefaultPlaylistId    String?
+  displayPromoDefaultPlaylist      DisplayPromoPlaylist?    @relation("VenueDisplayPromoDefaultPlaylist", fields: [displayPromoDefaultPlaylistId], references: [id], onDelete: SetNull)
+
   // Ordini online (§5.10 di DEVELOPMENT.md): asporto e consegna a domicilio
   // dal menù pubblico, modulo opzionale come le prenotazioni.
   onlineOrdersEnabled         Boolean @default(false)
@@ -253,6 +264,8 @@ model Venue {
   expensePaymentMethods ExpensePaymentMethod[]
   wallets               Wallet[]
   expenses              Expense[]
+  displayPromoPlaylists DisplayPromoPlaylist[]  @relation("VenueDisplayPromoPlaylists")
+  displayPromoSchedules DisplayPromoSchedule[]
 }
 
 /// Apertura/chiusura straordinaria per una singola data (§5.10 di
@@ -281,6 +294,77 @@ model VenueSpecialDay {
 
   @@unique([venueId, date])
   @@index([venueId, date])
+}
+
+/// Display Promo (§5.12 di DEVELOPMENT.md): schermi pubblicitari pubblici
+/// (TV/tablet in loop, orizzontali o verticali) che mostrano una playlist
+/// di foto/video. Asse di programmazione ortogonale a quello del menù
+/// (MenuAvailability) ma stessi turni: qui sono solo LUNCH/DINNER perché il
+/// "fuori turno" non è un valore della playlist programmata, è la playlist
+/// di default del locale (Venue.displayPromoDefaultPlaylistId).
+enum DisplayPromoShift {
+  LUNCH
+  DINNER
+}
+
+enum DisplayPromoMediaType {
+  PHOTO
+  VIDEO
+}
+
+model DisplayPromoPlaylist {
+  id   String @id @default(cuid())
+  name String
+
+  venueId String
+  venue   Venue  @relation("VenueDisplayPromoPlaylists", fields: [venueId], references: [id])
+
+  items     DisplayPromoMedia[]
+  schedules DisplayPromoSchedule[]
+  // Venue che hanno scelto questa playlist come fallback fuori turno
+  // (0 o 1 nella pratica, dato che ogni locale ha un solo locale — ma la
+  // relazione Prisma non lo sa, è solo l'altro lato di displayPromoDefaultPlaylist).
+  venueDefaultFor Venue[] @relation("VenueDisplayPromoDefaultPlaylist")
+
+  createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+model DisplayPromoMedia {
+  id   String                @id @default(cuid())
+  type DisplayPromoMediaType
+  url  String
+  // Solo per le foto: secondi di permanenza a schermo prima di passare
+  // alla successiva. I video non la usano: durano quanto il file stesso.
+  durationSeconds Int?      @default(8)
+  sortOrder       Int       @default(0)
+
+  playlistId String
+  playlist   DisplayPromoPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([playlistId])
+}
+
+/// Una riga per ogni (giorno della settimana, turno) con una playlist
+/// assegnata esplicitamente: righe assenti = nessuna playlist specifica per
+/// quello slot, si usa la playlist di default del locale (§5.12). Stesso
+/// dayOfWeek di OpeningHoursDay/MenuAvailability (0 = domenica, convenzione
+/// Date.getDay(), risolto nel fuso orario del locale).
+model DisplayPromoSchedule {
+  id        String            @id @default(cuid())
+  dayOfWeek Int
+  shift     DisplayPromoShift
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  playlistId String
+  playlist   DisplayPromoPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, dayOfWeek, shift])
 }
 
 enum OnlineOrdersSlotMode {

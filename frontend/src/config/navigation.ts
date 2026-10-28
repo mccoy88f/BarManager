@@ -14,6 +14,7 @@ import EventSeatIcon from '@mui/icons-material/EventSeat';
 import PeopleIcon from '@mui/icons-material/People';
 import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import SlideshowIcon from '@mui/icons-material/Slideshow';
 import type { Role } from '../store/authStore';
 import { canAccessModule, ModuleKey } from './modules';
 
@@ -261,6 +262,38 @@ export const navigation: NavItem[] = [
         label: 'Impostazioni ordini online',
         path: '/online-orders/settings',
         icon: DeliveryDiningIcon,
+        roles: ['ADMIN'],
+      },
+    ],
+  },
+  {
+    key: 'displayPromo',
+    label: 'Display Promo',
+    path: '/display-promo',
+    icon: SlideshowIcon,
+    description: 'Playlist foto/video per schermi pubblicitari pubblici',
+    moduleKey: 'displayPromo',
+    children: [
+      {
+        key: 'display-promo-schedule',
+        label: 'Programmazione',
+        path: '/display-promo/schedule',
+        icon: SlideshowIcon,
+        description: 'Quale playlist per ogni giorno e turno pranzo/cena',
+      },
+      {
+        key: 'display-promo-link',
+        label: 'Link e QR',
+        path: '/display-promo/link',
+        icon: SlideshowIcon,
+        description: 'Indirizzo e QR code della pagina pubblica /display',
+        roles: ['ADMIN'],
+      },
+      {
+        key: 'display-promo-settings',
+        label: 'Impostazioni',
+        path: '/display-promo/settings',
+        icon: SlideshowIcon,
         roles: ['ADMIN'],
       },
     ],

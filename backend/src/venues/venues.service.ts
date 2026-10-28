@@ -13,6 +13,7 @@ import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
+import { UpdateDisplayPromoSettingsDto } from './dto/update-display-promo-settings.dto';
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
 import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
@@ -120,6 +121,8 @@ export class VenuesService {
         reservationOverbookingUnlimited: true,
         reservationOverbookingExtraSeats: true,
         reservationMinLeadMinutes: true,
+        displayPromoEnabled: true,
+        displayPromoDefaultPlaylistId: true,
         onlineOrdersEnabled: true,
         onlineOrdersPickupEnabled: true,
         onlineOrdersDeliveryEnabled: true,
@@ -192,6 +195,10 @@ export class VenuesService {
   }
 
   updateReservationSettings(venueId: string, dto: UpdateReservationSettingsDto) {
+    return this.prisma.venue.update({ where: { id: venueId }, data: dto });
+  }
+
+  updateDisplayPromoSettings(venueId: string, dto: UpdateDisplayPromoSettingsDto) {
     return this.prisma.venue.update({ where: { id: venueId }, data: dto });
   }
 

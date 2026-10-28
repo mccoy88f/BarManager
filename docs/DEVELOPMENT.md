@@ -485,6 +485,19 @@ Wrapper nativo Android (Capacitor) attorno alla stessa app web React esistente, 
 
 ---
 
+### 5.12 Display Promo *(implementata)*
+
+Modulo opzionale (`Venue.displayPromoEnabled`, come prenotazioni/ordini online) per schermi pubblicitari pubblici (TV/tablet in loop, orizzontali o verticali) collegati alla pagina pubblica `/display`, nessun login: mostra a tutto schermo una playlist di foto/video in loop, con la stessa programmazione per turno pranzo/cena già usata dal menù.
+
+- **Modello dati**: `DisplayPromoPlaylist` (nome + contenuti ordinati), `DisplayPromoMedia` (foto o video, `durationSeconds` solo per le foto — i video durano quanto il file), `DisplayPromoSchedule` (una riga per `(giorno della settimana, turno)` con la playlist assegnata; righe assenti = nessuna playlist specifica, si usa quella di default). `Venue.displayPromoDefaultPlaylistId` (nullable, `onDelete: SetNull`) è la playlist di riserva mostrata fuori da pranzo/cena e per qualunque turno senza una riga di programmazione.
+- **Stessi turni del menù, nessun orario indipendente**: la fascia corrente (pranzo/cena/nessuna) è risolta da `MenuService.getCurrentMealPeriod` (estratto da `getAllowedAvailabilities`, già usato dal menù pubblico e dal checkout /ordina, §5.4/§5.10) su `Venue.menuMealPeriodsHours` — Display Promo non aggiunge una seconda configurazione orari da mantenere sincronizzata con quella del menù.
+- **Backend** (`backend/src/display-promo/`): `DisplayPromoController` (CRUD playlist/contenuti/programmazione, `@RequireModule('displayPromo')`) + `PublicDisplayPromoController` (nessun login, stessa risoluzione multi-tenant via sottodominio/`?venueSlug=` delle altre pagine pubbliche) + `DisplayPromoService.getActivePlaylist` (la risoluzione sopra). Upload foto/video: stesso pattern `diskStorage`+`fileFilter` di `kb.controller.ts`, ma limite a 100MB (video anche di diversi minuti) invece dei 25MB di KB.
+- **`frontend/nginx.conf` non aveva `client_max_body_size`** (default nginx 1MB): bloccava già gli upload foto esistenti (5MB) prima ancora di arrivare al limite del backend — corretto con `client_max_body_size 110M` nel blocco `server`, visto mentre si verificava il limite per i video.
+- **Frontend admin** (`frontend/src/pages/display-promo/`): `DisplayPromoAdmin.tsx` (playlist + contenuti, drag&drop per l'ordine con `@dnd-kit`, stesso pattern delle categorie menù), `DisplayPromoSchedule.tsx` (griglia 7 giorni × 2 turni), `DisplayPromoSettings.tsx` (attivazione + playlist di default), `DisplayPromoLink.tsx` (link/QR di `/display`, come `OnlineOrdersPublicLink.tsx`).
+- **Pagina pubblica** (`PublicDisplayPromo.tsx`): nessuna shell applicativa, a tutto schermo (CSS, non Fullscreen API — richiederebbe un gesto utente che su un display pubblico non c'è), `object-fit: cover` per adattarsi a qualunque orientamento del dispositivo. Polling react-query ogni 60s (non critico come gli ordini online) per recepire un cambiamento dal gestionale; una firma (id playlist + elenco contenuti) distingue "niente cambiato" da "playlist o contenuti diversi" per riavviare il loop dal primo contenuto solo quando serve davvero.
+
+---
+
 ## 6. Altri moduli utili individuati (proposte)
 
 1. **Gestione turni/pianificazione (shift planning)** — collegata alle presenze: confronto pianificato vs timbrato.

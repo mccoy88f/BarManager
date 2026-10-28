@@ -32,6 +32,7 @@ import { UpdateClockInSettingsDto } from './dto/update-clock-in-settings.dto';
 import { UpdateMenuSettingsDto } from './dto/update-menu-settings.dto';
 import { UpdateAttendanceHistorySettingsDto } from './dto/update-attendance-history-settings.dto';
 import { UpdateReservationSettingsDto } from './dto/update-reservation-settings.dto';
+import { UpdateDisplayPromoSettingsDto } from './dto/update-display-promo-settings.dto';
 import { UpdateOnlineOrdersSettingsDto } from './dto/update-online-orders-settings.dto';
 import { UpdateSumUpSettingsDto } from './dto/update-sumup-settings.dto';
 import { UpsertSpecialDayDto } from './dto/upsert-special-day.dto';
@@ -168,6 +169,16 @@ export class VenuesController {
   }
 
   /** Impostazioni del modulo Prenotazioni (§5.7): soglia conferma automatica, durata slot, orizzonte. */
+  /** Attivazione modulo e playlist di default di Display Promo (§5.12) — i contenuti/la programmazione vivono in /display-promo. */
+  @Patch('me/display-promo-settings')
+  @Roles(Role.ADMIN)
+  updateOwnDisplayPromoSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateDisplayPromoSettingsDto,
+  ) {
+    return this.venuesService.updateDisplayPromoSettings(requireVenueId(user), dto);
+  }
+
   @Patch('me/reservation-settings')
   @Roles(Role.ADMIN)
   updateOwnReservationSettings(

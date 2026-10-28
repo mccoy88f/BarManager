@@ -19,6 +19,7 @@ export const MODULE_KEYS = [
   'reservations',
   'customers',
   'onlineOrders',
+  'displayPromo',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];

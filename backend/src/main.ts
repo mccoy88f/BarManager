@@ -35,6 +35,7 @@ async function bootstrap() {
   mkdirSync(`${uploadsDir}/board`, { recursive: true });
   mkdirSync(`${uploadsDir}/kb`, { recursive: true });
   mkdirSync(`${uploadsDir}/venues`, { recursive: true });
+  mkdirSync(`${uploadsDir}/display-promo`, { recursive: true });
   app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
 
   app.setGlobalPrefix('api');
