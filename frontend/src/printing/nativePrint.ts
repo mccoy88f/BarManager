@@ -1,4 +1,3 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
 import { api } from '../api/client';
 
 export interface ReceiptLine {
@@ -22,11 +21,30 @@ interface AppSettingsPlugin {
   openDomainSettings(): Promise<void>;
 }
 
-const Escpos = registerPlugin<EscposPlugin>('Escpos');
-export const AppSettings = registerPlugin<AppSettingsPlugin>('AppSettings');
+// @capacitor/core caricato solo nell'app nativa, con import dinamico: già
+// al caricamento del modulo registra i propri plugin web (Cookies, Http...)
+// tramite Proxy, che sui WebView vecchi non esiste — importarlo
+// staticamente faceva crashare l'intero sito (pagina bianca) sul WebView di
+// sistema Chrome 44 dei box Android 6 usati come display promo in Fully Kiosk.
+const plugins = new Map<string, Promise<unknown>>();
+function nativePlugin<T>(name: string): Promise<T> {
+  if (!plugins.has(name)) {
+    plugins.set(name, import('@capacitor/core').then((m) => m.registerPlugin<T>(name)));
+  }
+  return plugins.get(name) as Promise<T>;
+}
+const escpos = () => nativePlugin<EscposPlugin>('Escpos');
+export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
 
-/** true solo dentro l'app Android nativa BarManager, mai su sito/PWA (§5.11 di docs/DEVELOPMENT.md). */
-export const isNativeApp = (): boolean => Capacitor.isNativePlatform();
+/**
+ * true solo dentro l'app Android nativa BarManager, mai su sito/PWA (§5.11 di
+ * docs/DEVELOPMENT.md). Stesso controllo di Capacitor.isNativePlatform() (il
+ * bridge iniettato dal runtime nativo), senza importare @capacitor/core.
+ */
+export const isNativeApp = (): boolean => {
+  const win = window as unknown as { androidBridge?: unknown; webkit?: { messageHandlers?: { bridge?: unknown } } };
+  return !!(win.androidBridge || win.webkit?.messageHandlers?.bridge);
+};
 
 interface PrinterRow {
   id: string;
@@ -52,7 +70,7 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
   }
 
   const results = await Promise.allSettled(
-    printers.map((p) => Escpos.print({ host: p.host, port: p.port, sections })),
+    printers.map(async (p) => (await escpos()).print({ host: p.host, port: p.port, sections })),
   );
   const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
   if (failures.length > 0) {
@@ -62,7 +80,7 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
 
 /** Test di stampa (§5.11): stampante scelta esplicitamente dall'admin, non risolta per tipo. */
 export async function printOnPrinter(host: string, port: number, sections: ReceiptSection[]): Promise<void> {
-  await Escpos.print({ host, port, sections });
+  await (await escpos()).print({ host, port, sections });
 }
 
 interface PrintOrShareOptions {

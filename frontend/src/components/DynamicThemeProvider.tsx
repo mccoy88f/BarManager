@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { StatusBar, Style } from '@capacitor/status-bar';
 import { createAppTheme } from '../theme/theme';
 import { DEFAULT_ACCENT_COLOR } from '../config/accentColors';
 import { useAuthStore } from '../store/authStore';
@@ -53,12 +52,17 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
   // Nell'app nativa Android questo meta tag non ha alcun effetto (lo legge
   // solo il browser/PWA): la barra di stato di sistema resta altrimenti il
   // colore statico di default del template Capacitor, diverso dall'AppBar
-  // della pagina sotto di essa. @capacitor/status-bar la aggiorna davvero.
+  // della pagina sotto di essa. @capacitor/status-bar la aggiorna davvero
+  // (import dinamico: vedi il commento su @capacitor/core in nativePrint.ts).
   useEffect(() => {
     if (!isNativeApp()) return;
     const color = accentColor || DEFAULT_ACCENT_COLOR;
-    StatusBar.setBackgroundColor({ color }).catch(() => {});
-    StatusBar.setStyle({ style: luminance(color) > 150 ? Style.Light : Style.Dark }).catch(() => {});
+    import('@capacitor/status-bar')
+      .then(({ StatusBar, Style }) => {
+        StatusBar.setBackgroundColor({ color }).catch(() => {});
+        StatusBar.setStyle({ style: luminance(color) > 150 ? Style.Light : Style.Dark }).catch(() => {});
+      })
+      .catch(() => {});
   }, [accentColor]);
 
   return (

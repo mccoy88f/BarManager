@@ -1,13 +1,24 @@
+// Prima di tutto: TanStack Query crea un AbortController per ogni richiesta,
+// assente sui WebView vecchi (Chrome < 66, es. i box Android 6 usati come
+// display promo) e non coperto da core-js. Si installa solo se manca.
+import 'abortcontroller-polyfill/dist/abortcontroller-polyfill-only';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Capacitor } from '@capacitor/core';
 import { DynamicThemeProvider } from './components/DynamicThemeProvider';
 import { ToastProvider } from './components/ToastProvider';
 import App from './App';
+import { isNativeApp } from './printing/nativePrint';
 
-const queryClient = new QueryClient();
+// Senza notifyOnChangeProps, ogni useQuery avvolge il risultato in un Proxy
+// (tracciamento dei campi letti): sui WebView vecchi senza Proxy (es. Chrome
+// 44 dei box Android 6 usati come display promo in Fully Kiosk) qualunque
+// pagina crasherebbe. Lì si rinuncia all'ottimizzazione e si ri-renderizza
+// a ogni cambiamento; altrove resta il comportamento di default.
+const queryClient = new QueryClient(
+  typeof Proxy === 'undefined' ? { defaultOptions: { queries: { notifyOnChangeProps: 'all' } } } : undefined,
+);
 
 /**
  * Registrazione del service worker PWA: solo su sito/browser, mai dentro
@@ -19,7 +30,7 @@ const queryClient = new QueryClient();
  * Se l'app ne ha già uno registrato da prima di questo fix, lo rimuove.
  */
 if ('serviceWorker' in navigator) {
-  if (Capacitor.isNativePlatform()) {
+  if (isNativeApp()) {
     navigator.serviceWorker.getRegistrations().then((regs) => {
       regs.forEach((reg) => reg.unregister());
     });

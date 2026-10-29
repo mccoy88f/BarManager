@@ -39,7 +39,7 @@ import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
 import { canAccessModule } from '../config/modules';
 import { useOrderNotification } from '../context/OrderNotificationContext';
-import { isNativeApp, AppSettings } from '../printing/nativePrint';
+import { isNativeApp, appSettings } from '../printing/nativePrint';
 import { APP_VERSION } from '../version';
 
 const DRAWER_WIDTH = 260;
@@ -143,7 +143,7 @@ export function AppShell() {
         );
       })}
       {isNativeApp() && (
-        <ListItemButton onClick={() => AppSettings.openDomainSettings()}>
+        <ListItemButton onClick={() => appSettings().then((plugin) => plugin.openDomainSettings())}>
           <ListItemIcon>
             <SettingsApplicationsIcon />
           </ListItemIcon>

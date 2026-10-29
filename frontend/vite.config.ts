@@ -1,10 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
     react(),
+    // Supporto ai WebView dei vecchi box/tablet Android usati come display
+    // promo in Fully Kiosk. Due casi, entrambi finivano in pagina bianca:
+    // - WebView senza ES module: ignora <script type="module">, gli serve
+    //   il bundle ES5 legacy (caricato via nomodule, i browser moderni non
+    //   lo scaricano);
+    // - WebView con ES module ma vecchio (es. Chrome 84 su Android 6):
+    //   carica il bundle moderno ma crasha su API recenti (.at(),
+    //   structuredClone, Object.hasOwn, replaceAll...), quindi il bundle
+    //   moderno è compilato per Chrome 64+ con i polyfill necessari.
+    legacy({
+      targets: ['defaults', 'android >= 4.4', 'chrome >= 37'],
+      modernTargets: ['chrome >= 64', 'edge >= 79', 'firefox >= 67', 'safari >= 12', 'ios >= 12'],
+      modernPolyfills: true,
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       // Registrazione del service worker fatta a mano in main.tsx, non
@@ -20,6 +35,9 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'display-promo-fallback.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // I chunk legacy servono solo ai browser senza supporto ES module,
+        // che comunque non hanno service worker: non precacharli.
+        globIgnores: ['**/*-legacy-*.js'],
         // Senza questa esclusione, il service worker intercetta come
         // "navigazione" anche un GET a un endpoint pubblico del backend
         // aperto direttamente nel browser (es. il redirect di tracciamento

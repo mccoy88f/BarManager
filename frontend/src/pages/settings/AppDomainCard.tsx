@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, CardContent, Stack, Typography } from '@mui/material';
-import { isNativeApp, AppSettings } from '../../printing/nativePrint';
+import { isNativeApp, appSettings } from '../../printing/nativePrint';
 
 /**
  * Visibile solo dentro l'app Android nativa BarManager (mai su sito/PWA):
@@ -14,7 +14,9 @@ export function AppDomainCard() {
 
   useEffect(() => {
     if (!isNativeApp()) return;
-    AppSettings.getDomain().then((res) => setDomain(res.domain));
+    appSettings()
+      .then((plugin) => plugin.getDomain())
+      .then((res) => setDomain(res.domain));
   }, []);
 
   if (!isNativeApp()) return null;
@@ -29,7 +31,7 @@ export function AppDomainCard() {
               Dominio collegato: {domain ?? '—'}
             </Typography>
           </div>
-          <Button variant="outlined" onClick={() => AppSettings.openDomainSettings()}>
+          <Button variant="outlined" onClick={() => appSettings().then((plugin) => plugin.openDomainSettings())}>
             Cambia dominio app
           </Button>
         </Stack>

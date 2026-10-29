@@ -62,7 +62,7 @@ function playlistSignature(playlist: DisplayPromoPlaylist | null | undefined): s
  * mai un riquadro nero o rotto su un display pubblico incustodito.
  */
 function FallbackScreen() {
-  const fillStyle = { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'cover' as const };
+  const fillStyle = { position: 'absolute' as const, top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' as const };
   return <Box component="img" src="/display-promo-fallback.svg" sx={fillStyle} />;
 }
 
@@ -106,7 +106,10 @@ function MediaLayer({ media, animationName, zIndex, onEnded, onLoaded, onError }
     <Box
       sx={{
         position: 'absolute',
-        inset: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
         zIndex,
         animation: animationName ? `${animationName} ${TRANSITION_MS}ms ease forwards` : undefined,
         ...TRANSITION_KEYFRAMES,
@@ -296,7 +299,7 @@ function WeatherWidget({ lat, lng }: { lat: number; lng: number }) {
   const Icon = weatherIcon(weatherQuery.data.weathercode);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'white' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', '& > :not(:first-of-type)': { ml: 0.5 }, color: 'white' }}>
       <Icon sx={{ fontSize: 24 }} />
       <Typography variant="subtitle1" fontWeight={700}>
         {Math.round(weatherQuery.data.temperature)}°
@@ -397,8 +400,12 @@ export function PublicDisplayPromo() {
     refetchInterval: POLL_INTERVAL_MS,
   });
 
+  // top/right/bottom/left espliciti invece di `inset`, e margini invece del
+  // `gap` flex in questa pagina: i box Android vecchi usati come display in
+  // Fully Kiosk hanno WebView (es. Chrome 44) che non li supportano, e il
+  // contenitore finiva a dimensione zero (schermo vuoto).
   const containerStyle = useMemo(
-    () => ({ position: 'fixed' as const, inset: 0, bgcolor: 'black', overflow: 'hidden' as const }),
+    () => ({ position: 'fixed' as const, top: 0, right: 0, bottom: 0, left: 0, bgcolor: 'black', overflow: 'hidden' as const }),
     [],
   );
 
@@ -463,7 +470,7 @@ export function PublicDisplayPromo() {
             {data.headerText || data.venueName}
           </Typography>
         )}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', '& > :not(:first-of-type)': { ml: 2 } }}>
           {data.infoBar.weather && <WeatherWidget lat={data.infoBar.weather.lat} lng={data.infoBar.weather.lng} />}
           <LiveClock />
         </Box>

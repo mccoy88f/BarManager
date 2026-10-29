@@ -4,13 +4,19 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { PdfViewerDialog } from '../../components/PdfViewerDialog';
 import { useToast } from '../../components/ToastProvider';
 import { formatDate } from '../../utils/format';
+
+// Caricato solo all'apertura: pdf.js usa DOMMatrix già al caricamento del
+// modulo, e importarlo staticamente (App importa tutte le pagine) faceva
+// crashare l'intero sito sui WebView vecchi, display promo compreso.
+const PdfViewerDialog = lazy(() =>
+  import('../../components/PdfViewerDialog').then((m) => ({ default: m.PdfViewerDialog })),
+);
 
 interface KbArticle {
   id: string;
@@ -117,7 +123,9 @@ export function KbArticleView() {
         onConfirm={() => deleteMutation.mutate()}
       />
 
-      <PdfViewerDialog file={pdfPreview} onClose={() => setPdfPreview(null)} />
+      <Suspense fallback={null}>
+        <PdfViewerDialog file={pdfPreview} onClose={() => setPdfPreview(null)} />
+      </Suspense>
     </Box>
   );
 }

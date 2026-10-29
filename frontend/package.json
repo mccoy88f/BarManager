@@ -29,6 +29,7 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
+    "abortcontroller-polyfill": "^1.7.8",
     "axios": "^1.7.4",
     "dayjs": "^1.11.12",
     "jsqr": "^1.4.0",
@@ -50,7 +51,9 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-legacy": "^5.4.3",
     "@vitejs/plugin-react": "^4.3.1",
+    "terser": "^5.51.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.1",
     "vite-plugin-pwa": "^0.20.1"
