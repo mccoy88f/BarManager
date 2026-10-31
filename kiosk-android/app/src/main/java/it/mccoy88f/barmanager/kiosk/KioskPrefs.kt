@@ -11,7 +11,7 @@ import java.util.UUID
 object KioskPrefs {
     private const val PREFS_NAME = "barmanager_kiosk_prefs"
 
-    const val DEFAULT_SERVER_URL = "https://bm.mccoy88f.link"
+    const val DEFAULT_SERVER_URL = "https://civico39it.bm.mccoy88f.link"
 
     private const val KEY_SERVER_URL = "server_url"
     private const val KEY_DEVICE_ID = "device_id"
@@ -20,18 +20,22 @@ object KioskPrefs {
     private const val KEY_SCREEN_NAME = "screen_name"
     private const val KEY_SCREEN_URL = "screen_url"
 
+    fun normalize(input: String): String {
+        var clean = input.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
+        if (clean.isBlank()) return DEFAULT_SERVER_URL
+        if (!clean.contains(".")) {
+            clean = "$clean.bm.mccoy88f.link"
+        }
+        return "https://$clean"
+    }
+
     fun getServerUrl(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_SERVER_URL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
     }
 
     fun setServerUrl(context: Context, url: String) {
-        val clean = url.trim().removeSuffix("/")
-        val normalized = if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
-            "https://$clean"
-        } else {
-            clean
-        }
+        val normalized = normalize(url)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_SERVER_URL, normalized).apply()
     }
