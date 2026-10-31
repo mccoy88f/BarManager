@@ -169,7 +169,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=coolify
-      - 'traefik.http.routers.barmanager.rule=HostRegexp(`^[a-z0-9-]+\.bm\.mccoy88f\.link$`)'
+      - 'traefik.http.routers.barmanager.rule=Host(`bm.mccoy88f.link`) || HostRegexp(`^[a-z0-9-]+\.bm\.mccoy88f\.link$`)'
       - traefik.http.routers.barmanager.entrypoints=https
       - traefik.http.routers.barmanager.tls.certresolver=letsencrypt
       - traefik.http.routers.barmanager.tls.domains[0].main=bm.mccoy88f.link

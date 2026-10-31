@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">BarManager Kiosk</string>
+    <string name="kiosk_title">BarManager Kiosk</string>
+    <string name="code_label">CODICE SCHERMO</string>
+    <string name="instructions_title">Schermo pronto per il collegamento</string>
+    <string name="instructions_desc">Accedi a BarManager da browser > Display Promo > seleziona questo schermo e inserisci il codice sopra in "Dispositivi Kiosk collegati".</string>
+    <string name="waiting_pairing">In attesa di abbinamento…</string>
+    <string name="btn_server_settings">Impostazioni server</string>
+    <string name="btn_refresh_code">Nuovo codice</string>
+    <string name="server_url_label">URL Server BarManager</string>
+    <string name="server_url_hint">https://bm.mccoy88f.link</string>
+    <string name="default_server_url">https://bm.mccoy88f.link</string>
+    <string name="cancel">Annulla</string>
+    <string name="save">Salva</string>
+    <string name="close">Chiudi</string>
+    <string name="reload">Ricarica pagina</string>
+    <string name="unpair">Scollega questo schermo</string>
+    <string name="options_title">Opzioni Kiosk</string>
+    <string name="confirm_unpair_msg">Vuoi scollegare questo dispositivo? Lo schermo tornerà alla visualizzazione del codice di abbinamento.</string>
+    <string name="offline_msg">Connessione persa. Riconnessione in corso…</string>
+    <string name="retry_now">Riprova ora</string>
+</resources>
+

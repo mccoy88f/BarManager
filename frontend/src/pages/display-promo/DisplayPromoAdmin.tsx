@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -196,6 +197,191 @@ function ScreenLinkQr({ screenId }: { screenId: string }) {
   );
 }
 
+interface KioskDevice {
+  id: string;
+  code: string;
+  name: string | null;
+  deviceInfo: string | null;
+  ipAddress: string | null;
+  appVersion: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+}
+
+/** Dispositivi Android (TV Box / tablet) con l'app BarManager Kiosk collegati a questo schermo */
+function ScreenKioskDevices({ screenId }: { screenId: string }) {
+  const showToast = useToast();
+  const queryClient = useQueryClient();
+  const [openAdd, setOpenAdd] = useState(false);
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [toUnlink, setToUnlink] = useState<KioskDevice | null>(null);
+
+  const kiosksQuery = useQuery({
+    queryKey: ['display-promo-kiosks', screenId],
+    queryFn: async () => (await api.get<KioskDevice[]>(`/display-promo/screens/${screenId}/kiosks`)).data,
+  });
+
+  const pairMutation = useMutation({
+    mutationFn: async () => {
+      const trimmed = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!trimmed) throw new Error('Inserisci il codice del dispositivo');
+      return (await api.post(`/display-promo/screens/${screenId}/kiosks`, { code: trimmed, name: name.trim() || undefined })).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['display-promo-kiosks', screenId] });
+      showToast('Dispositivo collegato con successo allo schermo');
+      setOpenAdd(false);
+      setCode('');
+      setName('');
+    },
+    onError: (err: any) => {
+      showToast({ message: err?.response?.data?.message || 'Errore durante il collegamento', severity: 'error' });
+    },
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async (deviceId: string) => {
+      return (await api.delete(`/display-promo/screens/${screenId}/kiosks/${deviceId}`)).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['display-promo-kiosks', screenId] });
+      showToast('Dispositivo scollegato');
+      setToUnlink(null);
+    },
+    onError: (err: any) => {
+      showToast({ message: err?.response?.data?.message || 'Errore durante lo scollegamento', severity: 'error' });
+    },
+  });
+
+  const kiosks = kiosksQuery.data || [];
+
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+        <Box>
+          <Typography variant="subtitle2" fontWeight={700}>
+            Dispositivi BarManager Kiosk collegati
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Collega TV Box o tablet con l'app nativa Kiosk inserendo il codice mostrato a schermo.
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenAdd(true)}
+        >
+          Aggiungi codice
+        </Button>
+      </Stack>
+
+      {kiosks.length === 0 ? (
+        <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+          Nessun dispositivo Kiosk attualmente collegato a questo schermo. Apri l'app <strong>BarManager Kiosk</strong> sul tuo box Android e inserisci qui il codice.
+        </Alert>
+      ) : (
+        <Stack spacing={1}>
+          {kiosks.map((kiosk) => {
+            const lastSeen = kiosk.lastSeenAt ? new Date(kiosk.lastSeenAt) : null;
+            const isRecent = lastSeen ? Date.now() - lastSeen.getTime() < 120_000 : false;
+            return (
+              <Box
+                key={kiosk.id}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  p: 1.25,
+                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Chip
+                    label={kiosk.code}
+                    color="primary"
+                    variant="filled"
+                    sx={{ fontWeight: 800, letterSpacing: 1.5, fontFamily: 'monospace' }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {kiosk.name || 'Dispositivo Kiosk'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {kiosk.deviceInfo ? `${kiosk.deviceInfo} • ` : ''}
+                      {isRecent ? '🟢 Online' : lastSeen ? `Ultimo contatto: ${lastSeen.toLocaleDateString()} ${lastSeen.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <IconButton
+                  size="small"
+                  color="error"
+                  title="Scollega dispositivo"
+                  onClick={() => setToUnlink(kiosk)}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            );
+          })}
+        </Stack>
+      )}
+
+      {/* Dialog per inserire il codice */}
+      <Dialog open={openAdd} onClose={() => setOpenAdd(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Collega BarManager Kiosk</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: '16px !important' }}>
+          <Typography variant="body2" color="text.secondary">
+            Inserisci il codice di 6 caratteri mostrato sull'app BarManager Kiosk del tuo TV Box o schermo:
+          </Typography>
+          <TextField
+            autoFocus
+            label="Codice dispositivo"
+            placeholder="es. AB12CD"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            inputProps={{ maxLength: 10, style: { textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2 } }}
+            fullWidth
+            required
+          />
+          <TextField
+            label="Nome o posizione (facoltativo)"
+            placeholder="es. TV Bancone, Schermo Ingresso"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAdd(false)}>Annulla</Button>
+          <Button
+            variant="contained"
+            disabled={!code.trim() || pairMutation.isPending}
+            onClick={() => pairMutation.mutate()}
+          >
+            {pairMutation.isPending ? 'Collegamento...' : 'Collega'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Conferma scollegamento */}
+      <ConfirmDialog
+        open={Boolean(toUnlink)}
+        title="Scollega dispositivo Kiosk"
+        message={`Sei sicuro di voler scollegare il dispositivo ${toUnlink?.name || toUnlink?.code}? Lo schermo tornerà alla schermata con il codice di abbinamento.`}
+        confirmColor="error"
+        confirmLabel="Scollega"
+        onConfirm={() => toUnlink && unlinkMutation.mutate(toUnlink.id)}
+        onCancel={() => setToUnlink(null)}
+      />
+    </Box>
+  );
+}
+
 /**
  * Display Promo (§5.12 di DEVELOPMENT.md): un locale può avere PIÙ display
  * fisici diversi (es. "Sala", "Vetrina"), ciascuno con un proprio link/QR
@@ -371,6 +557,12 @@ export function DisplayPromoAdmin() {
             <Card variant="outlined">
               <CardContent>
                 <ScreenLinkQr screenId={screen.id} />
+              </CardContent>
+            </Card>
+
+            <Card variant="outlined">
+              <CardContent>
+                <ScreenKioskDevices screenId={screen.id} />
               </CardContent>
             </Card>
 

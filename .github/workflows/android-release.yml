@@ -1,23 +1,14 @@
 name: Android release
 
-# Manuale (workflow_dispatch), non automatico ad ogni push: chi pubblica
-# decide quando farlo (§5.11 di docs/DEVELOPMENT.md). Calcola la versione
-# nel formato AAAA.MM.GG-N (N riparte da 1 a ogni giorno, letto dalle
-# Release già esistenti su GitHub per la data odierna), la inietta in
-# build.gradle e frontend/src/version.ts solo per questa build (non
-# committata nel repository), builda l'APK e lo allega a una nuova
-# GitHub Release con quella stessa versione come tag.
+# Compila e rilascia sia l'app principale BarManager sia l'app BarManager Kiosk.
+# Si attiva automaticamente al push su branch main, oppure manualmente
+# tramite workflow_dispatch dalla scheda Actions di GitHub.
 #
-# NOTA SULLA FIRMA: questo workflow builda un APK di debug (nessun
-# keystore configurato). Installabile via sideload esattamente come un
-# APK di release — non va mai su Play Store, quindi la firma di debug
-# non è un problema per l'uso previsto — ma chi lo aggiorna in futuro con
-# un vero keystore di release dovrà disinstallare e reinstallare una
-# volta sola (Android non permette di aggiornare un'app cambiando la
-# firma). Per passare a una build di release firmata: aggiungere il
-# keystore come secret del repository, una signingConfig in
-# android/app/build.gradle, e sostituire "assembleDebug"/"app-debug.apk"
-# con "assembleRelease"/"app-release.apk" più i parametri di firma.
+# Calcola la versione nel formato AAAA.MM.GG-N (N riparte da 1 ogni giorno,
+# letto dalle Release già esistenti su GitHub per la data odierna), la inietta
+# nei progetti Android, compila entrambi gli APK e li allega alla stessa
+# GitHub Release.
+
 on:
   workflow_dispatch:
     inputs:
@@ -25,6 +16,9 @@ on:
         description: 'Note di rilascio (facoltative)'
         required: false
         default: ''
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -41,28 +35,15 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # Capacitor 8 (node_modules/@capacitor/android/capacitor/build.gradle)
-      # richiede sourceCompatibility/targetCompatibility VERSION_21: con 17 la
-      # build falliva su :capacitor-android:compileDebugJavaWithJavac con
-      # "error: invalid source release: 21".
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      # L'azione android-actions/setup-android@v3 falliva qui: prova a
-      # installare il pacchetto legacy "tools" ("sdkmanager tools"), da
-      # tempo rimosso dal repository SDK di Google ("Failed to find
-      # package 'tools'", exit code 1) — un problema noto dell'azione, non
-      # di questo progetto. Il runner ubuntu-latest di GitHub include già
-      # l'SDK Android (ANDROID_HOME preimpostato): basta accettare le
-      # licenze e assicurarsi che platform/build-tools richiesti ci siano,
-      # lasciando ad AGP lo scaricamento automatico di eventuali pacchetti
-      # mancanti durante la build vera e propria.
       - name: Accetta le licenze SDK Android e installa i pacchetti richiesti
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          sdkmanager "platform-tools" "platforms;android-34" "platforms;android-36" "build-tools;34.0.0" "build-tools;36.0.0" || true
 
       - name: Calcola la versione (AAAA.MM.GG-N)
         id: version
@@ -76,11 +57,12 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Versione calcolata: ${VERSION}"
 
-      - name: Inietta la versione (solo per questa build, non committata)
+      - name: Inietta la versione nei progetti Android
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           sed -i "s/export const APP_VERSION = '.*';/export const APP_VERSION = '${VERSION}';/" frontend/src/version.ts
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" frontend/android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" kiosk-android/app/build.gradle
 
       - name: Build frontend
         working-directory: frontend
@@ -92,27 +74,30 @@ jobs:
         working-directory: frontend
         run: npx cap sync android
 
-      - name: Build APK
+      - name: Build APK BarManager (gestionale)
         working-directory: frontend/android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Rinomina l'APK con la versione
+      - name: Build APK BarManager Kiosk (schermi promo)
+        working-directory: kiosk-android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rinomina gli APK con la versione
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           cp frontend/android/app/build/outputs/apk/debug/app-debug.apk "BarManager-${VERSION}.apk"
+          cp kiosk-android/app/build/outputs/apk/debug/app-debug.apk "BarManager-Kiosk-${VERSION}.apk"
 
-      - name: Pubblica la GitHub Release
+      - name: Pubblica la GitHub Release con entrambi gli APK
         env:
           GH_TOKEN: ${{ github.token }}
-          # Passata come variabile d'ambiente, non interpolata direttamente nello
-          # script: la run precedente è fallita perché le note contenevano un
-          # carattere " che chiudeva anticipatamente la stringa tra doppi apici
-          # (il resto veniva interpretato come comando/glob dalla shell) -
-          # oltre a essere comunque il pattern sicuro contro l'injection di
-          # script quando il testo interpolato arriva da un input esterno.
-          RELEASE_NOTES: ${{ inputs.notes }}
+          RELEASE_NOTES: ${{ inputs.notes || github.event.head_commit.message || 'Release BarManager e BarManager Kiosk' }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          gh release create "${VERSION}" "BarManager-${VERSION}.apk" \
+          gh release create "${VERSION}" \
+            "BarManager-${VERSION}.apk" \
+            "BarManager-Kiosk-${VERSION}.apk" \
             --title "BarManager ${VERSION}" \
             --notes "${RELEASE_NOTES}"

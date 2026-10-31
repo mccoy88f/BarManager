@@ -9,6 +9,21 @@ import { UpdateMediaDto } from './dto/update-media.dto';
 import { CreateScreenDto } from './dto/create-screen.dto';
 import { UpdateScreenDto } from './dto/update-screen.dto';
 import { fetchHeadlines } from '../common/news/rss';
+import { venuePublicUrl } from '../common/venue-url/venue-url';
+
+function generatePairingCode(): string {
+  // Caratteri univoci e facilmente leggibili da TV (nessuna ambiguità 0/O, 1/I)
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function normalizeKioskCode(code: string): string {
+  return code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
 
 const MEDIA_INCLUDE = { items: { orderBy: { sortOrder: 'asc' as const } } };
 
@@ -272,5 +287,295 @@ export class DisplayPromoService {
     }
     if (!screen.venue.displayPromoNewsFeedUrl) return [];
     return fetchHeadlines(screen.venue.displayPromoNewsFeedUrl);
+  }
+
+  // ---- Kiosk Android (BarManager Kiosk, abbinamento codici schermo) -------
+
+  /**
+   * Registrazione o aggiornamento di un dispositivo Kiosk fisico.
+   * Se ha già un deviceId memorizzato e associato a uno schermo attivo,
+   * restituisce subito lo stato PAIRED con l'URL definitivo; altrimenti
+   * assegna un codice di abbinamento univoco a 6 caratteri da mostrare a schermo.
+   */
+  async registerKioskDevice(data: {
+    deviceId?: string;
+    deviceInfo?: string;
+    appVersion?: string;
+    ipAddress?: string;
+    code?: string;
+  }) {
+    if (data.deviceId) {
+      const existing = await this.prisma.displayPromoKioskDevice.findFirst({
+        where: { deviceId: data.deviceId },
+        include: {
+          screen: {
+            include: {
+              venue: { select: { id: true, slug: true, active: true, displayPromoEnabled: true } },
+            },
+          },
+        },
+      });
+
+      if (existing) {
+        await this.prisma.displayPromoKioskDevice.update({
+          where: { id: existing.id },
+          data: {
+            lastSeenAt: new Date(),
+            deviceInfo: data.deviceInfo ?? existing.deviceInfo,
+            appVersion: data.appVersion ?? existing.appVersion,
+            ipAddress: data.ipAddress ?? existing.ipAddress,
+          },
+        });
+
+        if (existing.screen && existing.screen.venue.active && existing.screen.venue.displayPromoEnabled) {
+          return {
+            status: 'PAIRED' as const,
+            code: existing.code,
+            screenId: existing.screen.id,
+            screenName: existing.screen.name,
+            screenUrl: venuePublicUrl(existing.screen.venue, `/display/${existing.screen.id}`),
+          };
+        }
+
+        return {
+          status: 'PENDING' as const,
+          code: existing.code,
+          pollIntervalMs: 3000,
+        };
+      }
+    }
+
+    // Se il client propone un codice valido usalo se non occupato, altrimenti generalo
+    let code = data.code ? normalizeKioskCode(data.code) : '';
+    if (code) {
+      const collision = await this.prisma.displayPromoKioskDevice.findUnique({ where: { code } });
+      if (collision) code = '';
+    }
+
+    if (!code) {
+      let attempts = 0;
+      while (attempts < 10) {
+        const candidate = generatePairingCode();
+        const collision = await this.prisma.displayPromoKioskDevice.findUnique({ where: { code: candidate } });
+        if (!collision) {
+          code = candidate;
+          break;
+        }
+        attempts++;
+      }
+      if (!code) {
+        code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      }
+    }
+
+    const created = await this.prisma.displayPromoKioskDevice.create({
+      data: {
+        code,
+        deviceId: data.deviceId,
+        deviceInfo: data.deviceInfo,
+        appVersion: data.appVersion,
+        ipAddress: data.ipAddress,
+      },
+    });
+
+    return {
+      status: 'PENDING' as const,
+      code: created.code,
+      pollIntervalMs: 3000,
+    };
+  }
+
+  /**
+   * Polling periodico dell'app Kiosk durante la schermata con il codice.
+   * Quando l'admin inserisce il codice nel pannello Display Promo, il
+   * dispositivo riceve PAIRED e l'URL a cui agganciarsi.
+   */
+  async getKioskStatus(params: { code?: string; deviceId?: string; ipAddress?: string }) {
+    const normalizedCode = params.code ? normalizeKioskCode(params.code) : undefined;
+    const device = await this.prisma.displayPromoKioskDevice.findFirst({
+      where: {
+        OR: [
+          ...(normalizedCode ? [{ code: normalizedCode }] : []),
+          ...(params.deviceId ? [{ deviceId: params.deviceId }] : []),
+        ],
+      },
+      include: {
+        screen: {
+          include: {
+            venue: { select: { id: true, slug: true, active: true, displayPromoEnabled: true } },
+          },
+        },
+      },
+    });
+
+    if (!device) {
+      return { status: 'NOT_FOUND' as const };
+    }
+
+    await this.prisma.displayPromoKioskDevice.update({
+      where: { id: device.id },
+      data: {
+        lastSeenAt: new Date(),
+        ipAddress: params.ipAddress ?? device.ipAddress,
+      },
+    });
+
+    if (device.screen && device.screen.venue.active && device.screen.venue.displayPromoEnabled) {
+      return {
+        status: 'PAIRED' as const,
+        code: device.code,
+        screenId: device.screen.id,
+        screenName: device.screen.name,
+        screenUrl: venuePublicUrl(device.screen.venue, `/display/${device.screen.id}`),
+      };
+    }
+
+    return {
+      status: 'PENDING' as const,
+      code: device.code,
+      pollIntervalMs: 3000,
+    };
+  }
+
+  /**
+   * Heartbeat periodico dall'app mentre proietta il display promo:
+   * se l'admin scollega lo schermo dal backoffice, restituisce UNPAIRED
+   * così l'app azzera la configurazione e torna alla schermata del codice.
+   */
+  async kioskHeartbeat(params: { code?: string; deviceId?: string; ipAddress?: string }) {
+    const normalizedCode = params.code ? normalizeKioskCode(params.code) : undefined;
+    const device = await this.prisma.displayPromoKioskDevice.findFirst({
+      where: {
+        OR: [
+          ...(normalizedCode ? [{ code: normalizedCode }] : []),
+          ...(params.deviceId ? [{ deviceId: params.deviceId }] : []),
+        ],
+      },
+      include: {
+        screen: {
+          include: {
+            venue: { select: { id: true, slug: true, active: true, displayPromoEnabled: true } },
+          },
+        },
+      },
+    });
+
+    if (!device || !device.screen || !device.screen.venue.active || !device.screen.venue.displayPromoEnabled) {
+      return { status: 'UNPAIRED' as const, code: device?.code };
+    }
+
+    await this.prisma.displayPromoKioskDevice.update({
+      where: { id: device.id },
+      data: {
+        lastSeenAt: new Date(),
+        ipAddress: params.ipAddress ?? device.ipAddress,
+      },
+    });
+
+    return {
+      status: 'PAIRED' as const,
+      code: device.code,
+      screenId: device.screen.id,
+      screenName: device.screen.name,
+      screenUrl: venuePublicUrl(device.screen.venue, `/display/${device.screen.id}`),
+    };
+  }
+
+  /** L'app kiosk stessa richiede lo scollegamento (es. tramite menu segreto dell'app su TV). */
+  async kioskUnpairSelf(params: { code?: string; deviceId?: string }) {
+    const normalizedCode = params.code ? normalizeKioskCode(params.code) : undefined;
+    const device = await this.prisma.displayPromoKioskDevice.findFirst({
+      where: {
+        OR: [
+          ...(normalizedCode ? [{ code: normalizedCode }] : []),
+          ...(params.deviceId ? [{ deviceId: params.deviceId }] : []),
+        ],
+      },
+    });
+
+    if (device) {
+      await this.prisma.displayPromoKioskDevice.update({
+        where: { id: device.id },
+        data: { screenId: null },
+      });
+    }
+
+    return { success: true, status: 'UNPAIRED' as const };
+  }
+
+  // ---- Gestione Admin dei dispositivi Kiosk collegati a uno schermo --------
+
+  async listKiosksForScreen(venueId: string, screenId: string) {
+    await this.assertScreenOwnership(venueId, screenId);
+    return this.prisma.displayPromoKioskDevice.findMany({
+      where: { screenId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        deviceId: true,
+        deviceInfo: true,
+        ipAddress: true,
+        appVersion: true,
+        lastSeenAt: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async pairKioskToScreen(
+    venueId: string,
+    screenId: string,
+    dto: { code: string; name?: string },
+  ) {
+    await this.assertScreenOwnership(venueId, screenId);
+    const code = normalizeKioskCode(dto.code);
+    if (!code) throw new BadRequestException('Codice non valido');
+
+    // Se esiste già il dispositivo con quel codice registrato dall'app Android:
+    const existing = await this.prisma.displayPromoKioskDevice.findUnique({ where: { code } });
+    if (existing) {
+      return this.prisma.displayPromoKioskDevice.update({
+        where: { id: existing.id },
+        data: {
+          screenId,
+          name: dto.name?.trim() || existing.name,
+        },
+      });
+    }
+
+    // Se l'admin digita un codice non ancora registrato: crealo già pre-collegato
+    return this.prisma.displayPromoKioskDevice.create({
+      data: {
+        code,
+        screenId,
+        name: dto.name?.trim() || null,
+      },
+    });
+  }
+
+  async unlinkKioskFromScreen(venueId: string, screenId: string, deviceIdOrCode: string) {
+    await this.assertScreenOwnership(venueId, screenId);
+    const normalized = normalizeKioskCode(deviceIdOrCode);
+    const device = await this.prisma.displayPromoKioskDevice.findFirst({
+      where: {
+        screenId,
+        OR: [
+          { id: deviceIdOrCode },
+          { code: normalized },
+        ],
+      },
+    });
+    if (!device) {
+      throw new NotFoundException('Dispositivo kiosk non trovato per questo schermo');
+    }
+
+    await this.prisma.displayPromoKioskDevice.update({
+      where: { id: device.id },
+      data: { screenId: null },
+    });
+
+    return { success: true };
   }
 }

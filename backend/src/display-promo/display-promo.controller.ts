@@ -34,6 +34,7 @@ import { ReorderMediaDto } from './dto/reorder-media.dto';
 import { SetScheduleSlotDto } from './dto/set-schedule-slot.dto';
 import { CreateScreenDto } from './dto/create-screen.dto';
 import { UpdateScreenDto } from './dto/update-screen.dto';
+import { PairKioskDto } from './dto/pair-kiosk.dto';
 
 /** Foto e video a tutto schermo: niente documenti/PDF come in KB, qui sono solo contenuti da proiettare. */
 const ALLOWED_MEDIA_MIME = /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg))$/;
@@ -199,6 +200,40 @@ export class DisplayPromoController {
       Number(dayOfWeek),
       shift,
       dto.playlistId,
+    );
+  }
+
+  // ---- Dispositivi Kiosk Android abbinati allo schermo -------------------
+
+  @Get('screens/:id/kiosks')
+  listKiosks(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') screenId: string,
+  ) {
+    return this.displayPromoService.listKiosksForScreen(requireVenueId(user), screenId);
+  }
+
+  @Post('screens/:id/kiosks')
+  @Roles(Role.ADMIN)
+  pairKiosk(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') screenId: string,
+    @Body() dto: PairKioskDto,
+  ) {
+    return this.displayPromoService.pairKioskToScreen(requireVenueId(user), screenId, dto);
+  }
+
+  @Delete('screens/:id/kiosks/:deviceId')
+  @Roles(Role.ADMIN)
+  unlinkKiosk(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') screenId: string,
+    @Param('deviceId') deviceId: string,
+  ) {
+    return this.displayPromoService.unlinkKioskFromScreen(
+      requireVenueId(user),
+      screenId,
+      deviceId,
     );
   }
 }

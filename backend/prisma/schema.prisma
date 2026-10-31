@@ -422,11 +422,39 @@ model DisplayPromoScreen {
   headerText    String?
   headerLogoUrl String?
 
-  schedules DisplayPromoSchedule[]
+  schedules    DisplayPromoSchedule[]
+  kioskDevices DisplayPromoKioskDevice[]
 
   createdAt DateTime @default(now())
 
   @@index([venueId])
+}
+
+/// Un dispositivo fisico (Android Box/TV/tablet con l'app nativa
+/// "BarManager Kiosk") collegato a uno schermo promo (§5.12): all'avvio
+/// l'app mostra un codice di abbinamento univoco (es. "AB12CD"); l'admin
+/// associa il codice a un DisplayPromoScreen dal pannello di controllo.
+/// Il dispositivo interroga periodicamente l'API pubblica, riceve l'URL
+/// del proprio schermo e lo visualizza a tutto schermo come launcher.
+model DisplayPromoKioskDevice {
+  id         String   @id @default(cuid())
+  code       String   @unique // codice breve univoco (6 caratteri alfanumerici maiuscoli)
+  deviceId   String?  // UUID o hardware ID generato dall'app Android al primo avvio
+  name       String?  // etichetta opzionale (es. "TV Bancone", "Schermo Ingresso")
+  deviceInfo String?  // modello e versione Android (es. "Android 6.0.1 - Sunvell T95M")
+  ipAddress  String?  // ultimo indirizzo IP rilevato
+  appVersion String?  // versione dell'app BarManager Kiosk
+
+  screenId String?
+  screen   DisplayPromoScreen? @relation(fields: [screenId], references: [id], onDelete: Cascade)
+
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([screenId])
+  @@index([code])
+  @@index([deviceId])
 }
 
 /// Una riga per ogni (schermo, giorno della settimana, turno) con una

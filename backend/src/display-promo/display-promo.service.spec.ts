@@ -263,3 +263,95 @@ describe('DisplayPromoService — CRUD con isolamento per locale', () => {
     expect(prisma.displayPromoScreen.update).not.toHaveBeenCalled();
   });
 });
+
+describe('DisplayPromoService — Kiosk Devices (BarManager Kiosk)', () => {
+  let prisma: {
+    displayPromoScreen: { findUnique: jest.Mock };
+    displayPromoKioskDevice: {
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+  };
+  let service: DisplayPromoService;
+
+  beforeEach(() => {
+    prisma = {
+      displayPromoScreen: { findUnique: jest.fn() },
+      displayPromoKioskDevice: {
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    service = new DisplayPromoService(prisma as unknown as PrismaService, {} as unknown as MenuService);
+  });
+
+  it('registra un nuovo dispositivo kiosk con codice generato a 6 caratteri maiuscoli', async () => {
+    prisma.displayPromoKioskDevice.findFirst.mockResolvedValue(null);
+    prisma.displayPromoKioskDevice.findUnique.mockResolvedValue(null);
+    prisma.displayPromoKioskDevice.create.mockImplementation((args) => Promise.resolve({ id: 'k1', ...args.data }));
+
+    const res = await service.registerKioskDevice({
+      deviceId: 'hw-uuid-123',
+      deviceInfo: 'Android 6.0',
+      appVersion: '1.0.0',
+    });
+
+    expect(res.status).toBe('PENDING');
+    expect(res.code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(prisma.displayPromoKioskDevice.create).toHaveBeenCalled();
+  });
+
+  it('restituisce subito PAIRED se il deviceId era già abbinato a uno schermo', async () => {
+    prisma.displayPromoKioskDevice.findFirst.mockResolvedValue({
+      id: 'k1',
+      code: 'AB12CD',
+      deviceId: 'hw-uuid-123',
+      screen: {
+        id: 'screen-1',
+        name: 'Schermo Sala',
+        venue: { id: 'venue-1', slug: 'demo', active: true, displayPromoEnabled: true },
+      },
+    });
+    prisma.displayPromoKioskDevice.update.mockResolvedValue({});
+
+    const res = await service.registerKioskDevice({ deviceId: 'hw-uuid-123' });
+
+    expect(res.status).toBe('PAIRED');
+    expect((res as any).screenId).toBe('screen-1');
+    expect((res as any).screenUrl).toContain('/display/screen-1');
+  });
+
+  it('pairKioskToScreen associa il codice inserito dall\'admin allo schermo del locale', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ id: 'screen-1', venueId: 'venue-1' });
+    prisma.displayPromoKioskDevice.findUnique.mockResolvedValue({ id: 'k1', code: 'AB12CD', name: null });
+    prisma.displayPromoKioskDevice.update.mockResolvedValue({ id: 'k1', code: 'AB12CD', screenId: 'screen-1', name: 'TV Sala' });
+
+    const res = await service.pairKioskToScreen('venue-1', 'screen-1', { code: 'ab12cd', name: 'TV Sala' });
+
+    expect(prisma.displayPromoKioskDevice.update).toHaveBeenCalledWith({
+      where: { id: 'k1' },
+      data: { screenId: 'screen-1', name: 'TV Sala' },
+    });
+    expect(res.screenId).toBe('screen-1');
+  });
+
+  it('unlinkKioskFromScreen scollega il dispositivo dallo schermo impostando screenId a null', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({ id: 'screen-1', venueId: 'venue-1' });
+    prisma.displayPromoKioskDevice.findFirst.mockResolvedValue({ id: 'k1', screenId: 'screen-1' });
+    prisma.displayPromoKioskDevice.update.mockResolvedValue({});
+
+    const res = await service.unlinkKioskFromScreen('venue-1', 'screen-1', 'k1');
+
+    expect(res.success).toBe(true);
+    expect(prisma.displayPromoKioskDevice.update).toHaveBeenCalledWith({
+      where: { id: 'k1' },
+      data: { screenId: null },
+    });
+  });
+});
