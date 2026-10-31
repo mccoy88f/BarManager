@@ -11,7 +11,7 @@ import java.util.UUID
 object KioskPrefs {
     private const val PREFS_NAME = "barmanager_kiosk_prefs"
 
-    const val DEFAULT_SERVER_URL = "https://civico39it.bm.mccoy88f.link"
+    const val DEFAULT_SERVER_URL = "https://bm.mccoy88f.link"
 
     private const val KEY_SERVER_URL = "server_url"
     private const val KEY_DEVICE_ID = "device_id"
@@ -23,6 +23,7 @@ object KioskPrefs {
     fun normalize(input: String): String {
         var clean = input.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
         if (clean.isBlank()) return DEFAULT_SERVER_URL
+        // Se viene inserito solo lo slug di un'istanza (es. "civico39it" o "demo")
         if (!clean.contains(".")) {
             clean = "$clean.bm.mccoy88f.link"
         }

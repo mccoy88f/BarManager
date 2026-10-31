@@ -8,8 +8,8 @@
     <string name="btn_server_settings">Impostazioni server</string>
     <string name="btn_refresh_code">Nuovo codice</string>
     <string name="server_url_label">Locale BarManager o URL Server</string>
-    <string name="server_url_hint">es. civico39it oppure civico39it.bm.mccoy88f.link</string>
-    <string name="default_server_url">https://civico39it.bm.mccoy88f.link</string>
+    <string name="server_url_hint">es. bm.mccoy88f.link o civico39it</string>
+    <string name="default_server_url">https://bm.mccoy88f.link</string>
     <string name="cancel">Annulla</string>
     <string name="save">Salva</string>
     <string name="close">Chiudi</string>

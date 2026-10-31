@@ -27,7 +27,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="Puoi inserire solo lo slug (es. civico39it) o l'indirizzo completo. Default: civico39it.bm.mccoy88f.link"
+        android:text="Inserisci lo slug (es. civico39it) o l'indirizzo completo. Default: bm.mccoy88f.link"
         android:textColor="@color/text_muted"
         android:textSize="12sp" />
 
