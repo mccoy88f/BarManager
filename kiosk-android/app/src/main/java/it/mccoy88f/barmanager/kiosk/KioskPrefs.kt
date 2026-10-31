@@ -19,6 +19,7 @@ object KioskPrefs {
     private const val KEY_SCREEN_ID = "screen_id"
     private const val KEY_SCREEN_NAME = "screen_name"
     private const val KEY_SCREEN_URL = "screen_url"
+    private const val KEY_ORIENTATION = "screen_orientation"
 
     fun normalize(input: String): String {
         var clean = input.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
@@ -97,6 +98,16 @@ object KioskPrefs {
             .remove(KEY_SCREEN_NAME)
             .remove(KEY_SCREEN_URL)
             .apply()
+    }
+
+    fun getOrientation(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_ORIENTATION, android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+    }
+
+    fun setOrientation(context: Context, orientation: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(KEY_ORIENTATION, orientation).apply()
     }
 }
 

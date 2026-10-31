@@ -7,6 +7,15 @@
     <string name="waiting_pairing">In attesa di abbinamento…</string>
     <string name="btn_server_settings">Impostazioni server</string>
     <string name="btn_refresh_code">Nuovo codice</string>
+    <string name="btn_rotate_screen">Ruota schermo</string>
+    <string name="rotate_screen_title">Orientamento dello schermo</string>
+    <string name="orientation_landscape">Orizzontale (Landscape - 0°)</string>
+    <string name="orientation_portrait">Verticale (Portrait - 90°)</string>
+    <string name="orientation_reverse_landscape">Orizzontale capovolto (180°)</string>
+    <string name="orientation_reverse_portrait">Verticale capovolto (270°)</string>
+    <string name="orientation_sensor">Rotazione automatica (Sensore)</string>
+    <string name="orientation_default">Predefinito di sistema</string>
+    <string name="rotate_90">Ruota +90°</string>
     <string name="server_url_label">Locale BarManager o URL Server</string>
     <string name="server_url_hint">es. bm.mccoy88f.link o civico39it</string>
     <string name="default_server_url">https://bm.mccoy88f.link</string>

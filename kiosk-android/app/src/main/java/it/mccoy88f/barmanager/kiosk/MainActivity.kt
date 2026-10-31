@@ -2,6 +2,8 @@ package it.mccoy88f.barmanager.kiosk
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -51,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView
     private lateinit var tvDeviceInfo: TextView
     private lateinit var btnServerSettings: Button
+    private lateinit var btnRotateScreen: Button
     private lateinit var btnRefreshCode: Button
     private lateinit var touchSecretCorner: View
 
@@ -62,6 +65,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Ripristina l'orientamento dello schermo salvato (orizzontale, verticale, ecc.)
+        val savedOrientation = KioskPrefs.getOrientation(this)
+        if (savedOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+            requestedOrientation = savedOrientation
+        }
 
         // Schermo sempre acceso (kiosk / display promo per locali)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -125,12 +134,14 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvDeviceInfo = findViewById(R.id.tvDeviceInfo)
         btnServerSettings = findViewById(R.id.btnServerSettings)
+        btnRotateScreen = findViewById(R.id.btnRotateScreen)
         btnRefreshCode = findViewById(R.id.btnRefreshCode)
         touchSecretCorner = findViewById(R.id.touchSecretCorner)
     }
 
     private fun setupListeners() {
         btnServerSettings.setOnClickListener { showServerSettingsDialog() }
+        btnRotateScreen.setOnClickListener { showOrientationDialog() }
         btnRefreshCode.setOnClickListener { requestNewPairingCode() }
         btnRetry.setOnClickListener {
             errorOverlay.visibility = View.GONE
@@ -408,21 +419,23 @@ class MainActivity : AppCompatActivity() {
     // ---- Menu Amministrazione Kiosk (Pressione prolungata / 5 tap / Telecomando) --
 
     private fun showKioskAdminMenu() {
-        val screenName = KioskPrefs.getScreenName(this) ?: "Schermo non denominato"
-        val screenUrl = KioskPrefs.getScreenUrl(this) ?: "Nessun URL configurato"
+        val screenName = KioskPrefs.getScreenName(this) ?: "Non collegato"
         val server = KioskPrefs.getServerUrl(this)
+        val ip = SystemInfo.getLocalIpAddress() ?: "N/D"
+        val orientationDesc = getOrientationDescription(KioskPrefs.getOrientation(this))
 
         val options = mutableListOf<String>()
         if (KioskPrefs.isPaired(this)) {
             options.add(getString(R.string.reload))
             options.add(getString(R.string.unpair))
         }
+        options.add(getString(R.string.btn_rotate_screen))
         options.add(getString(R.string.btn_server_settings))
         options.add(getString(R.string.close))
 
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.options_title))
-            .setMessage("Schermo: $screenName\nURL: $screenUrl\nServer: $server")
+            .setMessage("Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc")
             .setItems(options.toTypedArray()) { dialog, which ->
                 val choice = options[which]
                 when (choice) {
@@ -431,6 +444,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     getString(R.string.unpair) -> {
                         confirmUnpair()
+                    }
+                    getString(R.string.btn_rotate_screen) -> {
+                        showOrientationDialog()
                     }
                     getString(R.string.btn_server_settings) -> {
                         showServerSettingsDialog()
@@ -441,6 +457,65 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+
+    private fun getOrientationDescription(orientation: Int): String {
+        return when (orientation) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE -> getString(R.string.orientation_landscape)
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT -> getString(R.string.orientation_portrait)
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE -> getString(R.string.orientation_reverse_landscape)
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT -> getString(R.string.orientation_reverse_portrait)
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR -> getString(R.string.orientation_sensor)
+            else -> getString(R.string.orientation_default)
+        }
+    }
+
+    private fun showOrientationDialog() {
+        val currentOrientation = KioskPrefs.getOrientation(this)
+        val orientations = listOf(
+            Pair(getString(R.string.orientation_landscape), ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE),
+            Pair(getString(R.string.orientation_portrait), ActivityInfo.SCREEN_ORIENTATION_PORTRAIT),
+            Pair(getString(R.string.orientation_reverse_landscape), ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE),
+            Pair(getString(R.string.orientation_reverse_portrait), ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT),
+            Pair(getString(R.string.orientation_sensor), ActivityInfo.SCREEN_ORIENTATION_SENSOR),
+            Pair(getString(R.string.orientation_default), ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+        )
+        val labels = orientations.map { it.first }.toTypedArray()
+        val currentIndex = orientations.indexOfFirst { it.second == currentOrientation }.let { if (it >= 0) it else 5 }
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.rotate_screen_title))
+            .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
+                val selected = orientations[which].second
+                applyOrientation(selected)
+                dialog.dismiss()
+            }
+            .setPositiveButton(getString(R.string.rotate_90)) { dialog, _ ->
+                cycleNextOrientation()
+                dialog.dismiss()
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun cycleNextOrientation() {
+        val current = requestedOrientation
+        val next = when (current) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        applyOrientation(next)
+    }
+
+    private fun applyOrientation(orientation: Int) {
+        KioskPrefs.setOrientation(this, orientation)
+        requestedOrientation = orientation
+        setImmersiveSticky()
+        val desc = getOrientationDescription(orientation)
+        Toast.makeText(this, "Orientamento: $desc", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmUnpair() {
@@ -508,6 +583,15 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        setImmersiveSticky()
+    }
+
+    override fun onBackPressed() {
+        showKioskAdminMenu()
     }
 }
 
