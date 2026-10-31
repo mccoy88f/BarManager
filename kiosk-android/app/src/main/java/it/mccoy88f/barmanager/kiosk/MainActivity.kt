@@ -25,10 +25,12 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,6 +89,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             showPairingMode()
         }
+
+        checkUpdatesSilently()
     }
 
     override fun onResume() {
@@ -322,7 +326,8 @@ class MainActivity : AppCompatActivity() {
         val server = KioskPrefs.getServerUrl(this)
         val ip = SystemInfo.getLocalIpAddress() ?: "N/D"
         val info = SystemInfo.getDeviceInfo()
-        tvDeviceInfo.text = "Dispositivo: $info\nIP: $ip • Server: $server"
+        val ver = SystemInfo.getAppVersion(this)
+        tvDeviceInfo.text = "Dispositivo: $info (v$ver)\nIP: $ip • Server: $server"
     }
 
     private fun startPairingProcess(activeCode: String) {
@@ -423,6 +428,7 @@ class MainActivity : AppCompatActivity() {
         val server = KioskPrefs.getServerUrl(this)
         val ip = SystemInfo.getLocalIpAddress() ?: "N/D"
         val orientationDesc = getOrientationDescription(KioskPrefs.getOrientation(this))
+        val currentVer = SystemInfo.getAppVersion(this)
 
         val options = mutableListOf<String>()
         if (KioskPrefs.isPaired(this)) {
@@ -430,12 +436,13 @@ class MainActivity : AppCompatActivity() {
             options.add(getString(R.string.unpair))
         }
         options.add(getString(R.string.btn_rotate_screen))
+        options.add(getString(R.string.check_updates))
         options.add(getString(R.string.btn_server_settings))
         options.add(getString(R.string.close))
 
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.options_title))
-            .setMessage("Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc")
+            .setMessage("Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc\nVersione: v$currentVer")
             .setItems(options.toTypedArray()) { dialog, which ->
                 val choice = options[which]
                 when (choice) {
@@ -448,6 +455,9 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.btn_rotate_screen) -> {
                         showOrientationDialog()
                     }
+                    getString(R.string.check_updates) -> {
+                        checkUpdatesManually()
+                    }
                     getString(R.string.btn_server_settings) -> {
                         showServerSettingsDialog()
                     }
@@ -457,6 +467,124 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+
+    // ---- Verifica e aggiornamento in-app ------------------------------------
+
+    private fun checkUpdatesSilently() {
+        activityScope.launch(Dispatchers.IO) {
+            delay(4000L) // Attende che la UI iniziale sia stabilizzata
+            try {
+                val update = UpdateManager.checkForUpdate(this@MainActivity)
+                if (update != null && !isFinishing) {
+                    withContext(Dispatchers.Main) {
+                        promptUpdate(update)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun checkUpdatesManually() {
+        Toast.makeText(this, getString(R.string.checking_updates), Toast.LENGTH_SHORT).show()
+        activityScope.launch(Dispatchers.IO) {
+            try {
+                val update = UpdateManager.checkForUpdate(this@MainActivity)
+                withContext(Dispatchers.Main) {
+                    if (isFinishing) return@withContext
+                    if (update != null) {
+                        promptUpdate(update)
+                    } else {
+                        val ver = SystemInfo.getAppVersion(this@MainActivity)
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Aggiornamenti")
+                            .setMessage(getString(R.string.app_up_to_date, ver))
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.update_error, e.message ?: "Errore di rete"),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun promptUpdate(update: UpdateInfo) {
+        if (isFinishing) return
+        val currentVer = SystemInfo.getAppVersion(this)
+        val msg = buildString {
+            append(getString(R.string.update_available_msg, update.tagName, currentVer))
+            if (!update.releaseNotes.isNullOrBlank()) {
+                append("\n\nNote di rilascio:\n")
+                append(update.releaseNotes.take(300))
+                if (update.releaseNotes.length > 300) append("…")
+            }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_available_title))
+            .setMessage(msg)
+            .setCancelable(false)
+            .setPositiveButton(getString(R.string.update_now)) { _, _ ->
+                startUpdateDownload(update)
+            }
+            .setNegativeButton(getString(R.string.update_later), null)
+            .show()
+    }
+
+    private fun startUpdateDownload(update: UpdateInfo) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_update_progress, null)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvUpdateTitle)
+        val tvVersion = dialogView.findViewById<TextView>(R.id.tvUpdateVersion)
+        val pbProgress = dialogView.findViewById<ProgressBar>(R.id.pbUpdateProgress)
+        val tvBytes = dialogView.findViewById<TextView>(R.id.tvUpdateBytes)
+
+        tvTitle.text = getString(R.string.update_download_title)
+        tvVersion.text = "BarManager Kiosk ${update.tagName}"
+
+        var downloadJob: Job? = null
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .setNegativeButton(getString(R.string.cancel)) { d, _ ->
+                downloadJob?.cancel()
+                d.dismiss()
+            }
+            .create()
+
+        dialog.show()
+
+        downloadJob = activityScope.launch {
+            try {
+                val apkFile = UpdateManager.downloadApk(this@MainActivity, update.downloadUrl) { percent, downMb, totMb ->
+                    pbProgress.progress = percent
+                    tvBytes.text = String.format(Locale.getDefault(), "%.1f MB / %.1f MB (%d%%)", downMb, totMb, percent)
+                }
+
+                if (!isFinishing && dialog.isShowing) {
+                    dialog.dismiss()
+                    UpdateManager.installApk(this@MainActivity, apkFile)
+                }
+            } catch (e: Exception) {
+                if (dialog.isShowing) dialog.dismiss()
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Errore durante il download dell'aggiornamento: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun getOrientationDescription(orientation: Int): String {

@@ -25,6 +25,15 @@
     <string name="reload">Ricarica pagina</string>
     <string name="unpair">Scollega questo schermo</string>
     <string name="options_title">Opzioni Kiosk</string>
+    <string name="check_updates">Verifica aggiornamenti</string>
+    <string name="checking_updates">Verifica disponibilità aggiornamenti…</string>
+    <string name="app_up_to_date">L\'app è già aggiornata all\'ultima versione (%1$s)</string>
+    <string name="update_available_title">Nuovo aggiornamento disponibile</string>
+    <string name="update_available_msg">È disponibile la versione %1$s.\nVersione installata: %2$s\n\nVuoi scaricarla e aggiornare adesso?</string>
+    <string name="update_now">Aggiorna ora</string>
+    <string name="update_later">Più tardi</string>
+    <string name="update_download_title">Download aggiornamento…</string>
+    <string name="update_error">Impossibile verificare gli aggiornamenti: %1$s</string>
     <string name="confirm_unpair_msg">Vuoi scollegare questo dispositivo? Lo schermo tornerà alla visualizzazione del codice di abbinamento.</string>
     <string name="offline_msg">Connessione persa. Riconnessione in corso…</string>
     <string name="retry_now">Riprova ora</string>
