@@ -267,6 +267,31 @@ class MainActivity : AppCompatActivity() {
 
     // ---- Modalità Abbinamento (Codice su schermo) --------------------------
 
+    private fun generateLocalCode(): String {
+        // Caratteri univoci e facilmente leggibili da TV (nessuna ambiguità 0/O, 1/I)
+        val chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+        val sb = StringBuilder(6)
+        val random = java.util.Random()
+        for (i in 0 until 6) {
+            sb.append(chars[random.nextInt(chars.length)])
+        }
+        return sb.toString()
+    }
+
+    private fun getOrCreateActiveCode(forceNew: Boolean = false): String {
+        if (forceNew) {
+            val newCode = generateLocalCode()
+            KioskPrefs.setPairingCode(this, newCode)
+            return newCode
+        }
+        var code = KioskPrefs.getPairingCode(this)
+        if (code.isNullOrBlank() || code == "------") {
+            code = generateLocalCode()
+            KioskPrefs.setPairingCode(this, code)
+        }
+        return code
+    }
+
     private fun showPairingMode() {
         heartbeatJob?.cancel()
         heartbeatJob = null
@@ -275,7 +300,11 @@ class MainActivity : AppCompatActivity() {
         pairingContainer.visibility = View.VISIBLE
 
         updateDeviceInfoText()
-        startPairingProcess()
+        // Mostra SUBITO il codice a schermo all'istante, senza attendere la rete
+        val code = getOrCreateActiveCode()
+        displayCode(code)
+
+        startPairingProcess(activeCode = code)
     }
 
     private fun updateDeviceInfoText() {
@@ -285,14 +314,10 @@ class MainActivity : AppCompatActivity() {
         tvDeviceInfo.text = "Dispositivo: $info\nIP: $ip • Server: $server"
     }
 
-    private fun startPairingProcess(forceNewCode: Boolean = false) {
+    private fun startPairingProcess(activeCode: String) {
         pollingJob?.cancel()
         tvStatus.text = getString(R.string.waiting_pairing)
-
-        val cachedCode = if (forceNewCode) null else KioskPrefs.getPairingCode(this)
-        if (!cachedCode.isNullOrBlank()) {
-            displayCode(cachedCode)
-        }
+        displayCode(activeCode)
 
         pollingJob = activityScope.launch(Dispatchers.IO) {
             val serverUrl = KioskPrefs.getServerUrl(this@MainActivity)
@@ -300,13 +325,13 @@ class MainActivity : AppCompatActivity() {
             val deviceInfo = SystemInfo.getDeviceInfo()
             val appVer = SystemInfo.getAppVersion(this@MainActivity)
 
-            // Registra il dispositivo o recupera codice
+            // Registra il dispositivo proponendo il codice locale
             val regResult = KioskApiClient.register(
                 serverUrl = serverUrl,
                 deviceId = deviceId,
                 deviceInfo = deviceInfo,
                 appVersion = appVer,
-                preferredCode = if (forceNewCode) null else cachedCode,
+                preferredCode = activeCode,
             )
 
             if (regResult.status == "PAIRED" && !regResult.screenUrl.isNullOrBlank()) {
@@ -316,21 +341,24 @@ class MainActivity : AppCompatActivity() {
                         screenId = regResult.screenId ?: "",
                         screenName = regResult.screenName,
                         screenUrl = regResult.screenUrl,
-                        code = regResult.code ?: "",
+                        code = regResult.code ?: activeCode,
                     )
                     showWebViewMode(regResult.screenUrl)
                 }
                 return@launch
             }
 
-            val activeCode = regResult.code ?: cachedCode ?: "------"
-            KioskPrefs.setPairingCode(this@MainActivity, activeCode)
-
-            withContext(Dispatchers.Main) {
-                displayCode(activeCode)
+            if (regResult.status == "ERROR") {
+                withContext(Dispatchers.Main) {
+                    tvStatus.text = "In attesa del server (${regResult.errorMessage ?: "connessione..."})"
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    tvStatus.text = getString(R.string.waiting_pairing)
+                }
             }
 
-            // Loop di polling finché non viene abbinato
+            // Loop di polling finché l'admin non inserisce il codice nel gestionale
             while (isActive) {
                 delay(regResult.pollIntervalMs)
                 val check = KioskApiClient.checkStatus(serverUrl, activeCode, deviceId)
@@ -348,18 +376,23 @@ class MainActivity : AppCompatActivity() {
                         showWebViewMode(check.screenUrl)
                     }
                     break
-                } else if (check.status == "NOT_FOUND") {
-                    // Codice scaduto o eliminato: rigenera
-                    break
+                } else if (check.status == "ERROR") {
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = "In attesa del server (${check.errorMessage ?: "tentativo..."})"
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = getString(R.string.waiting_pairing)
+                    }
                 }
             }
         }
     }
 
     private fun requestNewPairingCode() {
-        tvCode.text = "------"
-        KioskPrefs.setPairingCode(this, "")
-        startPairingProcess(forceNewCode = true)
+        val newCode = getOrCreateActiveCode(forceNew = true)
+        displayCode(newCode)
+        startPairingProcess(activeCode = newCode)
     }
 
     private fun displayCode(code: String) {
