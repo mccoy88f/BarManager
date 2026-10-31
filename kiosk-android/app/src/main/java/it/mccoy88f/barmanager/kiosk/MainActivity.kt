@@ -454,6 +454,15 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // Rileva tocco a 3 dita su smartphone e tablet per aprire comodamente le opzioni kiosk
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (ev != null && ev.pointerCount >= 3 && ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+            showKioskAdminMenu()
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     // Gestione tasti telecomando Android TV (Menu / Back)
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS) {

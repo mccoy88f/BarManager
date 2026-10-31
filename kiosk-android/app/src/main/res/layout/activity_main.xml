@@ -79,13 +79,15 @@
             android:padding="24dp">
 
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
+                android:layout_marginHorizontal="16dp"
                 android:background="@drawable/bg_card"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:padding="36dp">
+                android:paddingHorizontal="24dp"
+                android:paddingVertical="28dp">
 
                 <!-- Intestazione -->
                 <TextView
@@ -94,22 +96,23 @@
                     android:letterSpacing="0.08"
                     android:text="@string/kiosk_title"
                     android:textColor="@color/primary"
-                    android:textSize="28sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
+                    android:gravity="center"
                     android:text="@string/instructions_title"
                     android:textColor="@color/text_secondary"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
                 <!-- Box Codice -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="24dp"
                     android:letterSpacing="0.1"
                     android:text="@string/code_label"
                     android:textColor="@color/text_muted"
@@ -122,19 +125,20 @@
                     android:layout_marginTop="8dp"
                     android:background="@drawable/bg_code_box"
                     android:gravity="center"
-                    android:minWidth="280dp"
-                    android:paddingHorizontal="32dp"
-                    android:paddingVertical="18dp">
+                    android:paddingHorizontal="24dp"
+                    android:paddingVertical="14dp">
 
                     <TextView
                         android:id="@+id/tvCode"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="monospace"
-                        android:letterSpacing="0.25"
+                        android:letterSpacing="0.15"
+                        android:maxLines="1"
+                        android:singleLine="true"
                         android:text="------"
                         android:textColor="@color/code_text"
-                        android:textSize="48sp"
+                        android:textSize="38sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
