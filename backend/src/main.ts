@@ -38,8 +38,14 @@ async function bootstrap() {
   mkdirSync(`${uploadsDir}/display-promo`, { recursive: true });
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads',
-    setHeaders: (res) => {
+    setHeaders: (res, path) => {
       res.setHeader('Accept-Ranges', 'bytes');
+      if (path && (path.includes('/display-promo/') || path.includes('\\display-promo\\'))) {
+        // I file di Display Promo sono salvati con UUID immutabili:
+        // cache per 30 giorni così browser e WebView Android li salvano su disco
+        // e li riproducono localmente anche se la rete cade (funzionamento offline).
+        res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      }
     },
   });
 

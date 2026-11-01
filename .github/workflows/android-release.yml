@@ -66,9 +66,13 @@ jobs:
       - name: Inietta la versione nei progetti Android
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          VERSION_CODE=$(echo "${VERSION}" | awk -F'[-.]' '{printf "%02d%02d%02d%02d", $1%100, $2, $3, $4}')
+          echo "Versione: ${VERSION}, versionCode: ${VERSION_CODE}"
           sed -i "s/export const APP_VERSION = '.*';/export const APP_VERSION = '${VERSION}';/" frontend/src/version.ts
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" frontend/android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${VERSION_CODE}/" frontend/android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" kiosk-android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${VERSION_CODE}/" kiosk-android/app/build.gradle
 
       - name: Build frontend
         working-directory: frontend

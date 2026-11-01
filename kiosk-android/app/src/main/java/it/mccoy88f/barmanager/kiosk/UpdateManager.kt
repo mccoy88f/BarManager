@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -199,6 +200,15 @@ object UpdateManager {
     }
 
     fun installApk(activity: Activity, apkFile: File) {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            Toast.makeText(activity, "File APK di aggiornamento non trovato o vuoto", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Su Android 6 (e versioni con permessi standard Linux), rendiamo l'APK leggibile da tutti
+        // in modo che il PackageInstaller di sistema possa aprirlo senza permessi negati.
+        apkFile.setReadable(true, false)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!activity.packageManager.canRequestPackageInstalls()) {
                 Toast.makeText(
@@ -215,20 +225,35 @@ object UpdateManager {
             }
         }
 
-        val uri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            FileProvider.getUriForFile(
-                activity,
-                "${activity.packageName}.fileprovider",
-                apkFile
-            )
-        } else {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+
+        val uri: Uri = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                FileProvider.getUriForFile(
+                    activity,
+                    "${activity.packageName}.fileprovider",
+                    apkFile
+                )
+            } else {
+                Uri.fromFile(apkFile)
+            }
+        } catch (e: Exception) {
             Uri.fromFile(apkFile)
         }
 
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        intent.setDataAndType(uri, "application/vnd.android.package-archive")
+
+        // Concedi esplicitamente il permesso di lettura dell'URI al package installer
+        if (uri.scheme == "content") {
+            val resInfoList = activity.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                activity.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
+
         activity.startActivity(intent)
     }
 }

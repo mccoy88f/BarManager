@@ -437,6 +437,26 @@ function NewsTicker({ screenId, glass }: { screenId: string; glass: boolean }) {
   );
 }
 
+const CACHE_KEY_PREFIX = 'bm_dp_screen_';
+
+function getCachedScreen(screenId: string): DisplayPromoScreenData | null {
+  try {
+    const raw = localStorage.getItem(`${CACHE_KEY_PREFIX}${screenId}`);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Errore lettura cache offline Display Promo:', e);
+  }
+  return null;
+}
+
+function setCachedScreen(screenId: string, data: DisplayPromoScreenData) {
+  try {
+    localStorage.setItem(`${CACHE_KEY_PREFIX}${screenId}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Errore salvataggio cache offline Display Promo:', e);
+  }
+}
+
 /**
  * Pagina pubblica /display/:screenId (§5.12 di DEVELOPMENT.md): a tutto
  * schermo, per TV/tablet collegati in loop (orizzontali o verticali,
@@ -453,16 +473,41 @@ function NewsTicker({ screenId, glass }: { screenId: string; glass: boolean }) {
  * carosello occupa solo l'area centrale), mentre GLASS lascia il
  * carosello a schermo intero e sovrappone le barre come overlay
  * semi-trasparenti e sfocate.
+ *
+ * Supporta funzionamento offline: salva l'ultima playlist ricevuta nel
+ * localStorage; se la connessione cade, continua a mandare in onda i
+ * contenuti in cache invece di interrompersi sulla schermata di fallback.
  */
 export function PublicDisplayPromo() {
   const { screenId } = useParams<{ screenId: string }>();
+  const [cachedData, setCachedData] = useState<DisplayPromoScreenData | null>(() =>
+    screenId ? getCachedScreen(screenId) : null,
+  );
 
   const screenQuery = useQuery({
     queryKey: ['public-display-promo', screenId],
-    queryFn: async () => (await api.get<DisplayPromoScreenData>(`/public/display-promo/${screenId}`)).data,
+    queryFn: async () => {
+      const res = await api.get<DisplayPromoScreenData>(`/public/display-promo/${screenId}`);
+      if (screenId && res.data) {
+        setCachedScreen(screenId, res.data);
+        setCachedData(res.data);
+      }
+      return res.data;
+    },
     enabled: !!screenId,
     refetchInterval: POLL_INTERVAL_MS,
   });
+
+  useEffect(() => {
+    if (screenId && screenQuery.data) {
+      setCachedScreen(screenId, screenQuery.data);
+      setCachedData(screenQuery.data);
+    }
+  }, [screenId, screenQuery.data]);
+
+  // Se la rete è offline o la richiesta fallisce, continua a mandare in onda
+  // i dati e la playlist salvati in locale, senza interrompere lo schermo.
+  const data = screenQuery.data ?? cachedData;
 
   // top/right/bottom/left espliciti invece di `inset`, e margini invece del
   // `gap` flex in questa pagina: i box Android vecchi usati come display in
@@ -473,15 +518,13 @@ export function PublicDisplayPromo() {
     [],
   );
 
-  if (screenQuery.isLoading || screenQuery.isError || !screenQuery.data) {
+  if (!data) {
     return (
       <Box sx={containerStyle}>
         <FallbackScreen />
       </Box>
     );
   }
-
-  const data = screenQuery.data;
 
   if (!data.infoBar.enabled) {
     return (
