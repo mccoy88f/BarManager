@@ -37,9 +37,9 @@ import { UpdateScreenDto } from './dto/update-screen.dto';
 import { PairKioskDto } from './dto/pair-kiosk.dto';
 
 /** Foto e video a tutto schermo: niente documenti/PDF come in KB, qui sono solo contenuti da proiettare. */
-const ALLOWED_MEDIA_MIME = /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg))$/;
+const ALLOWED_MEDIA_MIME = /^(image\/(jpe?g|png|webp|gif)|video\/(mp4|webm|ogg|quicktime|x-m4v|3gpp|x-matroska))$/i;
 /** Solo immagini per il logo dell'intestazione, niente video. */
-const ALLOWED_LOGO_MIME = /^image\/(jpe?g|png|webp|gif|svg\+xml)$/;
+const ALLOWED_LOGO_MIME = /^image\/(jpe?g|png|webp|gif|svg\+xml)$/i;
 
 /** Gestione admin di Display Promo (§5.12): CRUD playlist/contenuti (pool per locale) e CRUD display con la relativa programmazione settimanale (per schermo). */
 @Controller('display-promo')
@@ -82,10 +82,16 @@ export class DisplayPromoController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: `${process.env.UPLOADS_DIR || './uploads'}/display-promo`,
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype, file.originalname)}`),
       }),
       limits: { fileSize: 100 * 1024 * 1024 }, // 100MB: schermi a tutto schermo, video anche di diversi minuti
-      fileFilter: (_req, file, cb) => cb(null, ALLOWED_MEDIA_MIME.test(file.mimetype)),
+      fileFilter: (_req, file, cb) => {
+        const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+        const allowed =
+          ALLOWED_MEDIA_MIME.test(cleanMime) ||
+          /\.(jpe?g|png|webp|gif|mp4|webm|ogv|ogg|mov|m4v)$/i.test(file.originalname);
+        cb(null, allowed);
+      },
     }),
   )
   uploadMedia(
@@ -93,7 +99,10 @@ export class DisplayPromoController {
     @Param('id') playlistId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    const type = file.mimetype.startsWith('video/') ? DisplayPromoMediaType.VIDEO : DisplayPromoMediaType.PHOTO;
+    const isVideo =
+      file.mimetype.toLowerCase().startsWith('video/') ||
+      /\.(mp4|webm|ogv|ogg|mov|m4v|mkv)$/i.test(file.originalname);
+    const type = isVideo ? DisplayPromoMediaType.VIDEO : DisplayPromoMediaType.PHOTO;
     return this.displayPromoService.addMedia(requireVenueId(user), playlistId, {
       type,
       url: `/uploads/display-promo/${file.filename}`,
@@ -156,10 +165,16 @@ export class DisplayPromoController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: `${process.env.UPLOADS_DIR || './uploads'}/display-promo`,
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype)}`),
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${safeExtension(file.mimetype, file.originalname)}`),
       }),
       limits: { fileSize: 5 * 1024 * 1024 }, // 5MB, un logo non ha bisogno di più
-      fileFilter: (_req, file, cb) => cb(null, ALLOWED_LOGO_MIME.test(file.mimetype)),
+      fileFilter: (_req, file, cb) => {
+        const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+        const allowed =
+          ALLOWED_LOGO_MIME.test(cleanMime) ||
+          /\.(jpe?g|png|webp|gif|svg)$/i.test(file.originalname);
+        cb(null, allowed);
+      },
     }),
   )
   uploadHeaderLogo(

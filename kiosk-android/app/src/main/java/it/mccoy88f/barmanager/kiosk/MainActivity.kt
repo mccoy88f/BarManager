@@ -219,6 +219,8 @@ class MainActivity : AppCompatActivity() {
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
 
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
         webView.webChromeClient = WebChromeClient()
 
         webView.webViewClient = object : WebViewClient() {

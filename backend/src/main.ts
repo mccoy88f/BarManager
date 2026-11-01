@@ -36,7 +36,12 @@ async function bootstrap() {
   mkdirSync(`${uploadsDir}/kb`, { recursive: true });
   mkdirSync(`${uploadsDir}/venues`, { recursive: true });
   mkdirSync(`${uploadsDir}/display-promo`, { recursive: true });
-  app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
+  app.useStaticAssets(uploadsDir, {
+    prefix: '/uploads',
+    setHeaders: (res) => {
+      res.setHeader('Accept-Ranges', 'bytes');
+    },
+  });
 
   app.setGlobalPrefix('api');
   app.enableCors({ origin: true, credentials: true });

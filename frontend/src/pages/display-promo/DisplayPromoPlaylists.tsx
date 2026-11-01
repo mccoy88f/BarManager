@@ -63,6 +63,85 @@ function extractErrorMessage(error: unknown): string {
   return 'Errore durante il salvataggio.';
 }
 
+function MediaThumbnail({ url, isVideo }: { url: string; isVideo: boolean }) {
+  const [loadError, setLoadError] = useState(false);
+
+  if (isVideo) {
+    if (loadError) {
+      return (
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            borderRadius: 1,
+            bgcolor: 'action.selected',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <VideocamIcon fontSize="small" color="action" />
+        </Box>
+      );
+    }
+    return (
+      <Box
+        sx={{
+          position: 'relative',
+          width: 48,
+          height: 48,
+          borderRadius: 1,
+          overflow: 'hidden',
+          bgcolor: 'black',
+          flexShrink: 0,
+        }}
+      >
+        <Box
+          component="video"
+          src={`${url}#t=0.5`}
+          preload="metadata"
+          muted
+          playsInline
+          onError={() => setLoadError(true)}
+          sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 2,
+            right: 2,
+            bgcolor: 'rgba(0,0,0,0.7)',
+            borderRadius: '3px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: '2px',
+          }}
+        >
+          <VideocamIcon sx={{ fontSize: 13, color: 'white' }} />
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      component="img"
+      src={url}
+      onError={() => setLoadError(true)}
+      sx={{
+        width: 48,
+        height: 48,
+        objectFit: 'cover',
+        borderRadius: 1,
+        flexShrink: 0,
+        bgcolor: 'action.selected',
+      }}
+    />
+  );
+}
+
 function SortableMediaRow({
   media,
   onChangeDuration,
@@ -73,6 +152,8 @@ function SortableMediaRow({
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: media.id });
+  const isVideo = media.type === 'VIDEO' || /\.(mp4|webm|ogv|ogg|mov|m4v|mkv)$/i.test(media.url);
+
   return (
     <Stack
       ref={setNodeRef}
@@ -85,29 +166,9 @@ function SortableMediaRow({
       <IconButton size="small" {...attributes} {...listeners} sx={{ cursor: 'grab', touchAction: 'none' }}>
         <DragIndicatorIcon fontSize="small" />
       </IconButton>
-      {media.type === 'VIDEO' ? (
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: 1,
-            bgcolor: 'action.selected',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <VideocamIcon fontSize="small" />
-        </Box>
-      ) : (
-        <Box
-          component="img"
-          src={media.url}
-          sx={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 1 }}
-        />
-      )}
-      <Chip size="small" label={media.type === 'VIDEO' ? 'Video' : 'Foto'} />
-      {media.type === 'PHOTO' && (
+      <MediaThumbnail url={media.url} isVideo={isVideo} />
+      <Chip size="small" label={isVideo ? 'Video' : 'Foto'} />
+      {!isVideo && (
         <TextField
           size="small"
           label="Secondi"

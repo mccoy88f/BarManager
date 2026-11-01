@@ -100,8 +100,64 @@ interface MediaLayerProps {
   onError?: () => void;
 }
 
+function isVideoMedia(media: DisplayPromoMedia): boolean {
+  if (media.type === 'VIDEO') return true;
+  if (media.url && /\.(mp4|webm|ogv|ogg|mov|m4v|mkv)$/i.test(media.url)) return true;
+  return false;
+}
+
+function VideoPlayer({
+  url,
+  onEnded,
+  onLoaded,
+  onError,
+}: {
+  url: string;
+  onEnded?: () => void;
+  onLoaded?: () => void;
+  onError?: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Fondamentale: su Chrome, Safari e WebView Android la proprietà DOM `muted`
+    // deve essere true a livello runtime per autorizzare l'autoplay senza interazione.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        // Se l'autoplay è stato interrotto o bloccato, segnaliamo ma non crashiamo
+        console.warn('Video promo autoplay segnalazione:', err);
+      });
+    }
+  }, [url]);
+
+  return (
+    <video
+      ref={videoRef}
+      src={url}
+      autoPlay
+      muted
+      playsInline
+      preload="auto"
+      onEnded={onEnded}
+      onLoadedData={onLoaded}
+      onError={onError}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  );
+}
+
 /** Un singolo contenuto (foto o video) a tutta area, con l'eventuale animazione di entrata/uscita applicata. */
 function MediaLayer({ media, animationName, zIndex, onEnded, onLoaded, onError }: MediaLayerProps) {
+  const isVideo = isVideoMedia(media);
+
   return (
     <Box
       sx={{
@@ -115,16 +171,12 @@ function MediaLayer({ media, animationName, zIndex, onEnded, onLoaded, onError }
         ...TRANSITION_KEYFRAMES,
       }}
     >
-      {media.type === 'VIDEO' ? (
-        <video
-          src={media.url}
-          autoPlay
-          muted
-          playsInline
+      {isVideo ? (
+        <VideoPlayer
+          url={media.url}
           onEnded={onEnded}
-          onLoadedData={onLoaded}
+          onLoaded={onLoaded}
           onError={onError}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
       ) : (
         <Box
@@ -142,6 +194,7 @@ function MediaLayer({ media, animationName, zIndex, onEnded, onLoaded, onError }
 /** Carosello foto/video a schermo intero (o nell'area centrale, se è attiva la fascia orologio/meteo/notizie). */
 function Carousel({ playlist, transitionEffect }: { playlist: DisplayPromoPlaylist | null; transitionEffect: TransitionEffect }) {
   const [index, setIndex] = useState(0);
+  const [cycle, setCycle] = useState(0);
   const [previous, setPrevious] = useState<DisplayPromoMedia | null>(null);
   const [showFallback, setShowFallback] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
@@ -160,6 +213,7 @@ function Carousel({ playlist, transitionEffect }: { playlist: DisplayPromoPlayli
   // tentativo pulito.
   useEffect(() => {
     setIndex(0);
+    setCycle(0);
     setPrevious(null);
     failCountRef.current = 0;
     setShowFallback(false);
@@ -180,12 +234,13 @@ function Carousel({ playlist, transitionEffect }: { playlist: DisplayPromoPlayli
 
   const advance = () => {
     if (items.length === 0) return;
-    if (animations) {
+    if (animations && items.length > 1) {
       setPrevious(current);
       if (previousTimerRef.current) clearTimeout(previousTimerRef.current);
       previousTimerRef.current = setTimeout(() => setPrevious(null), TRANSITION_MS);
     }
     setIndex((i) => (i + 1) % items.length);
+    setCycle((c) => c + 1);
   };
 
   const handleError = () => {
@@ -206,14 +261,23 @@ function Carousel({ playlist, transitionEffect }: { playlist: DisplayPromoPlayli
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (!current || current.type !== 'PHOTO' || showFallback) return;
-    const seconds = current.durationSeconds ?? DEFAULT_PHOTO_SECONDS;
-    timerRef.current = setTimeout(advance, seconds * 1000);
+    if (!current || showFallback) return;
+
+    const isVideo = isVideoMedia(current);
+    if (!isVideo) {
+      const seconds = current.durationSeconds ?? DEFAULT_PHOTO_SECONDS;
+      timerRef.current = setTimeout(advance, seconds * 1000);
+    } else {
+      // Per i video l'avanzamento naturale avviene sull'evento `onEnded`.
+      // Aggiungiamo un timer di sicurezza (timeout massimo 10 minuti) per evitare
+      // che uno schermo resti bloccato all'infinito se il browser non scatena onEnded.
+      timerRef.current = setTimeout(advance, 10 * 60 * 1000);
+    }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, showFallback]);
+  }, [current?.id, cycle, showFallback]);
 
   useEffect(() => () => {
     if (previousTimerRef.current) clearTimeout(previousTimerRef.current);
@@ -221,12 +285,12 @@ function Carousel({ playlist, transitionEffect }: { playlist: DisplayPromoPlayli
 
   if (!current || showFallback) return <FallbackScreen />;
 
-  const key = `${current.id}-${retryTick}`;
+  const key = `${current.id}-${cycle}-${retryTick}`;
 
   return (
     <>
-      {previous && animations && (
-        <MediaLayer key={`prev-${previous.id}`} media={previous} animationName={animations.exit} zIndex={1} />
+      {previous && animations && items.length > 1 && (
+        <MediaLayer key={`prev-${previous.id}-${cycle}`} media={previous} animationName={animations.exit} zIndex={1} />
       )}
       <MediaLayer
         key={key}
