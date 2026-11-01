@@ -41,24 +41,37 @@ import com.getcapacitor.CapConfig
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        registerPlugin(AppSettingsPlugin::class.java)
-        registerPlugin(EscPosPrinterPlugin::class.java)
         val domain = DomainPrefs.getDomain(this)
-        if (!domain.isNullOrBlank()) {
-            config = CapConfig.Builder(this).setServerUrl("https://$domain").create()
-        }
-        super.onCreate(savedInstanceState)
         if (domain.isNullOrBlank()) {
+            super.onCreate(savedInstanceState)
             startActivity(Intent(this, DomainSetupActivity::class.java))
             finish()
+            return
         }
+
+        registerPlugin(AppSettingsPlugin::class.java)
+        registerPlugin(EscPosPrinterPlugin::class.java)
+
+        val url = if (domain.startsWith("http://") || domain.startsWith("https://")) {
+            domain
+        } else {
+            "https://$domain"
+        }
+
+        config = CapConfig.Builder(this).setServerUrl(url).create()
+        super.onCreate(savedInstanceState)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val restart = Intent(this, MainActivity::class.java)
-        restart.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        startActivity(restart)
-        finishAffinity()
+        // Riavvia il task solo se richiesto esplicitamente da un cambio dominio,
+        // MAI sulla normale chiamata interna di Capacitor (BridgeActivity.load() chiama onNewIntent ad ogni onCreate).
+        if (intent.getBooleanExtra("reload_domain", false)) {
+            val restart = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(restart)
+            finish()
+        }
     }
 }

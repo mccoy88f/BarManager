@@ -62,8 +62,9 @@ class DomainSetupActivity : AppCompatActivity() {
 
                     DomainPrefs.setDomain(this, domain)
 
-                    val intent = Intent(this, MainActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    val intent = Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    }
                     startActivity(intent)
                     finish()
                 }
@@ -72,15 +73,19 @@ class DomainSetupActivity : AppCompatActivity() {
     }
 
     private fun isDomainReachable(domain: String): Boolean {
+        return checkUrlReachable("https://$domain") || checkUrlReachable("http://$domain")
+    }
+
+    private fun checkUrlReachable(urlString: String): Boolean {
         return try {
-            val connection = URL("https://$domain").openConnection() as HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+            val connection = URL(urlString).openConnection() as HttpURLConnection
+            connection.connectTimeout = 7000
+            connection.readTimeout = 7000
             connection.requestMethod = "HEAD"
             connection.instanceFollowRedirects = true
             val code = connection.responseCode
             connection.disconnect()
-            code in 200..399
+            code in 200..499
         } catch (e: Exception) {
             false
         }
