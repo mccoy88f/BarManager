@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="true"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:id="@+id/tvInfoTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/options_title"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tvInfoBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvAutoDismiss"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/auto_dismiss_5s"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:textStyle="italic" />
+        </LinearLayout>
+
+        <!-- Pulsante Torna al display (visibile se schermo associato) -->
+        <Button
+            android:id="@+id/btnReturnToDisplay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_button_primary"
+            android:minHeight="48dp"
+            android:text="@string/btn_return_to_display"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <!-- Pulsante Modifica impostazioni (sempre presente e ben visibile) -->
+        <Button
+            android:id="@+id/btnEditSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minHeight="48dp"
+            android:text="⚙ Modifica impostazioni"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <!-- Pulsante Ricarica pagina (visibile se schermo associato) -->
+        <Button
+            android:id="@+id/btnReloadDisplay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minHeight="48dp"
+            android:text="↻ Ricarica display"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
+        <!-- Pulsante Verifica aggiornamenti -->
+        <Button
+            android:id="@+id/btnCheckUpdates"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minHeight="48dp"
+            android:text="⇧ Verifica aggiornamenti"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
+        <!-- Pulsante Chiudi -->
+        <Button
+            android:id="@+id/btnCloseDialog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:minHeight="44dp"
+            android:text="@string/close"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</ScrollView>

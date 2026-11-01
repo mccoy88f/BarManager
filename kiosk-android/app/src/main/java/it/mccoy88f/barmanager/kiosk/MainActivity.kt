@@ -535,6 +535,14 @@ class MainActivity : AppCompatActivity() {
         infoDialog?.dismiss()
         infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
 
+        val view = layoutInflater.inflate(R.layout.dialog_kiosk_info, null)
+        val tvInfoBody = view.findViewById<TextView>(R.id.tvInfoBody)
+        val btnReturnToDisplay = view.findViewById<Button>(R.id.btnReturnToDisplay)
+        val btnEditSettings = view.findViewById<Button>(R.id.btnEditSettings)
+        val btnReloadDisplay = view.findViewById<Button>(R.id.btnReloadDisplay)
+        val btnCheckUpdates = view.findViewById<Button>(R.id.btnCheckUpdates)
+        val btnCloseDialog = view.findViewById<Button>(R.id.btnCloseDialog)
+
         val screenName = KioskPrefs.getScreenName(this) ?: "Non collegato"
         val server = KioskPrefs.getServerUrl(this)
         val ip = SystemInfo.getLocalIpAddress() ?: "N/D"
@@ -542,50 +550,19 @@ class MainActivity : AppCompatActivity() {
         val currentVer = SystemInfo.getAppVersion(this)
         val isPaired = KioskPrefs.isPaired(this)
 
-        val options = mutableListOf<String>()
-        if (isPaired && webContainer.visibility != View.VISIBLE) {
-            options.add(getString(R.string.btn_return_to_display))
-        }
-        options.add(getString(R.string.btn_edit_settings))
-        if (isPaired) {
-            options.add(getString(R.string.reload))
-        }
-        options.add(getString(R.string.check_updates))
-        options.add(getString(R.string.close))
+        tvInfoBody.text = "• Schermo: $screenName\n• Server: $server\n• IP locale: $ip\n• Orientamento: $orientationDesc\n• Versione: v$currentVer"
 
-        val msg = "Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc\nVersione: v$currentVer\n\n${getString(R.string.auto_dismiss_5s)}"
+        // "Torna al display promo" e "Ricarica" sono visibili se lo schermo è abbinato
+        btnReturnToDisplay.visibility = if (isPaired) View.VISIBLE else View.GONE
+        btnReloadDisplay.visibility = if (isPaired) View.VISIBLE else View.GONE
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle(getString(R.string.options_title))
-            .setMessage(msg)
-            .setItems(options.toTypedArray()) { d, which ->
-                infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
-                val choice = options[which]
-                when (choice) {
-                    getString(R.string.btn_return_to_display) -> {
-                        val url = KioskPrefs.getScreenUrl(this)
-                        if (!url.isNullOrBlank()) {
-                            showWebViewMode(url)
-                        }
-                    }
-                    getString(R.string.btn_edit_settings) -> {
-                        showSetupMode()
-                    }
-                    getString(R.string.reload) -> {
-                        webView.reload()
-                    }
-                    getString(R.string.check_updates) -> {
-                        checkUpdatesManually()
-                    }
-                    getString(R.string.close) -> {
-                        d.dismiss()
-                    }
-                }
-            }
+            .setView(view)
             .create()
 
         infoDialog = dialog
 
+        // Timer di auto-chiusura in 5 secondi se l'utente non tocca nulla
         val runnable = Runnable {
             if (dialog.isShowing && !isFinishing) {
                 dialog.dismiss()
@@ -594,8 +571,44 @@ class MainActivity : AppCompatActivity() {
         infoDialogDismissRunnable = runnable
         infoDialogHandler.postDelayed(runnable, 5000L)
 
-        dialog.setOnDismissListener {
+        fun cancelTimer() {
             infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
+        }
+
+        btnReturnToDisplay.setOnClickListener {
+            cancelTimer()
+            dialog.dismiss()
+            val url = KioskPrefs.getScreenUrl(this)
+            if (!url.isNullOrBlank()) {
+                showWebViewMode(url)
+            }
+        }
+
+        btnEditSettings.setOnClickListener {
+            cancelTimer()
+            dialog.dismiss()
+            showSetupMode()
+        }
+
+        btnReloadDisplay.setOnClickListener {
+            cancelTimer()
+            dialog.dismiss()
+            webView.reload()
+        }
+
+        btnCheckUpdates.setOnClickListener {
+            cancelTimer()
+            dialog.dismiss()
+            checkUpdatesManually()
+        }
+
+        btnCloseDialog.setOnClickListener {
+            cancelTimer()
+            dialog.dismiss()
+        }
+
+        dialog.setOnDismissListener {
+            cancelTimer()
             infoDialog = null
         }
 
