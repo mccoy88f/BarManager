@@ -263,15 +263,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleRetry() {
-        errorOverlay.visibility = View.VISIBLE
+        // Se la pagina è già caricata ed è in esecuzione con la playlist/cache locale,
+        // non mostriamo l'overlay per non interrompere la visione del carosello promo offline!
+        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+            errorOverlay.visibility = View.VISIBLE
+        }
         retryRunnable?.let { retryHandler.removeCallbacks(it) }
         retryRunnable = Runnable {
             val url = KioskPrefs.getScreenUrl(this)
             if (!url.isNullOrBlank() && KioskPrefs.isPaired(this)) {
+                if (!SystemInfo.isNetworkAvailable(this)) {
+                    webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+                } else {
+                    webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+                }
                 webView.loadUrl(url)
             }
         }
-        retryHandler.postDelayed(retryRunnable!!, 5000L)
+        retryHandler.postDelayed(retryRunnable!!, 10_000L)
     }
 
     // ---- Modalità Schermo Promo (WebView) -----------------------------------
@@ -284,14 +293,23 @@ class MainActivity : AppCompatActivity() {
         webContainer.visibility = View.VISIBLE
         errorOverlay.visibility = View.GONE
 
+        // Usa la cache su disco se la rete non è disponibile al momento dell'avvio
+        if (!SystemInfo.isNetworkAvailable(this)) {
+            webView.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        } else {
+            webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        }
+
         webView.loadUrl(url)
         startHeartbeatLoop()
     }
 
     /**
      * Heartbeat periodico verso il backend:
-     * - Segnala lo stato "online" del dispositivo visibile all'admin.
-     * - Se l'admin scollega lo schermo dal backoffice, il dispositivo torna automaticamente al codice di abbinamento.
+     * - Segnala lo stato "online" e l'IP del dispositivo all'admin.
+     * - In caso di disconnessione o stato UNPAIRED sul server, NON torna forzatamente alla
+     *   schermata codice: continua a mandare in onda la playlist salvata nella cache offline.
+     *   L'utente può tornare alle impostazioni premendo il tasto INDIETRO.
      */
     private fun startHeartbeatLoop() {
         heartbeatJob?.cancel()
@@ -303,13 +321,15 @@ class MainActivity : AppCompatActivity() {
                 val code = KioskPrefs.getPairingCode(this@MainActivity)
                 val result = KioskApiClient.sendHeartbeat(serverUrl, code, deviceId)
 
-                if (result.status == "UNPAIRED") {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "Schermo scollegato dal pannello", Toast.LENGTH_LONG).show()
-                        KioskPrefs.clearPairing(this@MainActivity)
-                        showPairingMode()
-                    }
-                    break
+                // Se il server risponde con PAIRED, aggiorniamo eventuali modifiche a nome o URL
+                if (result.status == "PAIRED" && !result.screenId.isNullOrBlank() && !result.screenUrl.isNullOrBlank()) {
+                    KioskPrefs.savePairing(
+                        this@MainActivity,
+                        result.screenId,
+                        result.screenName,
+                        result.screenUrl,
+                        result.code ?: code ?: ""
+                    )
                 }
             }
         }

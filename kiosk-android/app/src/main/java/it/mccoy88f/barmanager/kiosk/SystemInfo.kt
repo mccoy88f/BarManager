@@ -44,6 +44,17 @@ object SystemInfo {
         return null
     }
 
+    @Suppress("DEPRECATION")
+    fun isNetworkAvailable(context: Context): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val netInfo = cm?.activeNetworkInfo
+            netInfo != null && netInfo.isConnected
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     private fun String.capitalize(): String {
         return replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
