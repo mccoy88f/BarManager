@@ -247,7 +247,7 @@ class MainActivity : AppCompatActivity() {
                 val url = error?.url ?: view?.url ?: ""
                 val serverHost = Uri.parse(KioskPrefs.getServerUrl(this@MainActivity)).host ?: "mccoy88f.link"
                 // Risolve il problema del certificato Let's Encrypt ISRG Root X1 su Android 6
-                if (url.contains(serverHost) || url.contains("mccoy88f.link") || url.contains("localhost")) {
+                if (url.contains(serverHost) || url.contains("mccoy88f.link") || url.contains("localhost") || url.contains("open-meteo.com")) {
                     handler?.proceed()
                     return
                 }

@@ -27,6 +27,50 @@ function normalizeKioskCode(code: string): string {
 
 const MEDIA_INCLUDE = { items: { orderBy: { sortOrder: 'asc' as const } } };
 
+const DEFAULT_WEATHER_COORDINATES = { lat: 41.9028, lng: 12.4964 }; // Roma / Italia
+
+const KNOWN_ITALIAN_CITIES: Record<string, { lat: number; lng: number }> = {
+  roma: { lat: 41.9028, lng: 12.4964 },
+  milano: { lat: 45.4642, lng: 9.19 },
+  napoli: { lat: 40.8518, lng: 14.2681 },
+  torino: { lat: 45.0703, lng: 7.6869 },
+  palermo: { lat: 38.1157, lng: 13.3615 },
+  genova: { lat: 44.4056, lng: 8.9463 },
+  bologna: { lat: 44.4949, lng: 11.3426 },
+  firenze: { lat: 43.7696, lng: 11.2558 },
+  bari: { lat: 41.1171, lng: 16.8719 },
+  catania: { lat: 37.5079, lng: 15.0873 },
+  venezia: { lat: 45.4408, lng: 12.3155 },
+  verona: { lat: 45.4384, lng: 10.9916 },
+  messina: { lat: 38.1938, lng: 15.554 },
+  padova: { lat: 45.4064, lng: 11.8768 },
+  trieste: { lat: 45.6495, lng: 13.7768 },
+  brescia: { lat: 45.5416, lng: 10.2118 },
+  parma: { lat: 44.8015, lng: 10.3279 },
+  taranto: { lat: 40.4644, lng: 17.247 },
+  prato: { lat: 43.8777, lng: 11.1024 },
+  modena: { lat: 44.6471, lng: 10.9252 },
+  reggioemilia: { lat: 44.6983, lng: 10.6312 },
+  perugia: { lat: 43.1107, lng: 12.3908 },
+  frosinone: { lat: 41.6406, lng: 13.3516 },
+  latina: { lat: 41.4676, lng: 12.9037 },
+  salerno: { lat: 40.6824, lng: 14.7681 },
+  pescara: { lat: 42.4618, lng: 14.2161 },
+  bergamo: { lat: 45.6983, lng: 9.6773 },
+  sassari: { lat: 40.7259, lng: 8.5556 },
+  cagliari: { lat: 39.2238, lng: 9.1217 },
+  vicenza: { lat: 45.5455, lng: 11.5355 },
+  ancona: { lat: 43.6158, lng: 13.5189 },
+  rimini: { lat: 44.0678, lng: 12.5695 },
+  arezzo: { lat: 43.4632, lng: 11.8796 },
+  lecce: { lat: 40.3533, lng: 18.1746 },
+  livorno: { lat: 43.5485, lng: 10.3106 },
+  pisa: { lat: 43.7228, lng: 10.4017 },
+  foggia: { lat: 41.4622, lng: 15.5447 },
+  trento: { lat: 46.0748, lng: 11.1217 },
+  bolzano: { lat: 46.4983, lng: 11.3548 },
+};
+
 /**
  * Display Promo (§5.12 di DEVELOPMENT.md): playlist di foto/video per
  * schermi pubblicitari pubblici. Un locale può avere più display fisici
@@ -39,10 +83,31 @@ const MEDIA_INCLUDE = { items: { orderBy: { sortOrder: 'asc' as const } } };
  */
 @Injectable()
 export class DisplayPromoService {
+  private weatherCache = new Map<string, { temperature: number; weathercode: number; timestamp: number }>();
+
   constructor(
     private prisma: PrismaService,
     private menuService: MenuService,
   ) {}
+
+  resolveWeatherCoordinates(
+    lat?: number | null,
+    lng?: number | null,
+    cityOrAddress?: string | null,
+  ): { lat: number; lng: number } {
+    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+      return { lat, lng };
+    }
+    if (cityOrAddress) {
+      const normalized = cityOrAddress.toLowerCase().replace(/[^a-z]/g, '');
+      for (const [key, coords] of Object.entries(KNOWN_ITALIAN_CITIES)) {
+        if (normalized.includes(key)) {
+          return coords;
+        }
+      }
+    }
+    return DEFAULT_WEATHER_COORDINATES;
+  }
 
   // ---- Playlist (pool di contenuti condiviso per locale) ----------------
 
@@ -231,6 +296,8 @@ export class DisplayPromoService {
             active: true,
             displayPromoEnabled: true,
             timezone: true,
+            city: true,
+            menuAddress: true,
             gpsLat: true,
             gpsLng: true,
           },
@@ -264,12 +331,79 @@ export class DisplayPromoService {
       infoBar: {
         enabled: screen.showInfoBar,
         theme: screen.infoBarTheme,
-        weather:
-          screen.showInfoBar && screen.venue.gpsLat != null && screen.venue.gpsLng != null
-            ? { lat: screen.venue.gpsLat, lng: screen.venue.gpsLng }
-            : null,
+        weather: screen.showInfoBar
+          ? this.resolveWeatherCoordinates(
+              screen.venue.gpsLat,
+              screen.venue.gpsLng,
+              screen.venue.city || screen.venue.menuAddress,
+            )
+          : null,
       },
     };
+  }
+
+  /**
+   * Previsioni meteo attuali per lo schermo, proxyate e messe in cache
+   * sul backend: evita problemi di certificati SSL/TLS e CORS su client
+   * obsoleti (es. Android 6 WebViews) e previene blocchi per rate limiting.
+   */
+  async getWeather(screenId: string): Promise<{ temperature: number; weathercode: number }> {
+    const screen = await this.prisma.displayPromoScreen.findUnique({
+      where: { id: screenId },
+      include: {
+        venue: {
+          select: {
+            active: true,
+            displayPromoEnabled: true,
+            city: true,
+            menuAddress: true,
+            gpsLat: true,
+            gpsLng: true,
+          },
+        },
+      },
+    });
+    if (!screen || !screen.venue.active || !screen.venue.displayPromoEnabled) {
+      throw new NotFoundException('Display non disponibile');
+    }
+
+    const coords = this.resolveWeatherCoordinates(
+      screen.venue.gpsLat,
+      screen.venue.gpsLng,
+      screen.venue.city || screen.venue.menuAddress,
+    );
+
+    const cacheKey = `${coords.lat.toFixed(4)}_${coords.lng.toFixed(4)}`;
+    const cached = this.weatherCache.get(cacheKey);
+    const now = Date.now();
+    // Cache per 15 minuti per evitare sovraccarichi o rate limit Open-Meteo
+    if (cached && now - cached.timestamp < 15 * 60 * 1000) {
+      return { temperature: cached.temperature, weathercode: cached.weathercode };
+    }
+
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current_weather=true`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.current_weather && typeof data.current_weather.temperature === 'number') {
+          const item = {
+            temperature: data.current_weather.temperature,
+            weathercode: Number(data.current_weather.weathercode) || 0,
+            timestamp: now,
+          };
+          this.weatherCache.set(cacheKey, item);
+          return { temperature: item.temperature, weathercode: item.weathercode };
+        }
+      }
+    } catch {
+      // Fallback a valore in cache o default sotto
+    }
+
+    if (cached) {
+      return { temperature: cached.temperature, weathercode: cached.weathercode };
+    }
+    return { temperature: 20, weathercode: 0 };
   }
 
   /**

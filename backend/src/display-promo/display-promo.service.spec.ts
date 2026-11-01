@@ -113,7 +113,7 @@ describe('DisplayPromoService.getActivePlaylist', () => {
     expect((await service.getActivePlaylist('screen-b')).playlist).toEqual(playlistB);
   });
 
-  it('infoBar.enabled segue showInfoBar dello schermo, meteo presente solo se attivo e con coordinate', async () => {
+  it('infoBar.enabled segue showInfoBar dello schermo, meteo sempre risolto se attivo con fallback su coordinate', async () => {
     menuService.getCurrentMealPeriod.mockResolvedValue('NONE');
 
     prisma.displayPromoScreen.findUnique.mockResolvedValue(baseScreen); // showInfoBar: false
@@ -135,12 +135,24 @@ describe('DisplayPromoService.getActivePlaylist', () => {
       weather: { lat: 45.07, lng: 7.69 },
     });
 
-    // showInfoBar attivo ma nessuna coordinata salvata per il locale: niente meteo, non un errore.
+    // showInfoBar attivo con città nota nel profilo locale: usa coordinate della città
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      ...baseScreen,
+      showInfoBar: true,
+      venue: { ...baseScreen.venue, gpsLat: null, gpsLng: null, city: 'Milano' },
+    });
+    expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
+      enabled: true,
+      theme: 'BLACK_WHITE',
+      weather: { lat: 45.4642, lng: 9.19 },
+    });
+
+    // showInfoBar attivo ma nessuna coordinata o città: fallback alle coordinate default (Roma/Italia)
     prisma.displayPromoScreen.findUnique.mockResolvedValue({ ...baseScreen, showInfoBar: true });
     expect((await service.getActivePlaylist('screen-1')).infoBar).toEqual({
       enabled: true,
       theme: 'BLACK_WHITE',
-      weather: null,
+      weather: { lat: 41.9028, lng: 12.4964 },
     });
   });
 
@@ -187,6 +199,61 @@ describe('DisplayPromoService.getNewsHeadlines', () => {
     });
 
     expect(await service.getNewsHeadlines('screen-1')).toEqual([]);
+  });
+});
+
+describe('DisplayPromoService.getWeather', () => {
+  let prisma: { displayPromoScreen: { findUnique: jest.Mock } };
+  let service: DisplayPromoService;
+
+  beforeEach(() => {
+    prisma = { displayPromoScreen: { findUnique: jest.fn() } };
+    service = new DisplayPromoService(prisma as unknown as PrismaService, {} as unknown as MenuService);
+  });
+
+  it('rifiuta se il display non è disponibile', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue(null);
+    await expect(service.getWeather('screen-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('restituisce dati meteo o fallback senza andare in errore se fetch esterno fallisce', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      venue: { active: true, displayPromoEnabled: true, gpsLat: 41.9, gpsLng: 12.5 },
+    });
+    // fetch globale mockato per fallire
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+    try {
+      const weather = await service.getWeather('screen-1');
+      expect(weather).toHaveProperty('temperature');
+      expect(weather).toHaveProperty('weathercode');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('salva in cache il risultato di una chiamata riuscita', async () => {
+    prisma.displayPromoScreen.findUnique.mockResolvedValue({
+      venue: { active: true, displayPromoEnabled: true, gpsLat: 45.4642, gpsLng: 9.19 },
+    });
+    const originalFetch = global.fetch;
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ current_weather: { temperature: 22.5, weathercode: 1 } }),
+    });
+    global.fetch = mockFetch as unknown as typeof fetch;
+    try {
+      const w1 = await service.getWeather('screen-1');
+      expect(w1).toEqual({ temperature: 22.5, weathercode: 1 });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Seconda chiamata: deve servire da cache senza richiamare fetch
+      const w2 = await service.getWeather('screen-1');
+      expect(w2).toEqual({ temperature: 22.5, weathercode: 1 });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });
 

@@ -71,6 +71,12 @@ export class PublicDisplayPromoController {
     return this.displayPromoService.getActivePlaylist(screenId);
   }
 
+  /** Previsioni meteo attuali proxyate con in-memory cache. */
+  @Get(':screenId/weather')
+  getWeather(@Param('screenId') screenId: string) {
+    return this.displayPromoService.getWeather(screenId);
+  }
+
   /** Separato da sopra: un feed RSS impiega secondi a volte, non deve bloccare il caricamento della playlist. */
   @Get(':screenId/news')
   async getNews(@Param('screenId') screenId: string) {

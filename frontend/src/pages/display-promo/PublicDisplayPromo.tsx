@@ -339,34 +339,82 @@ function weatherIcon(code: number) {
   return CloudIcon;
 }
 
+interface WeatherData {
+  temperature: number;
+  weathercode: number;
+}
+
+const WEATHER_CACHE_KEY_PREFIX = 'bm_dp_weather_';
+
+function getCachedWeather(screenId?: string): WeatherData | null {
+  if (!screenId) return null;
+  try {
+    const raw = localStorage.getItem(`${WEATHER_CACHE_KEY_PREFIX}${screenId}`);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Errore lettura cache meteo Display Promo:', e);
+  }
+  return null;
+}
+
+function setCachedWeather(screenId: string | undefined, data: WeatherData) {
+  if (!screenId) return;
+  try {
+    localStorage.setItem(`${WEATHER_CACHE_KEY_PREFIX}${screenId}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Errore salvataggio cache meteo Display Promo:', e);
+  }
+}
+
 /**
- * Meteo attuale: chiamata diretta dal browser a Open-Meteo (gratuita, CORS
- * aperto, nessuna chiave) con le coordinate del locale — nessun proxy
- * backend necessario, a differenza del ticker notizie sotto (feed RSS, che
- * invece il browser non può leggere per CORS).
+ * Meteo attuale: chiama l'endpoint backend di BarManager (/public/display-promo/:screenId/weather)
+ * che gestisce la cache in memoria e supera problemi di TLS 1.3 / ISRG Root X1 su Android 6.
+ * In caso di errore o dispositivo offline, ricade sulla cache localStorage e/o su Open-Meteo.
  */
-function WeatherWidget({ lat, lng }: { lat: number; lng: number }) {
+function WeatherWidget({ screenId, lat, lng }: { screenId?: string; lat?: number; lng?: number }) {
+  const cached = getCachedWeather(screenId);
+
   const weatherQuery = useQuery({
-    queryKey: ['public-display-promo-weather', lat, lng],
+    queryKey: ['public-display-promo-weather', screenId, lat, lng],
     queryFn: async () => {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`;
+      // 1. Prova prima l'endpoint di proxy backend di BarManager
+      if (screenId) {
+        try {
+          const res = await api.get<WeatherData>(`/public/display-promo/${screenId}/weather`);
+          if (res.data && typeof res.data.temperature === 'number') {
+            setCachedWeather(screenId, res.data);
+            return res.data;
+          }
+        } catch {
+          // Backend offline o irraggiungibile: fallback sotto
+        }
+      }
+
+      // 2. Chiamata diretta a Open-Meteo come fallback
+      const targetLat = lat ?? 41.9028;
+      const targetLng = lng ?? 12.4964;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat}&longitude=${targetLng}&current_weather=true`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('weather fetch failed');
       const data = await response.json();
-      return data.current_weather as { temperature: number; weathercode: number };
+      const result = data.current_weather as WeatherData;
+      setCachedWeather(screenId, result);
+      return result;
     },
+    initialData: cached ?? undefined,
     refetchInterval: WEATHER_POLL_MS,
-    retry: 1,
+    retry: 2,
   });
 
-  if (!weatherQuery.data) return null;
-  const Icon = weatherIcon(weatherQuery.data.weathercode);
+  const weather = weatherQuery.data ?? cached;
+  if (!weather) return null;
+  const Icon = weatherIcon(weather.weathercode);
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', '& > :not(:first-of-type)': { ml: 0.5 }, color: 'white' }}>
       <Icon sx={{ fontSize: 24 }} />
       <Typography variant="subtitle1" fontWeight={700}>
-        {Math.round(weatherQuery.data.temperature)}°
+        {Math.round(weather.temperature)}°
       </Typography>
     </Box>
   );
@@ -578,7 +626,7 @@ export function PublicDisplayPromo() {
           </Typography>
         )}
         <Box sx={{ display: 'flex', alignItems: 'center', '& > :not(:first-of-type)': { ml: 2 } }}>
-          {data.infoBar.weather && <WeatherWidget lat={data.infoBar.weather.lat} lng={data.infoBar.weather.lng} />}
+          <WeatherWidget screenId={screenId} lat={data.infoBar.weather?.lat} lng={data.infoBar.weather?.lng} />
           <LiveClock />
         </Box>
       </Box>
