@@ -51,6 +51,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRetry: Button
 
     private lateinit var pairingContainer: ScrollView
+    private lateinit var panelPairedReturn: View
+    private lateinit var tvPairedScreenName: TextView
+    private lateinit var btnReturnToDisplay: Button
+    private lateinit var tvInstructionsTitle: TextView
+    private lateinit var tvInstructionsDesc: TextView
     private lateinit var tvCode: TextView
     private lateinit var tvStatus: TextView
     private lateinit var tvDeviceInfo: TextView
@@ -58,6 +63,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRotateScreen: Button
     private lateinit var btnRefreshCode: Button
     private lateinit var touchSecretCorner: View
+
+    private var infoDialog: AlertDialog? = null
+    private val infoDialogHandler = Handler(Looper.getMainLooper())
+    private var infoDialogDismissRunnable: Runnable? = null
+
+    companion object {
+        private var hasCheckedUpdateOnBoot = false
+    }
 
     private var secretCornerTapCount = 0
     private var lastSecretTapTime = 0L
@@ -90,7 +103,11 @@ class MainActivity : AppCompatActivity() {
             showPairingMode()
         }
 
-        checkUpdatesSilently()
+        // Verifica aggiornamenti in-app: solo al primo avvio/riavvio (con scomparsa automatica dopo 5s)
+        if (!hasCheckedUpdateOnBoot) {
+            hasCheckedUpdateOnBoot = true
+            checkUpdatesOnBoot()
+        }
     }
 
     override fun onResume() {
@@ -110,6 +127,10 @@ class MainActivity : AppCompatActivity() {
         pollingJob?.cancel()
         heartbeatJob?.cancel()
         retryRunnable?.let { retryHandler.removeCallbacks(it) }
+        infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
+        try {
+            infoDialog?.dismiss()
+        } catch (_: Exception) {}
         try {
             webView.destroy()
         } catch (_: Exception) {}
@@ -134,6 +155,11 @@ class MainActivity : AppCompatActivity() {
         btnRetry = findViewById(R.id.btnRetry)
 
         pairingContainer = findViewById(R.id.pairingContainer)
+        panelPairedReturn = findViewById(R.id.panelPairedReturn)
+        tvPairedScreenName = findViewById(R.id.tvPairedScreenName)
+        btnReturnToDisplay = findViewById(R.id.btnReturnToDisplay)
+        tvInstructionsTitle = findViewById(R.id.tvInstructionsTitle)
+        tvInstructionsDesc = findViewById(R.id.tvInstructionsDesc)
         tvCode = findViewById(R.id.tvCode)
         tvStatus = findViewById(R.id.tvStatus)
         tvDeviceInfo = findViewById(R.id.tvDeviceInfo)
@@ -144,9 +170,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        btnReturnToDisplay.setOnClickListener {
+            val url = KioskPrefs.getScreenUrl(this)
+            if (!url.isNullOrBlank()) {
+                showWebViewMode(url)
+            }
+        }
         btnServerSettings.setOnClickListener { showServerSettingsDialog() }
         btnRotateScreen.setOnClickListener { showOrientationDialog() }
-        btnRefreshCode.setOnClickListener { requestNewPairingCode() }
+        btnRefreshCode.setOnClickListener { showEditCodeDialog() }
+        tvCode.setOnClickListener { showEditCodeDialog() }
         btnRetry.setOnClickListener {
             errorOverlay.visibility = View.GONE
             val url = KioskPrefs.getScreenUrl(this)
@@ -314,12 +347,40 @@ class MainActivity : AppCompatActivity() {
         webContainer.visibility = View.GONE
         pairingContainer.visibility = View.VISIBLE
 
+        updateSetupUI()
+
+        // Se non ancora associato, registra e avvia il polling
+        if (!KioskPrefs.isPaired(this)) {
+            val code = getOrCreateActiveCode()
+            startPairingProcess(activeCode = code)
+        }
+    }
+
+    private fun showSetupMode() {
+        webContainer.visibility = View.GONE
+        pairingContainer.visibility = View.VISIBLE
+        updateSetupUI()
+    }
+
+    private fun updateSetupUI() {
         updateDeviceInfoText()
-        // Mostra SUBITO il codice a schermo all'istante, senza attendere la rete
         val code = getOrCreateActiveCode()
         displayCode(code)
 
-        startPairingProcess(activeCode = code)
+        val isPaired = KioskPrefs.isPaired(this)
+        if (isPaired) {
+            panelPairedReturn.visibility = View.VISIBLE
+            val screenName = KioskPrefs.getScreenName(this) ?: "Display Promo"
+            tvPairedScreenName.text = "Schermo collegato: $screenName"
+            tvInstructionsTitle.text = getString(R.string.instructions_title_paired)
+            tvInstructionsDesc.text = getString(R.string.instructions_desc_paired)
+            tvStatus.text = "Schermo collegato e funzionante"
+        } else {
+            panelPairedReturn.visibility = View.GONE
+            tvInstructionsTitle.text = getString(R.string.instructions_title)
+            tvInstructionsDesc.text = getString(R.string.instructions_desc)
+            tvStatus.text = getString(R.string.waiting_pairing)
+        }
     }
 
     private fun updateDeviceInfoText() {
@@ -405,6 +466,51 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showEditCodeDialog() {
+        val currentCode = getOrCreateActiveCode()
+        val options = arrayOf(
+            getString(R.string.code_gen_random),
+            getString(R.string.code_custom_input)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.dialog_edit_code_title))
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> requestNewPairingCode()
+                    1 -> showCustomCodeInputDialog(currentCode)
+                }
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun showCustomCodeInputDialog(currentCode: String) {
+        val input = EditText(this).apply {
+            hint = "es. SALA01"
+            setText(currentCode)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.code_custom_title))
+            .setMessage(getString(R.string.code_custom_msg))
+            .setView(input)
+            .setPositiveButton(getString(R.string.save)) { _, _ ->
+                val newCode = input.text.toString().trim().uppercase().replace(" ", "")
+                if (newCode.length in 4..6) {
+                    KioskPrefs.setPairingCode(this, newCode)
+                    displayCode(newCode)
+                    startPairingProcess(activeCode = newCode)
+                    Toast.makeText(this, "Codice impostato: $newCode", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Il codice deve contenere da 4 a 6 caratteri alfanumerici", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
     private fun requestNewPairingCode() {
         val newCode = getOrCreateActiveCode(forceNew = true)
         displayCode(newCode)
@@ -421,64 +527,93 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Menu Amministrazione Kiosk (Pressione prolungata / 5 tap / Telecomando) --
+    // ---- Pannello Informativo / Opzioni Kiosk (Tasto Indietro / Menu) ----------
 
     private fun showKioskAdminMenu() {
+        infoDialog?.dismiss()
+        infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
+
         val screenName = KioskPrefs.getScreenName(this) ?: "Non collegato"
         val server = KioskPrefs.getServerUrl(this)
         val ip = SystemInfo.getLocalIpAddress() ?: "N/D"
         val orientationDesc = getOrientationDescription(KioskPrefs.getOrientation(this))
         val currentVer = SystemInfo.getAppVersion(this)
+        val isPaired = KioskPrefs.isPaired(this)
 
         val options = mutableListOf<String>()
-        if (KioskPrefs.isPaired(this)) {
-            options.add(getString(R.string.reload))
-            options.add(getString(R.string.unpair))
+        if (isPaired && webContainer.visibility != View.VISIBLE) {
+            options.add(getString(R.string.btn_return_to_display))
         }
-        options.add(getString(R.string.btn_rotate_screen))
+        options.add(getString(R.string.btn_edit_settings))
+        if (isPaired) {
+            options.add(getString(R.string.reload))
+        }
         options.add(getString(R.string.check_updates))
-        options.add(getString(R.string.btn_server_settings))
         options.add(getString(R.string.close))
 
-        AlertDialog.Builder(this)
+        val msg = "Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc\nVersione: v$currentVer\n\n${getString(R.string.auto_dismiss_5s)}"
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle(getString(R.string.options_title))
-            .setMessage("Schermo: $screenName\nServer: $server\nIP: $ip\nOrientamento: $orientationDesc\nVersione: v$currentVer")
-            .setItems(options.toTypedArray()) { dialog, which ->
+            .setMessage(msg)
+            .setItems(options.toTypedArray()) { d, which ->
+                infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
                 val choice = options[which]
                 when (choice) {
+                    getString(R.string.btn_return_to_display) -> {
+                        val url = KioskPrefs.getScreenUrl(this)
+                        if (!url.isNullOrBlank()) {
+                            showWebViewMode(url)
+                        }
+                    }
+                    getString(R.string.btn_edit_settings) -> {
+                        showSetupMode()
+                    }
                     getString(R.string.reload) -> {
                         webView.reload()
-                    }
-                    getString(R.string.unpair) -> {
-                        confirmUnpair()
-                    }
-                    getString(R.string.btn_rotate_screen) -> {
-                        showOrientationDialog()
                     }
                     getString(R.string.check_updates) -> {
                         checkUpdatesManually()
                     }
-                    getString(R.string.btn_server_settings) -> {
-                        showServerSettingsDialog()
-                    }
                     getString(R.string.close) -> {
-                        dialog.dismiss()
+                        d.dismiss()
                     }
                 }
             }
-            .show()
+            .create()
+
+        infoDialog = dialog
+
+        val runnable = Runnable {
+            if (dialog.isShowing && !isFinishing) {
+                dialog.dismiss()
+            }
+        }
+        infoDialogDismissRunnable = runnable
+        infoDialogHandler.postDelayed(runnable, 5000L)
+
+        dialog.setOnDismissListener {
+            infoDialogDismissRunnable?.let { infoDialogHandler.removeCallbacks(it) }
+            infoDialog = null
+        }
+
+        dialog.show()
     }
 
     // ---- Verifica e aggiornamento in-app ------------------------------------
 
-    private fun checkUpdatesSilently() {
+    /**
+     * Verifica aggiornamento eseguita solo al primo avvio/riavvio del processo.
+     * Mostra il popup che scompare automaticamente dopo 5 secondi se non toccato.
+     */
+    private fun checkUpdatesOnBoot() {
         activityScope.launch(Dispatchers.IO) {
-            delay(4000L) // Attende che la UI iniziale sia stabilizzata
+            delay(3500L) // Breve attesa per stabilizzare la UI
             try {
                 val update = UpdateManager.checkForUpdate(this@MainActivity)
                 if (update != null && !isFinishing) {
                     withContext(Dispatchers.Main) {
-                        promptUpdate(update)
+                        promptUpdate(update, autoDismissMillis = 5000L)
                     }
                 }
             } catch (_: Exception) {}
@@ -493,7 +628,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     if (isFinishing) return@withContext
                     if (update != null) {
-                        promptUpdate(update)
+                        promptUpdate(update, autoDismissMillis = 0L)
                     } else {
                         val ver = SystemInfo.getAppVersion(this@MainActivity)
                         AlertDialog.Builder(this@MainActivity)
@@ -517,11 +652,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun promptUpdate(update: UpdateInfo) {
+    private fun promptUpdate(update: UpdateInfo, autoDismissMillis: Long = 0L) {
         if (isFinishing) return
         val currentVer = SystemInfo.getAppVersion(this)
         val msg = buildString {
             append(getString(R.string.update_available_msg, update.tagName, currentVer))
+            if (autoDismissMillis > 0L) {
+                append("\n\n")
+                append(getString(R.string.auto_dismiss_5s))
+            }
             if (!update.releaseNotes.isNullOrBlank()) {
                 append("\n\nNote di rilascio:\n")
                 append(update.releaseNotes.take(300))
@@ -529,15 +668,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        AlertDialog.Builder(this)
+        val dismissHandler = Handler(Looper.getMainLooper())
+        var dismissRunnable: Runnable? = null
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle(getString(R.string.update_available_title))
             .setMessage(msg)
-            .setCancelable(false)
+            .setCancelable(true)
             .setPositiveButton(getString(R.string.update_now)) { _, _ ->
+                dismissRunnable?.let { dismissHandler.removeCallbacks(it) }
                 startUpdateDownload(update)
             }
-            .setNegativeButton(getString(R.string.update_later), null)
-            .show()
+            .setNegativeButton(getString(R.string.update_later)) { d, _ ->
+                dismissRunnable?.let { dismissHandler.removeCallbacks(it) }
+                d.dismiss()
+            }
+            .create()
+
+        if (autoDismissMillis > 0L) {
+            val runnable = Runnable {
+                if (dialog.isShowing && !isFinishing) {
+                    dialog.dismiss()
+                }
+            }
+            dismissRunnable = runnable
+            dismissHandler.postDelayed(runnable, autoDismissMillis)
+            dialog.setOnDismissListener {
+                dismissHandler.removeCallbacks(runnable)
+            }
+        }
+
+        dialog.show()
     }
 
     private fun startUpdateDownload(update: UpdateInfo) {
@@ -706,7 +867,13 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            // Impedisce la chiusura accidentale da telecomando: mostra opzioni
+            if (pairingContainer.visibility == View.VISIBLE && KioskPrefs.isPaired(this)) {
+                val url = KioskPrefs.getScreenUrl(this)
+                if (!url.isNullOrBlank()) {
+                    showWebViewMode(url)
+                    return true
+                }
+            }
             showKioskAdminMenu()
             return true
         }
@@ -719,6 +886,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (pairingContainer.visibility == View.VISIBLE && KioskPrefs.isPaired(this)) {
+            val url = KioskPrefs.getScreenUrl(this)
+            if (!url.isNullOrBlank()) {
+                showWebViewMode(url)
+                return
+            }
+        }
         showKioskAdminMenu()
     }
 }

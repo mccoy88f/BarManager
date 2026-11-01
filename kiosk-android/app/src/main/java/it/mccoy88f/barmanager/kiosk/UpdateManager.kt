@@ -232,3 +232,4 @@ object UpdateManager {
         activity.startActivity(intent)
     }
 }
+
