@@ -222,6 +222,27 @@ export class CommunicationsService {
     return updated;
   }
 
+  /**
+   * Rimette in coda i destinatari FAILED di una comunicazione (es. quelli
+   * falliti per la quota oraria SMTP prima della pausa automatica). Se la
+   * comunicazione era DONE torna QUEUED; se è PAUSED resta tale.
+   */
+  async retryFailed(venueId: string, id: string) {
+    const communication = await this.requireOwnCommunication(venueId, id);
+    const { count } = await this.prisma.communicationRecipient.updateMany({
+      where: { communicationId: id, status: CommunicationRecipientStatus.FAILED },
+      data: { status: CommunicationRecipientStatus.QUEUED, error: null },
+    });
+    if (count === 0) {
+      throw new BadRequestException('Nessun invio fallito da riprovare');
+    }
+    if (communication.status === CommunicationStatus.DONE) {
+      await this.prisma.communication.update({ where: { id }, data: { status: CommunicationStatus.QUEUED } });
+    }
+    void this.processNext();
+    return { requeued: count };
+  }
+
   /** Un tick ogni 10 secondi: invia al più un destinatario, per garantire l'invio sequenziale richiesto ("per non intasare il server posta"). */
   @Cron('*/10 * * * * *')
   async tick() {

@@ -29,6 +29,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ReplayIcon from '@mui/icons-material/Replay';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
@@ -159,6 +160,15 @@ export function CommunicationsHistory() {
     onError: (error) => showToast({ message: extractErrorMessage(error), severity: 'error' }),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: async () => (await api.patch<{ requeued: number }>(`/communications/${detailId}/retry-failed`)).data,
+    onSuccess: (data) => {
+      showToast(`${data.requeued} invii falliti rimessi in coda.`);
+      invalidate();
+    },
+    onError: (error) => showToast({ message: extractErrorMessage(error), severity: 'error' }),
+  });
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -234,6 +244,18 @@ export function CommunicationsHistory() {
                   label={COMMUNICATION_STATUS_LABELS[detailQuery.data.status]}
                   color={COMMUNICATION_STATUS_COLOR[detailQuery.data.status]}
                 />
+                {detailQuery.data.recipients.some((r) => r.status === 'FAILED') && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    startIcon={<ReplayIcon />}
+                    disabled={retryMutation.isPending}
+                    onClick={() => retryMutation.mutate()}
+                  >
+                    Riprova falliti
+                  </Button>
+                )}
                 {detailQuery.data.status === 'QUEUED' && (
                   <Button
                     size="small"

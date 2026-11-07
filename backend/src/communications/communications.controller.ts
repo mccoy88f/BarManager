@@ -47,6 +47,11 @@ export class CommunicationsController {
     return this.communicationsService.pause(requireVenueId(user), id);
   }
 
+  @Patch(':id/retry-failed')
+  retryFailed(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.communicationsService.retryFailed(requireVenueId(user), id);
+  }
+
   @Patch(':id/resume')
   resume(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.communicationsService.resume(requireVenueId(user), id);
