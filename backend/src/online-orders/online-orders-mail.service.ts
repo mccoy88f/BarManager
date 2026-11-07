@@ -33,13 +33,15 @@ export class OnlineOrdersMailService {
     return 'Non specificato';
   }
 
-  private when(requestedAt: Date): string {
-    return `${requestedAt.toLocaleDateString('it-IT')} alle ${requestedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+  /** Data/ora nel fuso del locale (non in quello del processo Node, UTC in produzione: 20:00 locali diventava "19:00"). */
+  private when(requestedAt: Date, timezone?: string | null): string {
+    const timeZone = timezone || 'Europe/Rome';
+    return `${requestedAt.toLocaleDateString('it-IT', { timeZone })} alle ${requestedAt.toLocaleTimeString('it-IT', { timeZone, hour: '2-digit', minute: '2-digit' })}`;
   }
 
   /** Numero progressivo giornaliero + data dell'ordine (v. OnlineOrdersService.createPublicOrder), per identificarlo in ogni email di notifica senza dover aprire la coda. */
   private orderNumberLabel(order: OrderWithLines): string {
-    return `Ordine N. ${order.dailyNumber} del ${order.createdAt.toLocaleDateString('it-IT')}`;
+    return `Ordine N. ${order.dailyNumber} del ${order.createdAt.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}`;
   }
 
   private trackingBlock(trackUrl: string) {
@@ -132,7 +134,7 @@ export class OnlineOrdersMailService {
 
   sendReceived(
     order: OrderWithLines,
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     trackUrl: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
@@ -142,10 +144,10 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine ricevuto`,
-      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}\n\nGrazie,\n${venue.name}${footer.text}`,
+      text: `Ciao ${order.firstName},\n\nabbiamo ricevuto il tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt, venue.timezone)}.\nTi confermeremo a breve.\n\n${this.orderLines(order).join('\n')}${block.text}\n\nGrazie,\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
-            <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))}. Ti confermeremo a breve.</p>
+            <p>Abbiamo ricevuto il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt, venue.timezone))}. Ti confermeremo a breve.</p>
             ${this.orderHtml(order)}
             ${block.html}
             ${footer.html}
@@ -165,14 +167,14 @@ export class OnlineOrdersMailService {
    */
   sendReceivedAwaitingOpening(
     order: OrderWithLines,
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     trackUrl: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
     const block = this.trackingBlock(trackUrl);
     const footer = buildMailFooter(venue, privacyUrl);
-    const reopenText = this.when(order.requestedAt);
+    const reopenText = this.when(order.requestedAt, venue.timezone);
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine ricevuto, in attesa di apertura`,
@@ -192,7 +194,7 @@ export class OnlineOrdersMailService {
 
   sendConfirmed(
     order: OrderWithLines,
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     trackUrl: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
@@ -202,10 +204,10 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine confermato`,
-      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}\n\n${venue.name}${footer.text}`,
+      text: `Ciao ${order.firstName},\n\nil tuo ordine (${this.fulfillmentLabel(order)}) per ${this.when(order.requestedAt, venue.timezone)} è confermato ed è in preparazione.\n\n${this.orderLines(order).join('\n')}${block.text}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
-            <p>Il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt))} è confermato ed è in preparazione.</p>
+            <p>Il tuo ordine (${escapeHtml(this.fulfillmentLabel(order))}) per ${escapeHtml(this.when(order.requestedAt, venue.timezone))} è confermato ed è in preparazione.</p>
             ${this.orderHtml(order)}
             ${block.html}
             ${footer.html}
@@ -218,7 +220,7 @@ export class OnlineOrdersMailService {
 
   sendReady(
     order: OrderWithLines,
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     trackUrl: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
@@ -247,7 +249,7 @@ export class OnlineOrdersMailService {
 
   sendRejected(
     order: OrderWithLines,
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     reason: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
@@ -263,11 +265,11 @@ export class OnlineOrdersMailService {
     return this.mail.send({
       to: order.email,
       subject: `${venue.name} — ordine non confermato`,
-      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}\n\n${venue.name}${footer.text}`,
+      text: `Ciao ${order.firstName},\n\n${this.orderNumberLabel(order)}\nnon possiamo confermare il tuo ordine per ${this.when(order.requestedAt, venue.timezone)}.\nMotivo: ${reason}\nMetodo di pagamento: ${this.paymentMethodLabel(order)}${refundNoticeText}\n\n${venue.name}${footer.text}`,
       html: `<div style="font-family:sans-serif;color:#222;">
             <p>Ciao ${escapeHtml(order.firstName)},</p>
             <p><strong>${escapeHtml(this.orderNumberLabel(order))}</strong></p>
-            <p>Non possiamo confermare il tuo ordine per ${escapeHtml(this.when(order.requestedAt))}.</p>
+            <p>Non possiamo confermare il tuo ordine per ${escapeHtml(this.when(order.requestedAt, venue.timezone))}.</p>
             <p>Motivo: ${escapeHtml(reason)}</p>
             <p>Metodo di pagamento: <strong>${escapeHtml(this.paymentMethodLabel(order))}</strong></p>
             ${refundNoticeHtml}
@@ -282,12 +284,12 @@ export class OnlineOrdersMailService {
   /** Il locale propone un nuovo orario (tipicamente per spostare l'ordine da una fascia satura, §5.10): il cliente lo confermerà dalla stessa pagina di tracciamento. */
   sendTimeChangeRequest(
     order: OrderWithLines & { proposedRequestedAt: Date | null },
-    venue: VenueFooterInfo & { email?: string | null },
+    venue: VenueFooterInfo & { email?: string | null; timezone?: string | null },
     trackUrl: string,
     privacyUrl?: string | null,
     logoUrl?: string | null,
   ) {
-    const newWhen = order.proposedRequestedAt ? this.when(order.proposedRequestedAt) : '';
+    const newWhen = order.proposedRequestedAt ? this.when(order.proposedRequestedAt, venue.timezone) : '';
     const block = this.trackingBlock(trackUrl);
     const footer = buildMailFooter(venue, privacyUrl);
     return this.mail.send({
