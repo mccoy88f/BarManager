@@ -50,7 +50,17 @@ interface VenueOnlineOrdersSettings {
 interface LoyversePaymentType {
   id: string;
   name: string;
+  type?: string;
 }
+
+/**
+ * L'API ricevute di Loyverse rifiuta i metodi di pagamento "integrati"
+ * (es. SUMUP: errore 400 "Receipt endpoint doesn't support integrated
+ * payment types"). Si possono usare solo contanti e metodi non integrati:
+ * per le carte va creato su Loyverse un metodo di tipo "Altro/Non integrato".
+ */
+const isIntegratedPaymentType = (t: LoyversePaymentType) =>
+  !!t.type && !['CASH', 'NONINTEGRATED', 'OTHER'].includes(t.type.toUpperCase());
 
 function extractErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data;
@@ -552,7 +562,10 @@ export function OnlineOrdersSettings() {
                 >
                   <MenuItem value="">— Non accoppiato —</MenuItem>
                   {loyversePaymentTypes.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                    <MenuItem key={t.id} value={t.id} disabled={isIntegratedPaymentType(t)}>
+                      {t.name}
+                      {isIntegratedPaymentType(t) && ' (integrato, non supportato)'}
+                    </MenuItem>
                   ))}
                 </TextField>
                 <TextField
@@ -564,7 +577,10 @@ export function OnlineOrdersSettings() {
                 >
                   <MenuItem value="">— Non accoppiato —</MenuItem>
                   {loyversePaymentTypes.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                    <MenuItem key={t.id} value={t.id} disabled={isIntegratedPaymentType(t)}>
+                      {t.name}
+                      {isIntegratedPaymentType(t) && ' (integrato, non supportato)'}
+                    </MenuItem>
                   ))}
                 </TextField>
                 <TextField
@@ -576,7 +592,10 @@ export function OnlineOrdersSettings() {
                 >
                   <MenuItem value="">— Non accoppiato —</MenuItem>
                   {loyversePaymentTypes.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                    <MenuItem key={t.id} value={t.id} disabled={isIntegratedPaymentType(t)}>
+                      {t.name}
+                      {isIntegratedPaymentType(t) && ' (integrato, non supportato)'}
+                    </MenuItem>
                   ))}
                 </TextField>
               </Stack>
