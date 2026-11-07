@@ -28,6 +28,9 @@ const PLACEHOLDERS: Record<string, (customer: Customer) => string> = {
  */
 const CTA_PLACEHOLDER = '{cta}';
 
+/** Pausa quando il provider SMTP segnala la quota oraria (200 email/ora) esaurita. */
+const QUOTA_PAUSE_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class CommunicationsService {
   private readonly logger = new Logger(CommunicationsService.name);
@@ -35,6 +38,8 @@ export class CommunicationsService {
   // subito" lanciato da create() finiscano per inviare due email in
   // parallelo, che è esattamente quello che la coda deve impedire.
   private processing = false;
+  // Fino a quando l'invio è sospeso per quota oraria del provider SMTP esaurita.
+  private quotaBlockedUntil = 0;
 
   constructor(
     private prisma: PrismaService,
@@ -84,6 +89,11 @@ export class CommunicationsService {
       );
     }
     return recipients;
+  }
+
+  static isQuotaError(error?: string): boolean {
+    if (!error) return false;
+    return /quota exceeded|messages per hour|too many mails|5\.7\.0/i.test(error);
   }
 
   substitutePlaceholders(template: string, customer: Customer): string {
@@ -220,6 +230,7 @@ export class CommunicationsService {
 
   async processNext(): Promise<void> {
     if (this.processing) return;
+    if (Date.now() < this.quotaBlockedUntil) return;
     this.processing = true;
     try {
       const recipient = await this.prisma.communicationRecipient.findFirst({
@@ -279,6 +290,17 @@ export class CommunicationsService {
         replyTo: communication.venue.email,
         logoUrl: venueLogoAbsoluteUrl(communication.venue),
       });
+
+      // Quota oraria del provider (es. "550 5.7.0 ... limit of 200 messages
+      // per hour"): non è un errore del destinatario. Il destinatario resta
+      // QUEUED e l'invio riprende dopo un'ora, senza segnare FAILED.
+      if (!result.sent && CommunicationsService.isQuotaError(result.error)) {
+        this.quotaBlockedUntil = Date.now() + QUOTA_PAUSE_MS;
+        this.logger.warn(
+          `Quota oraria SMTP esaurita: invio sospeso fino alle ${new Date(this.quotaBlockedUntil).toISOString()}`,
+        );
+        return;
+      }
 
       await this.prisma.communicationRecipient.update({
         where: { id: recipient.id },

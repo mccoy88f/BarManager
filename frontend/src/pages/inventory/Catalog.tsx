@@ -355,6 +355,7 @@ export function Catalog() {
                   {product.unit}
                   {product.costPerUnit != null && ` — ${formatCurrency(product.costPerUnit)}/${product.unit}`}
                   {product.unitsPerPackage != null && ` — ${product.unitsPerPackage} unità/${product.unit}`}
+                  {product.costPerUnit != null && !!product.unitsPerPackage && ` — ${formatCurrency(product.costPerUnit / product.unitsPerPackage)}/pezzo`}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.5}>
@@ -488,7 +489,11 @@ export function Catalog() {
             type="number"
             value={productForm.unitsPerPackage}
             onChange={(e) => setProductForm((f) => ({ ...f, unitsPerPackage: e.target.value }))}
-            helperText="Es. un cartone di birre contiene 24 lattine"
+            helperText={
+              productForm.costPerUnit && Number(productForm.unitsPerPackage) > 0
+                ? `Costo a pezzo: ${formatCurrency(Number(productForm.costPerUnit) / Number(productForm.unitsPerPackage))}`
+                : 'Es. un cartone di birre contiene 24 lattine (con il costo, calcola il costo a pezzo)'
+            }
           />
           {productError && (
             <Alert severity="error" sx={{ gridColumn: '1 / -1' }}>
