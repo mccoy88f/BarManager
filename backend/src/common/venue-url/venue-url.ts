@@ -38,3 +38,14 @@ export function venueLogoAbsoluteUrl(venue: VenueForPublicUrl & { logoUrl: strin
 export function venuePrivacyUrl(venue: VenueForPublicUrl, privacyToken: string | null): string | null {
   return privacyToken ? venuePublicUrl(venue, `/privacy?token=${privacyToken}`) : null;
 }
+
+/**
+ * Rende assoluti gli `src`/`href` relativi alla radice (es. un'immagine
+ * caricata nell'editor come `/uploads/kb/x.png`): in un'email un URL
+ * relativo non si risolve da nessuna parte e l'immagine non compare.
+ * Gli URL protocol-relative (`//host`) e quelli già assoluti restano intatti.
+ */
+export function absolutizeRelativeUrls(html: string, venue: VenueForPublicUrl): string {
+  const base = venuePublicBaseUrl(venue);
+  return html.replace(/(\s(?:src|href)=")\/(?!\/)/gi, `$1${base}/`);
+}

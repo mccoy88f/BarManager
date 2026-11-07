@@ -8,7 +8,7 @@ import { CustomersService } from '../customers/customers.service';
 import { stripHtml } from '../common/mail/strip-html';
 import { escapeHtml } from '../common/mail/escape-html';
 import { buildMailFooter } from '../common/mail/mail-footer';
-import { venuePublicUrl, venueLogoAbsoluteUrl, venuePrivacyUrl } from '../common/venue-url/venue-url';
+import { venuePublicUrl, venueLogoAbsoluteUrl, venuePrivacyUrl, absolutizeRelativeUrls } from '../common/venue-url/venue-url';
 import { CreateCommunicationDto } from './dto/create-communication.dto';
 
 /** Placeholder disponibili nell'editor, mappati sui campi di Customer (v. §1-septdecies di DEVELOPMENT.md). */
@@ -269,7 +269,10 @@ export class CommunicationsService {
 
       const { communication, customer } = recipient;
       const subject = this.substitutePlaceholders(communication.subject, customer);
-      const body = this.substitutePlaceholders(communication.bodyHtml, customer);
+      const body = absolutizeRelativeUrls(
+        this.substitutePlaceholders(communication.bodyHtml, customer),
+        communication.venue,
+      );
       const plainBody = stripHtml(body);
 
       const cta =
