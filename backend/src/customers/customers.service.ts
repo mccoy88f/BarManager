@@ -136,6 +136,8 @@ export class CustomersService {
 
   async remove(venueId: string, customerId: string) {
     await this.requireOwnCustomer(venueId, customerId);
+    await this.prisma.communicationRecipient.deleteMany({ where: { customerId } });
+    await this.prisma.onlineOrder.updateMany({ where: { customerId }, data: { customerId: null } });
     await this.prisma.customer.delete({ where: { id: customerId } });
   }
 
@@ -329,6 +331,8 @@ export class CustomersService {
   async deleteByToken(token: string) {
     const customer = await this.prisma.customer.findUnique({ where: { privacyToken: token } });
     if (!customer) throw new NotFoundException('Link non valido');
+    await this.prisma.communicationRecipient.deleteMany({ where: { customerId: customer.id } });
+    await this.prisma.onlineOrder.updateMany({ where: { customerId: customer.id }, data: { customerId: null } });
     await this.prisma.customer.delete({ where: { id: customer.id } });
   }
 

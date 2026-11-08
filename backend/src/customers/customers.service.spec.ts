@@ -13,6 +13,12 @@ describe('CustomersService', () => {
       upsert: jest.Mock;
       delete: jest.Mock;
     };
+    communicationRecipient: {
+      deleteMany: jest.Mock;
+    };
+    onlineOrder: {
+      updateMany: jest.Mock;
+    };
   };
   let xlsx: { buildSheet: jest.Mock; readSheet: jest.Mock };
   let service: CustomersService;
@@ -26,6 +32,12 @@ describe('CustomersService', () => {
         update: jest.fn(),
         upsert: jest.fn(),
         delete: jest.fn(),
+      },
+      communicationRecipient: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      onlineOrder: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     xlsx = {

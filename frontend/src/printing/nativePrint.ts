@@ -39,10 +39,16 @@ export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
 /**
  * true solo dentro l'app Android nativa BarManager, mai su sito/PWA (§5.11 di
  * docs/DEVELOPMENT.md). Stesso controllo di Capacitor.isNativePlatform() (il
- * bridge iniettato dal runtime nativo), senza importare @capacitor/core.
+ * bridge iniettato dal runtime nativo), senza importare staticamente @capacitor/core.
  */
 export const isNativeApp = (): boolean => {
-  const win = window as unknown as { androidBridge?: unknown; webkit?: { messageHandlers?: { bridge?: unknown } } };
+  const win = window as unknown as {
+    Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+    androidBridge?: unknown;
+    webkit?: { messageHandlers?: { bridge?: unknown } };
+  };
+  if (win.Capacitor?.isNativePlatform?.()) return true;
+  if (win.Capacitor?.getPlatform?.() === 'android' || win.Capacitor?.getPlatform?.() === 'ios') return true;
   return !!(win.androidBridge || win.webkit?.messageHandlers?.bridge);
 };
 

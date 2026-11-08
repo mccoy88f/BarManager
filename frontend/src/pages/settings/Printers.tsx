@@ -31,7 +31,7 @@ import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { shareReceiptPdf } from '../../printing/printJob';
-import { printOrShare } from '../../printing/nativePrint';
+import { printOrShare, isNativeApp } from '../../printing/nativePrint';
 
 type PrinterUsage =
   | 'SUPPLIER_ORDER'
@@ -141,7 +141,12 @@ export function Printers() {
       });
       return printer;
     },
-    onSuccess: (printer) => showToast(`Test di stampa inviato a "${printer.name}".`),
+    onSuccess: (printer) =>
+      showToast(
+        isNativeApp()
+          ? `Test inviato via ESC/POS a "${printer.name}" (${printer.host}:${printer.port})`
+          : `Test di stampa inviato a "${printer.name}" (anteprima PDF)`,
+      ),
     onError: (err, printer) => {
       const detail = err instanceof Error ? err.message : undefined;
       showToast({
@@ -183,6 +188,13 @@ export function Printers() {
           Assegna a ciascuna stampante uno o più tipi di documento (una stampante può servirne
           più di uno insieme, e lo stesso documento può andare a più stampanti).
         </Typography>
+        <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+          {isNativeApp() ? (
+            <Chip size="small" color="success" label="App Android: Stampa diretta ESC/POS attiva" />
+          ) : (
+            <Chip size="small" color="default" label="Modalità Web / PWA: condivisione PDF" />
+          )}
+        </Box>
         <Alert severity="info" sx={{ mb: 2 }}>
           Host e porta configurati qui servono solo alla stampa diretta via rete locale (LAN)
           dell'app Android nativa <strong>BarManager</strong> — scaricala dalla pagina delle{' '}

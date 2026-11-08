@@ -171,7 +171,9 @@ describe('ReservationsService', () => {
       // fasce (pranzo 12-15, cena 19-23). Prova diretta del fix: prima di
       // usare Venue.timezone questo calcolo dipendeva dal fuso del
       // server, non da quello configurato per il locale.
-      const instant = new Date('2026-10-01T21:30:00.000Z');
+      const instant = new Date();
+      instant.setDate(instant.getDate() + 2);
+      instant.setUTCHours(21, 30, 0, 0);
 
       prisma.venue.findUnique.mockResolvedValue({ ...baseVenue, timezone: 'UTC' });
       await expect(service.getAvailability('venue-1', instant.toISOString())).resolves.toBeDefined();

@@ -1,8 +1,6 @@
 package it.mccoy88f.barmanager
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
+import android.util.Log
 import com.dantsu.escposprinter.EscPosPrinter
 import com.dantsu.escposprinter.connection.tcp.TcpConnection
 import com.getcapacitor.Plugin
@@ -13,31 +11,24 @@ import java.util.concurrent.Executors
 
 /**
  * Stampa diretta ESC/POS via socket TCP (§5.11 di docs/DEVELOPMENT.md),
- * usando DantSu/ESCPOS-ThermalPrinter-Android (MIT) invece di un encoder
- * scritto ad-hoc — scelta esplicita dell'utente per lasciare a una
- * libreria matura la codifica dei caratteri accentati italiani.
+ * usando DantSu/ESCPOS-ThermalPrinter-Android (MIT).
  *
- * Chiamata JS attesa: Escpos.print({ host, port, sections }), dove
- * "sections" è lo stesso array ReceiptSection[] già usato lato backend
- * per generare i PDF (v. ReceiptSection.kt). Risolve a stampa avvenuta,
- * rifiuta con un messaggio comprensibile se manca la rete o la stampante
- * non risponde — mai un fallimento silenzioso, a differenza di
- * window.print() nel browser (v. §9.2 di docs/DEVELOPMENT.md).
+ * Chiamata JS attesa: Escpos.print({ host, port, sections }).
+ * Risolve a stampa avvenuta e disconnette il socket; rifiuta con messaggio
+ * dettagliato se la stampante non risponde o la porta è chiusa.
  */
 @CapacitorPlugin(name = "Escpos")
 class EscPosPrinterPlugin : Plugin() {
     private val executor = Executors.newSingleThreadExecutor()
 
-    // 203 dpi, 80mm, 46 caratteri per riga: valori tipici per stampanti a
-    // rullo 80mm con font normale — DA VERIFICARE contro una stampante
-    // reale (modelli diversi possono richiedere un valore diverso).
+    // 203 dpi, 80mm, 46 caratteri per riga: valori tipici per stampanti a rullo 80mm
     private val dpi = 203
     private val widthMM = 80f
     private val charactersPerLine = 46
 
     @PluginMethod
     fun print(call: PluginCall) {
-        val host = call.getString("host")
+        val host = call.getString("host")?.trim()
         val port = call.getInt("port", 9100) ?: 9100
         val sectionsArray = call.getArray("sections")
 
@@ -45,34 +36,42 @@ class EscPosPrinterPlugin : Plugin() {
             call.reject("Parametri mancanti: host e sections sono obbligatori.")
             return
         }
-        if (!hasActiveNetwork()) {
-            call.reject("Stampa non riuscita: nessuna connessione di rete attiva.")
+
+        val sections = try {
+            (0 until sectionsArray.length())
+                .map { sectionsArray.getJSONObject(it) }
+                .map { ReceiptSection.fromJson(it) }
+        } catch (e: Exception) {
+            call.reject("Dati documento non validi: ${e.message}", e)
             return
         }
 
-        val sections = (0 until sectionsArray.length())
-            .map { sectionsArray.getJSONObject(it) }
-            .map { ReceiptSection.fromJson(it) }
+        Log.i("EscPosPrinter", "Avvio stampa su $host:$port (${sections.size} sezioni)")
 
         executor.execute {
+            var connection: TcpConnection? = null
             try {
-                val connection = TcpConnection(host, port)
+                // Timeout di connessione a 5000 ms (5s), superando il bug del costruttore a 2 parametri
+                // di DantSu che imposta erroneamente 30 ms come timeout socket.
+                connection = TcpConnection(host, port, 5000)
                 val printer = EscPosPrinter(connection, dpi, widthMM, charactersPerLine)
                 val markup = sections.joinToString("") { it.toDantSuMarkup() }
                 printer.printFormattedTextAndCut(markup)
+                Log.i("EscPosPrinter", "Stampa completata con successo su $host:$port")
                 activity.runOnUiThread { call.resolve() }
             } catch (err: Exception) {
+                Log.e("EscPosPrinter", "Errore durante la stampa su $host:$port", err)
+                val detail = err.localizedMessage ?: err.message ?: err.javaClass.simpleName
                 activity.runOnUiThread {
-                    call.reject("Stampante non raggiungibile (${host}:${port}): verifica che sia accesa e collegata alla rete.", err)
+                    call.reject("Stampante non raggiungibile ($host:$port): $detail", err)
+                }
+            } finally {
+                try {
+                    connection?.disconnect()
+                } catch (e: Exception) {
+                    Log.w("EscPosPrinter", "Errore chiusura socket verso $host:$port", e)
                 }
             }
         }
-    }
-
-    private fun hasActiveNetwork(): Boolean {
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

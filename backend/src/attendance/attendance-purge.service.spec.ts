@@ -34,8 +34,8 @@ describe('AttendancePurgeService', () => {
     expect(call.where.employee).toEqual({ venueId: 'venue-1' });
     const cutoff = call.where.timestamp.lt as Date;
     const expectedMs = before - 30 * 24 * 60 * 60 * 1000;
-    // Tolleranza di qualche secondo per il tempo di esecuzione del test.
-    expect(Math.abs(cutoff.getTime() - expectedMs)).toBeLessThan(5000);
+    // Tolleranza per l'ora solare/legale (1 ora) e il tempo di esecuzione del test.
+    expect(Math.abs(cutoff.getTime() - expectedMs)).toBeLessThan(3600 * 1000 + 5000);
   });
 
   it('applica la soglia corretta per più locali con unità diverse', async () => {

@@ -1615,7 +1615,7 @@ model CommunicationRecipient {
   communication   Communication @relation(fields: [communicationId], references: [id], onDelete: Cascade)
 
   customerId String
-  customer   Customer @relation(fields: [customerId], references: [id])
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -1735,7 +1735,7 @@ model OnlineOrder {
   venue   Venue  @relation(fields: [venueId], references: [id])
 
   customerId String?
-  customer   Customer? @relation(fields: [customerId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   lines OnlineOrderLine[]
 
