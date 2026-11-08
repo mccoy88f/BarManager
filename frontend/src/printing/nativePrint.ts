@@ -57,12 +57,20 @@ export interface AppSettingsPlugin {
 // tramite Proxy, che sui WebView vecchi non esiste — importarlo
 // staticamente faceva crashare l'intero sito (pagina bianca) sul WebView di
 // sistema Chrome 44 dei box Android 6 usati come display promo in Fully Kiosk.
-const plugins = new Map<string, Promise<unknown>>();
-function nativePlugin<T>(name: string): Promise<T> {
-  if (!plugins.has(name)) {
-    plugins.set(name, import('@capacitor/core').then((m) => m.registerPlugin<T>(name)));
+// registerPlugin() restituisce un Proxy con un metodo then(). Se quel Proxy
+// è il valore di ritorno di un Promise.then(), la Promise lo "adotta" come
+// thenable e chiama il metodo nativo "then", che non esiste: la chiamata
+// resta appesa ("Escpos.then() is not implemented") e il pulsante di stampa
+// rimane disabilitato. Il plugin va quindi sempre chiuso in un oggetto
+// senza then(), mai restituito direttamente da una Promise.
+const pluginBoxes = new Map<string, Promise<{ plugin: unknown }>>();
+function nativePlugin<T>(name: string): Promise<{ plugin: T }> {
+  let box = pluginBoxes.get(name);
+  if (!box) {
+    box = import('@capacitor/core').then((m) => ({ plugin: m.registerPlugin<T>(name) }));
+    pluginBoxes.set(name, box);
   }
-  return plugins.get(name) as Promise<T>;
+  return box as Promise<{ plugin: T }>;
 }
 const escpos = () => nativePlugin<EscposPlugin>('Escpos');
 export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
@@ -107,7 +115,7 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
   }
 
   const results = await Promise.allSettled(
-    printers.map(async (p) => (await escpos()).print({ host: p.host, port: p.port, sections })),
+    printers.map(async (p) => (await escpos()).plugin.print({ host: p.host, port: p.port, sections })),
   );
   const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
   if (failures.length > 0) {
@@ -117,7 +125,7 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
 
 /** Test di stampa (§5.11): stampante scelta esplicitamente dall'admin, non risolta per tipo. */
 export async function printOnPrinter(host: string, port: number, sections: ReceiptSection[]): Promise<void> {
-  await (await escpos()).print({ host, port, sections });
+  await (await escpos()).plugin.print({ host, port, sections });
 }
 
 interface PrintOrShareOptions {

@@ -18,7 +18,7 @@ export function AppDomainCard() {
   useEffect(() => {
     if (!isNativeApp()) return;
     appSettings()
-      .then((plugin) => plugin.getDomain())
+      .then(({ plugin }) => plugin.getDomain())
       .then((res) => setDomain(res.domain));
   }, []);
 
@@ -47,7 +47,7 @@ export function AppDomainCard() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => appSettings().then((plugin) => plugin.openDomainSettings())}
+                onClick={() => appSettings().then(({ plugin }) => plugin.openDomainSettings())}
               >
                 Cambia dominio
               </Button>

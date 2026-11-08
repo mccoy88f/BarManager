@@ -52,7 +52,7 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
     setInstallPrompted(false);
 
     try {
-      const plugin = await appSettings();
+      const { plugin } = await appSettings();
       const info = await plugin.getAppInfo();
       setAppInfo(info);
 
@@ -78,7 +78,7 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
     if (!open || !native) return;
     let removeListener: (() => Promise<void>) | undefined;
 
-    appSettings().then((plugin) => {
+    appSettings().then(({ plugin }) => {
       plugin
         .addListener?.('updateProgress', (data: DownloadProgress) => {
           setProgress(data);
@@ -103,7 +103,7 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
     setProgress({ percent: 0, downloadedMb: 0, totalMb: updateInfo.sizeBytes ? updateInfo.sizeBytes / 1048576 : 0 });
 
     try {
-      const plugin = await appSettings();
+      const { plugin } = await appSettings();
       await plugin.downloadAndInstallUpdate({ downloadUrl: updateInfo.downloadUrl });
       setInstallPrompted(true);
     } catch (e) {
@@ -115,7 +115,7 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
 
   const handleOpenDomain = async () => {
     try {
-      const plugin = await appSettings();
+      const { plugin } = await appSettings();
       await plugin.openDomainSettings();
     } catch (e) {
       setError((e as Error)?.message ?? 'Impossibile aprire impostazioni dominio');
