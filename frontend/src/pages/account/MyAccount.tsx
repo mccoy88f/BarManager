@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { useToast } from '../../components/ToastProvider';
+import { DevicePermissionsCard } from '../../components/DevicePermissionsCard';
 
 interface MeProfile {
   id: string;
@@ -159,6 +160,8 @@ export function MyAccount() {
           </Box>
         </CardContent>
       </Card>
+
+      <DevicePermissionsCard />
 
       <Card>
         <CardContent sx={{ display: 'grid', gap: 2 }}>

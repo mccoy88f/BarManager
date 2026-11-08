@@ -75,9 +75,19 @@ function nativePlugin<T>(name: string): Promise<{ plugin: T }> {
 const escpos = () => nativePlugin<EscposPlugin>('Escpos');
 export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
 
+export interface DevicePermissionState {
+  notifications: string;
+  camera: string;
+  location: string;
+}
+
 export interface NativePushPlugin {
   start(options: { apiBase: string; token: string }): Promise<{ started: boolean }>;
   consumePath(): Promise<{ path: string | null }>;
+  permissionStatus(): Promise<DevicePermissionState>;
+  requestNotifications(): Promise<{ notifications: string }>;
+  requestDevicePermissions(): Promise<DevicePermissionState>;
+  openAppSettings(): Promise<void>;
 }
 export const nativePush = () => nativePlugin<NativePushPlugin>('NativePush');
 

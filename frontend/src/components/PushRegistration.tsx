@@ -1,47 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Snackbar } from '@mui/material';
+import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { isNativeApp, nativePush } from '../printing/nativePrint';
+import { requestNotificationPermission, subscribeWebPush } from '../utils/devicePermissions';
 
-const DISMISS_KEY = 'bm_push_dismissed';
-const ANDROID_TOKEN_KEY = 'bm_push_android_token';
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
-  const output = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
-  return output;
-}
-
-async function subscribeWebPush() {
-  const registration = await navigator.serviceWorker.ready;
-  const { data } = await api.get<{ publicKey: string }>('/push/vapid-public-key');
-  let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(data.publicKey) as BufferSource,
-    });
-  }
-  const json = subscription.toJSON();
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return;
-  await api.post('/push/web', { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth });
-}
-
-async function enableAndroid() {
-  const stored = localStorage.getItem(ANDROID_TOKEN_KEY) || undefined;
-  const { data } = await api.post<{ token: string }>('/push/android', { token: stored });
-  localStorage.setItem(ANDROID_TOKEN_KEY, data.token);
-  const { plugin } = await nativePush();
-  await plugin.start({ apiBase: window.location.origin, token: data.token });
-}
+const LATER_KEY = 'bm_push_later';
 
 /**
- * Chiede il permesso notifiche a chi è entrato nel gestionale e registra il
+ * All'avvio chiede le notifiche a chi è entrato nel gestionale e registra il
  * dispositivo. Sulla PWA è Web Push; sull'APK è la coda nativa, perché la
  * WebView non riceve le push del browser.
  */
@@ -57,14 +24,14 @@ export function PushRegistration() {
     const run = async () => {
       if (isNativeApp()) {
         try {
-          await enableAndroid();
+          await requestNotificationPermission();
           const { plugin } = await nativePush();
           const { path } = await plugin.consumePath();
           if (!cancelled && path && path.startsWith('/') && path !== window.location.pathname) {
             navigate(path);
           }
         } catch {
-          // Il permesso può essere negato: il gestionale resta usabile.
+          if (!cancelled) setAsk(true);
         }
         return;
       }
@@ -78,7 +45,7 @@ export function PushRegistration() {
         }
         return;
       }
-      if (Notification.permission === 'default' && localStorage.getItem(DISMISS_KEY) !== '1' && !cancelled) {
+      if (Notification.permission === 'default' && sessionStorage.getItem(LATER_KEY) !== '1' && !cancelled) {
         setAsk(true);
       }
     };
@@ -91,42 +58,34 @@ export function PushRegistration() {
 
   const activate = async () => {
     setAsk(false);
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      localStorage.setItem(DISMISS_KEY, '1');
-      return;
-    }
     try {
-      await subscribeWebPush();
+      await requestNotificationPermission();
     } catch {
-      localStorage.setItem(DISMISS_KEY, '1');
+      // Il gestionale resta usabile anche senza notifiche.
     }
   };
 
   return (
-    <Snackbar open={ask} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-      <Alert
-        severity="info"
-        action={
-          <>
-            <Button color="inherit" size="small" onClick={() => void activate()}>
-              Attiva
-            </Button>
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                localStorage.setItem(DISMISS_KEY, '1');
-                setAsk(false);
-              }}
-            >
-              Non ora
-            </Button>
-          </>
-        }
-      >
-        Attiva le notifiche su questo dispositivo: aggiornamenti, prenotazioni e ordini. Le richieste di permesso arrivano solo a chi gestisce le timbrature.
-      </Alert>
-    </Snackbar>
+    <Dialog open={ask} onClose={() => setAsk(false)}>
+      <DialogTitle>Notifiche su questo dispositivo</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          Servono per gli aggiornamenti dell'app, le prenotazioni e gli ordini. Le richieste di ferie e permessi arrivano solo a chi gestisce le timbrature.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={() => {
+            sessionStorage.setItem(LATER_KEY, '1');
+            setAsk(false);
+          }}
+        >
+          Non ora
+        </Button>
+        <Button variant="contained" onClick={() => void activate()}>
+          Attiva
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
