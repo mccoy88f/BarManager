@@ -37,7 +37,8 @@ class DomainSetupActivity : AppCompatActivity() {
         DomainPrefs.getDomain(this)?.let { domainInput.setText(it) }
 
         saveButton.setOnClickListener {
-            val domain = DomainPrefs.normalize(domainInput.text.toString())
+            val rawInput = domainInput.text.toString().trim()
+            val domain = DomainPrefs.normalize(rawInput)
             if (domain.isEmpty()) {
                 errorText.text = getString(R.string.domain_setup_error_empty)
                 errorText.visibility = TextView.VISIBLE
@@ -49,18 +50,18 @@ class DomainSetupActivity : AppCompatActivity() {
             checkingProgress.visibility = ProgressBar.VISIBLE
 
             Thread {
-                val reachable = isDomainReachable(domain)
+                val targetUrl = determineReachableUrl(rawInput, domain)
                 runOnUiThread {
                     checkingProgress.visibility = ProgressBar.GONE
                     saveButton.isEnabled = true
 
-                    if (!reachable) {
+                    if (targetUrl == null) {
                         errorText.text = getString(R.string.domain_setup_error_unreachable)
                         errorText.visibility = TextView.VISIBLE
                         return@runOnUiThread
                     }
 
-                    DomainPrefs.setDomain(this, domain)
+                    DomainPrefs.setDomain(this, targetUrl)
 
                     val intent = Intent(this, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -72,8 +73,16 @@ class DomainSetupActivity : AppCompatActivity() {
         }
     }
 
-    private fun isDomainReachable(domain: String): Boolean {
-        return checkUrlReachable("https://$domain") || checkUrlReachable("http://$domain")
+    private fun determineReachableUrl(rawInput: String, normalizedDomain: String): String? {
+        if (rawInput.startsWith("http://", ignoreCase = true)) {
+            if (checkUrlReachable(rawInput)) return rawInput.trimEnd('/')
+        }
+        if (rawInput.startsWith("https://", ignoreCase = true)) {
+            if (checkUrlReachable(rawInput)) return rawInput.trimEnd('/')
+        }
+        if (checkUrlReachable("https://$normalizedDomain")) return "https://$normalizedDomain"
+        if (checkUrlReachable("http://$normalizedDomain")) return "http://$normalizedDomain"
+        return null
     }
 
     private fun checkUrlReachable(urlString: String): Boolean {
@@ -86,7 +95,7 @@ class DomainSetupActivity : AppCompatActivity() {
             val code = connection.responseCode
             connection.disconnect()
             code in 200..499
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }

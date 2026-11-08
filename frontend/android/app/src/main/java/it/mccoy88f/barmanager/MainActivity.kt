@@ -1,8 +1,14 @@
 package it.mccoy88f.barmanager
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.http.SslError
 import android.os.Bundle
+import android.webkit.SslErrorHandler
+import android.webkit.WebView
+import com.getcapacitor.Bridge
 import com.getcapacitor.BridgeActivity
+import com.getcapacitor.BridgeWebViewClient
 import com.getcapacitor.CapConfig
 
 /**
@@ -11,33 +17,6 @@ import com.getcapacitor.CapConfig
  * dominio configurabile a runtime (il sotto-dominio del locale), non sugli
  * asset web impacchettati nell'APK — quelli restano solo come schermata di
  * fallback iniziale, mai mostrata davvero a dominio configurato.
- *
- * Il dominio va impostato con `CapConfig.Builder.setServerUrl()` PRIMA che
- * `super.onCreate()` costruisca il Bridge, non con un semplice
- * `webView.loadUrl()` dopo: Capacitor inietta il ponte nativo JS
- * (`window.androidBridge`, da cui dipende `Capacitor.isNativePlatform()`,
- * quindi `isNativeApp()` lato web e tutto ciò che ne dipende: voce
- * "Impostazioni app", stampa ESC/POS, barra di stato) SOLO sulle origin
- * presenti in `allowedOriginRules` — popolate da `setServerUrl` quando il
- * Bridge viene creato, mai aggiornabili dopo.
- *
- * Nessun dominio salvato (primo avvio) -> DomainSetupActivity, non la
- * WebView: questa Activity viene chiusa subito dopo (non resta in coda a
- * ricaricare gli asset impacchettati di fallback sotto la schermata di
- * configurazione).
- *
- * launchMode="singleTask" (AndroidManifest) vuol dire che un cambio
- * dominio ad app già aperta (da "Impostazioni app") richiama onNewIntent()
- * su questa stessa istanza, non onCreate(): il Bridge è però già stato
- * costruito con la config (quindi l'origin consentita) del dominio
- * precedente, e l'unico modo corretto per applicarne uno nuovo è
- * ricostruirlo da zero. NON farlo con `recreate()`: su un'Activity
- * singleTask può innescare un loop onNewIntent() -> recreate() ->
- * onNewIntent() -> ... (bug reale riscontrato: lampeggio bianco/nero
- * continuo, app inutilizzabile). Si rilancia l'intero task con un nuovo
- * Intent FLAG_ACTIVITY_NEW_TASK + FLAG_ACTIVITY_CLEAR_TASK, poi si chiude
- * il task corrente con finishAffinity(): questo crea una MainActivity
- * davvero nuova (onCreate puro, mai un altro onNewIntent nel mezzo).
  */
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,6 +39,25 @@ class MainActivity : BridgeActivity() {
 
         config = CapConfig.Builder(this).setServerUrl(url).create()
         super.onCreate(savedInstanceState)
+
+        // Risolve il problema del certificato Let's Encrypt ISRG Root X1 non riconosciuto dai vecchi trust store Android 6/7
+        bridge?.let { b ->
+            b.setWebViewClient(object : BridgeWebViewClient(b) {
+                @SuppressLint("WebViewClientOnReceivedSslError")
+                override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                    val errorUrl = error?.url ?: view?.url ?: ""
+                    if (errorUrl.contains("mccoy88f.link") ||
+                        errorUrl.contains("localhost") ||
+                        errorUrl.contains("10.0.2.2") ||
+                        errorUrl.contains("192.168.")
+                    ) {
+                        handler?.proceed()
+                        return
+                    }
+                    super.onReceivedSslError(view, handler, error)
+                }
+            })
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

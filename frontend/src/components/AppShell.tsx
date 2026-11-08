@@ -39,8 +39,9 @@ import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
 import { canAccessModule } from '../config/modules';
 import { useOrderNotification } from '../context/OrderNotificationContext';
-import { isNativeApp, appSettings } from '../printing/nativePrint';
+import { isNativeApp } from '../printing/nativePrint';
 import { APP_VERSION } from '../version';
+import { AppSettingsDialog } from './AppSettingsDialog';
 
 const DRAWER_WIDTH = 260;
 
@@ -66,6 +67,7 @@ export function AppShell() {
   const displayVenueName = venueQuery.data?.name ?? venueName;
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(
     navigation.find((item) => location.pathname.startsWith(item.path))?.key ?? null,
@@ -143,7 +145,12 @@ export function AppShell() {
         );
       })}
       {isNativeApp() && (
-        <ListItemButton onClick={() => appSettings().then((plugin) => plugin.openDomainSettings())}>
+        <ListItemButton
+          onClick={() => {
+            if (!isDesktop) setMobileOpen(false);
+            setAppSettingsOpen(true);
+          }}
+        >
           <ListItemIcon>
             <SettingsApplicationsIcon />
           </ListItemIcon>
@@ -272,7 +279,28 @@ export function AppShell() {
               '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
             }}
           >
-            <Toolbar />
+            <Toolbar
+              sx={{
+                px: 2,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              {!isDesktop && (
+                <IconButton
+                  color="inherit"
+                  edge="start"
+                  aria-label="Chiudi menu"
+                  onClick={() => setMobileOpen(false)}
+                  sx={{ mr: 1.5 }}
+                >
+                  <MenuIcon />
+                </IconButton>
+              )}
+              <Typography variant="h6" noWrap sx={{ fontWeight: 600, flexGrow: 1 }}>
+                {displayVenueName || 'Bar Management'}
+              </Typography>
+            </Toolbar>
             {drawerContent}
           </Drawer>
         </Box>
@@ -325,6 +353,7 @@ export function AppShell() {
           <Outlet />
         </Container>
       </Box>
+      <AppSettingsDialog open={appSettingsOpen} onClose={() => setAppSettingsOpen(false)} />
     </Box>
   );
 }

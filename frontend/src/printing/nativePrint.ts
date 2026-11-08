@@ -16,9 +16,39 @@ interface EscposPlugin {
   print(options: { host: string; port: number; sections: ReceiptSection[] }): Promise<void>;
 }
 
-interface AppSettingsPlugin {
+export interface AppInfoResult {
+  versionName: string;
+  versionCode: number;
+  domain: string | null;
+  packageName: string;
+}
+
+export interface UpdateInfoResult {
+  currentVersion: string;
+  hasUpdate: boolean;
+  latestVersion: string;
+  downloadUrl?: string;
+  apkName?: string;
+  sizeBytes?: number;
+  releaseNotes?: string;
+}
+
+export interface DownloadProgress {
+  percent: number;
+  downloadedMb: number;
+  totalMb: number;
+}
+
+export interface AppSettingsPlugin {
   getDomain(): Promise<{ domain: string | null }>;
   openDomainSettings(): Promise<void>;
+  getAppInfo(): Promise<AppInfoResult>;
+  checkForUpdate(): Promise<UpdateInfoResult>;
+  downloadAndInstallUpdate(options: { downloadUrl: string }): Promise<{ success: boolean }>;
+  addListener?(
+    eventName: 'updateProgress',
+    listenerFunc: (progress: DownloadProgress) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 // @capacitor/core caricato solo nell'app nativa, con import dinamico: già

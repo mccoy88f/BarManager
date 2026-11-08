@@ -48,4 +48,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Verifica se c'è rete prima di tentare la stampa ESC/POS (§5.11 di docs/DEVELOPMENT.md). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Richiesta installazione pacchetti APK scaricati per aggiornamenti in-app -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>
