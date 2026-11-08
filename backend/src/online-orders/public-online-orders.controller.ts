@@ -58,12 +58,24 @@ export class PublicOnlineOrdersController {
         menuInstagramUrl: true,
         menuFacebookUrl: true,
         menuWebsiteUrl: true,
+        specialDays: {
+          orderBy: { date: 'asc' },
+          select: { date: true, realHoursOverride: true },
+        },
       },
     });
     if (!venue || !venue.onlineOrdersEnabled) {
       throw new NotFoundException('Ordini online non disponibili per questo locale');
     }
-    return { ...venue, openingHours: resolveOpeningHours(venue.onlineOrdersOpeningHours ?? venue.openingHours) };
+    const { specialDays, openingHours, onlineOrdersOpeningHours, ...rest } = venue;
+    return {
+      ...rest,
+      openingHours: resolveOpeningHours(onlineOrdersOpeningHours ?? openingHours),
+      specialDays: specialDays.map((day) => ({
+        date: day.date.toISOString().slice(0, 10),
+        realHoursOverride: day.realHoursOverride,
+      })),
+    };
   }
 
   /**

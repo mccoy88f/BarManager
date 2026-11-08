@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -105,16 +105,18 @@ export function OnlineOrdersSettings() {
   const [loyversePaymentTypes, setLoyversePaymentTypes] = useState<LoyversePaymentType[] | null>(null);
   const [loyverseMapping, setLoyverseMapping] = useState({ cash: '', cardOnline: '', cardInStore: '' });
 
+  const ordersHydrated = useRef(false);
   useEffect(() => {
     if (!venueQuery.data) return;
     const v = venueQuery.data;
-    setGeneral({
-      onlineOrdersEnabled: v.onlineOrdersEnabled,
+    setGeneral((current) => ({
+      onlineOrdersEnabled: ordersHydrated.current ? current.onlineOrdersEnabled : v.onlineOrdersEnabled,
       onlineOrdersPickupEnabled: v.onlineOrdersPickupEnabled,
       onlineOrdersDeliveryEnabled: v.onlineOrdersDeliveryEnabled,
       onlineOrdersMinLeadMinutes: String(v.onlineOrdersMinLeadMinutes),
       onlineOrdersMinOrderAmount: v.onlineOrdersMinOrderAmount != null ? String(v.onlineOrdersMinOrderAmount) : '',
-    });
+    }));
+    ordersHydrated.current = true;
     setOpeningHours(v.onlineOrdersOpeningHours ?? v.openingHours);
     setDelivery({
       deliveryRadiusMeters: v.deliveryRadiusMeters != null ? String(v.deliveryRadiusMeters) : '',
@@ -137,6 +139,21 @@ export function OnlineOrdersSettings() {
   }, [venueQuery.data]);
 
   const invalidateVenue = () => queryClient.invalidateQueries({ queryKey: ['venue-me'] });
+
+  const toggleOnlineOrders = async (checked: boolean) => {
+    const previous = general.onlineOrdersEnabled;
+    setGeneral((f) => ({ ...f, onlineOrdersEnabled: checked }));
+    try {
+      await api.patch('/venues/me/online-orders-settings', { onlineOrdersEnabled: checked });
+      queryClient.setQueryData(['venue-me'], (old: VenueOnlineOrdersSettings | undefined) =>
+        old ? { ...old, onlineOrdersEnabled: checked } : old,
+      );
+      showToast(checked ? 'Ordini online attivati' : 'Ordini online disattivati');
+    } catch (err) {
+      setGeneral((f) => ({ ...f, onlineOrdersEnabled: previous }));
+      showToast({ message: extractErrorMessage(err), severity: 'error' });
+    }
+  };
 
   const saveGeneralMutation = useMutation({
     mutationFn: async () =>
@@ -247,7 +264,7 @@ export function OnlineOrdersSettings() {
             control={
               <Switch
                 checked={general.onlineOrdersEnabled}
-                onChange={(e) => setGeneral((f) => ({ ...f, onlineOrdersEnabled: e.target.checked }))}
+                onChange={(e) => void toggleOnlineOrders(e.target.checked)}
               />
             }
             label="Ordini online attivi"

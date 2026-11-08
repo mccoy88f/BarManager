@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { LeaveStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +17,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { CreateLeaveRequestDto } from '../dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from '../dto/review-leave-request.dto';
+import { PushService } from '../../push/push.service';
 
 const typeLabels: Record<string, string> = {
   VACATION: 'Ferie',
@@ -29,6 +31,7 @@ export class LeaveRequestsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private mail: MailService,
+    @Optional() private push?: PushService,
   ) {}
 
   private async resolveEmployeeId(userId: string): Promise<string> {
@@ -101,6 +104,12 @@ export class LeaveRequestsService {
     });
 
     await this.notifyVenueByEmail(requireVenueId(user), employee, request, overlapWarning);
+
+    const label = typeLabels[dto.type] ?? 'assenza';
+    void this.push?.leaveRequest(
+      requireVenueId(user),
+      `${label} di ${employee?.firstName ?? ''} ${employee?.lastName ?? ''}`.trim(),
+    );
 
     return { ...request, overlapWarning };
   }

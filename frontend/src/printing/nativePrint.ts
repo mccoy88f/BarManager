@@ -75,6 +75,12 @@ function nativePlugin<T>(name: string): Promise<{ plugin: T }> {
 const escpos = () => nativePlugin<EscposPlugin>('Escpos');
 export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
 
+export interface NativePushPlugin {
+  start(options: { apiBase: string; token: string }): Promise<{ started: boolean }>;
+  consumePath(): Promise<{ path: string | null }>;
+}
+export const nativePush = () => nativePlugin<NativePushPlugin>('NativePush');
+
 /**
  * true solo dentro l'app Android nativa BarManager, mai su sito/PWA (§5.11 di
  * docs/DEVELOPMENT.md). Stesso controllo di Capacitor.isNativePlatform() (il

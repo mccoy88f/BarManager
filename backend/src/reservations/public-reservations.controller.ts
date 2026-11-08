@@ -50,12 +50,25 @@ export class PublicReservationsController {
         menuInstagramUrl: true,
         menuFacebookUrl: true,
         menuWebsiteUrl: true,
+        specialDays: {
+          orderBy: { date: 'asc' },
+          select: { date: true, realHoursOverride: true },
+        },
       },
     });
     if (!venue || !venue.reservationsEnabled) {
       throw new NotFoundException('Prenotazioni non disponibili per questo locale');
     }
-    return { ...venue, openingHours: resolveOpeningHours(venue.openingHours) };
+    const { specialDays, openingHours, ...rest } = venue;
+    return {
+      ...rest,
+      openingHours: resolveOpeningHours(openingHours),
+      // Una data speciale chiusa toglie gli orari; una aperta li sostituisce.
+      specialDays: specialDays.map((day) => ({
+        date: day.date.toISOString().slice(0, 10),
+        realHoursOverride: day.realHoursOverride,
+      })),
+    };
   }
 
   @Get('availability')

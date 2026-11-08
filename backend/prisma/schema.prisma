@@ -509,6 +509,47 @@ model User {
   reservationsHandled   Reservation[]        @relation("ReservationRespondedBy")
   communicationsCreated Communication[]
   expensesCreated       Expense[]
+  pushDevices           PushDevice[]
+  pushEvents            PushEvent[]
+}
+
+/// Dispositivo che riceve le notifiche push: PWA (Web Push) o APK (poll nativo).
+model PushDevice {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// WEB oppure ANDROID.
+  kind       String
+  /// Segreto del dispositivo, usato dall'APK per leggere la coda senza JWT.
+  token      String    @unique
+  endpoint   String?   @unique
+  p256dh     String?
+  auth       String?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Coda letta dall'APK. La PWA riceve lo stesso testo via Web Push.
+model PushEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Chiavi VAPID e ultima versione di app già annunciata. Una sola riga.
+model PlatformSetting {
+  id                       String  @id
+  vapidPublicKey           String
+  vapidPrivateKey          String
+  lastAnnouncedAppVersion  String?
 }
 
 // ---------------------------------------------------------------------------

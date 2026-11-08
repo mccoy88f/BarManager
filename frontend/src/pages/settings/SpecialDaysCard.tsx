@@ -137,11 +137,10 @@ function DayOverrideFields({
 }
 
 /**
- * Aperture speciali (§5.10 di DEVELOPMENT.md): sovrascrivono per una
- * singola data l'orario reale del locale (usato da Prenotazioni e dal
- * gating ordini online) e/o le fasce pranzo/cena del menù,
- * indipendentemente l'uno dall'altro (es. "chiuso il 25 dicembre", o
- * "aperto più tardi la Vigilia" senza toccare il menù).
+ * Aperture e chiusure speciali (§5.10 di DEVELOPMENT.md): per una data
+ * sostituiscono l'orario reale (Prenotazioni e ordini online) e/o le
+ * fasce pranzo/cena del menù. "Chiuso" blocca quel giorno; "Aperto"
+ * usa solo le fasce indicate.
  */
 export function SpecialDaysCard() {
   const queryClient = useQueryClient();
@@ -176,7 +175,7 @@ export function SpecialDaysCard() {
       ).data,
     onSuccess: () => {
       invalidate();
-      showToast('Apertura speciale salvata');
+      showToast('Data speciale salvata');
       setDialogOpen(false);
     },
     onError: (err) => showToast({ message: extractErrorMessage(err), severity: 'error' }),
@@ -187,7 +186,7 @@ export function SpecialDaysCard() {
     onSuccess: () => {
       invalidate();
       setToDelete(null);
-      showToast('Apertura speciale eliminata');
+      showToast('Data speciale eliminata');
     },
   });
 
@@ -213,11 +212,11 @@ export function SpecialDaysCard() {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           <Box>
-            <Typography variant="h6">Aperture speciali</Typography>
+            <Typography variant="h6">Aperture e chiusure speciali</Typography>
             <Typography variant="body2" color="text.secondary">
-              Sovrascrivono, solo per una data specifica, l'orario reale (Prenotazioni e ordini
-              online) e/o le fasce pranzo/cena del menù (es. chiusura o orari diversi per una
-              festività).
+              Per una data precisa sostituiscono l&apos;orario settimanale. Con &quot;Chiuso&quot; il
+              locale non accetta prenotazioni né ordini online quel giorno; con &quot;Aperto&quot;
+              vale solo la fascia indicata. Lo stesso vale per le fasce pranzo/cena del menù.
             </Typography>
           </Box>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddDialog}>
@@ -227,7 +226,7 @@ export function SpecialDaysCard() {
 
         {(specialDaysQuery.data?.length ?? 0) === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Nessuna apertura speciale configurata.
+            Nessuna apertura o chiusura speciale configurata.
           </Typography>
         ) : (
           <List sx={{ mt: 1 }}>
@@ -247,8 +246,20 @@ export function SpecialDaysCard() {
                   primary={`${formatDateLong(day.date)}${day.label ? ` — ${day.label}` : ''}`}
                   secondary={
                     <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
-                      {day.realHoursOverride && <Chip size="small" label="Orario reale" />}
-                      {day.menuHoursOverride && <Chip size="small" variant="outlined" label="Orari menù" />}
+                      {day.realHoursOverride && (
+                        <Chip
+                          size="small"
+                          color={day.realHoursOverride.closed ? 'default' : 'success'}
+                          label={day.realHoursOverride.closed ? 'Chiuso (prenotazioni e ordini)' : 'Aperto (prenotazioni e ordini)'}
+                        />
+                      )}
+                      {day.menuHoursOverride && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={day.menuHoursOverride.closed ? 'Menù chiuso' : 'Orari menù'}
+                        />
+                      )}
                     </Stack>
                   }
                 />
@@ -259,7 +270,7 @@ export function SpecialDaysCard() {
       </CardContent>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Apertura speciale</DialogTitle>
+        <DialogTitle>Apertura o chiusura speciale</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 4 }}>
           <Stack direction="row" spacing={2}>
             <TextField
@@ -287,7 +298,7 @@ export function SpecialDaysCard() {
                   onChange={(e) => setForm((f) => ({ ...f, realEnabled: e.target.checked }))}
                 />
               }
-              label="Sovrascrivi l'orario reale per questa data"
+              label="Prenotazioni e ordini online: orario solo per questa data"
             />
             {form.realEnabled && (
               <Box sx={{ mt: 1 }}>
@@ -329,8 +340,8 @@ export function SpecialDaysCard() {
 
       <ConfirmDialog
         open={!!toDelete}
-        title="Eliminare l'apertura speciale?"
-        message={toDelete ? `L'apertura speciale per ${formatDateLong(toDelete.date)} verrà eliminata.` : ''}
+        title="Eliminare questa data speciale?"
+        message={toDelete ? `La data speciale del ${formatDateLong(toDelete.date)} verrà eliminata.` : ''}
         loading={deleteMutation.isPending}
         onCancel={() => setToDelete(null)}
         onConfirm={() => toDelete && deleteMutation.mutate(toDelete.id)}

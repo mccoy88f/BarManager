@@ -32,6 +32,7 @@
     "abortcontroller-polyfill": "^1.7.8",
     "axios": "^1.7.4",
     "dayjs": "^1.11.12",
+    "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "pdfjs-dist": "^5.4.296",

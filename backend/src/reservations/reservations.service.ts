@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Reservation, ReservationStatus, Table } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,6 +15,7 @@ import { dateOnlyInZone, jsWeekdayInZone, minutesOfDayInZone } from '../common/t
 import { venueLogoAbsoluteUrl, venuePrivacyUrl, venuePublicUrl } from '../common/venue-url/venue-url';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CustomersService } from '../customers/customers.service';
+import { PushService } from '../push/push.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { CreateManualReservationDto } from './dto/create-manual-reservation.dto';
 import { RejectReservationDto } from './dto/reject-reservation.dto';
@@ -114,6 +115,7 @@ export class ReservationsService {
     private audit: AuditService,
     private mail: ReservationsMailService,
     private customers: CustomersService,
+    @Optional() private push?: PushService,
   ) {}
 
   // ---- Tavoli / disponibilità --------------------------------------------
@@ -181,7 +183,7 @@ export class ReservationsService {
     if (findOpenSlot(day, minutesOfDay) === null) {
       throw new BadRequestException(
         day.closed
-          ? 'Il locale è chiuso in questo giorno della settimana'
+          ? 'Il locale è chiuso in questa data'
           : 'Orario fuori dagli orari di apertura per questo giorno',
       );
     }
@@ -496,6 +498,13 @@ export class ReservationsService {
         logoUrl,
       );
     }
+
+    const when = reservedAt.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+    void this.push?.reservations(
+      venueId,
+      status === ReservationStatus.CONFIRMED,
+      `${dto.firstName} ${dto.lastName}, ${dto.partySize} persone, ${when}`,
+    );
 
     return { id: reservation.id, status: reservation.status };
   }

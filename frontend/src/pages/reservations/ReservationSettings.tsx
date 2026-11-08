@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -59,20 +59,40 @@ export function ReservationSettings() {
     queryFn: async () => (await api.get<VenueReservationSettings>('/venues/me')).data,
   });
 
+  // Dopo il primo caricamento l'interruttore resta quello scelto in pagina:
+  // un refetch di "venue-me" (salvataggio di un'altra scheda, ritorno sulla
+  // finestra) non deve riaccenderlo se è stato spento.
+  const reservationsHydrated = useRef(false);
   useEffect(() => {
-    if (venueQuery.data) {
-      setForm({
-        reservationsEnabled: venueQuery.data.reservationsEnabled,
-        reservationAutoConfirmMaxSeats: String(venueQuery.data.reservationAutoConfirmMaxSeats),
-        reservationSlotDurationMinutes: String(venueQuery.data.reservationSlotDurationMinutes),
-        reservationHorizonDays: String(venueQuery.data.reservationHorizonDays),
-        reservationOverbookingUnlimited: venueQuery.data.reservationOverbookingUnlimited,
-        reservationOverbookingExtraSeats: String(venueQuery.data.reservationOverbookingExtraSeats),
-        reservationMinLeadHours: String(Math.floor(venueQuery.data.reservationMinLeadMinutes / 60)),
-        reservationMinLeadMinutesPart: String(venueQuery.data.reservationMinLeadMinutes % 60),
-      });
-    }
+    if (!venueQuery.data) return;
+    const data = venueQuery.data;
+    setForm((current) => ({
+      reservationsEnabled: reservationsHydrated.current ? current.reservationsEnabled : data.reservationsEnabled,
+      reservationAutoConfirmMaxSeats: String(data.reservationAutoConfirmMaxSeats),
+      reservationSlotDurationMinutes: String(data.reservationSlotDurationMinutes),
+      reservationHorizonDays: String(data.reservationHorizonDays),
+      reservationOverbookingUnlimited: data.reservationOverbookingUnlimited,
+      reservationOverbookingExtraSeats: String(data.reservationOverbookingExtraSeats),
+      reservationMinLeadHours: String(Math.floor(data.reservationMinLeadMinutes / 60)),
+      reservationMinLeadMinutesPart: String(data.reservationMinLeadMinutes % 60),
+    }));
+    reservationsHydrated.current = true;
   }, [venueQuery.data]);
+
+  const toggleReservations = async (checked: boolean) => {
+    const previous = form.reservationsEnabled;
+    setForm((f) => ({ ...f, reservationsEnabled: checked }));
+    try {
+      await api.patch('/venues/me/reservation-settings', { reservationsEnabled: checked });
+      queryClient.setQueryData(['venue-me'], (old: VenueReservationSettings | undefined) =>
+        old ? { ...old, reservationsEnabled: checked } : old,
+      );
+      showToast(checked ? 'Prenotazioni online attivate' : 'Prenotazioni online disattivate');
+    } catch (err) {
+      setForm((f) => ({ ...f, reservationsEnabled: previous }));
+      showToast({ message: extractErrorMessage(err), severity: 'error' });
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () =>
@@ -117,7 +137,7 @@ export function ReservationSettings() {
             control={
               <Switch
                 checked={form.reservationsEnabled}
-                onChange={(e) => setForm((f) => ({ ...f, reservationsEnabled: e.target.checked }))}
+                onChange={(e) => void toggleReservations(e.target.checked)}
               />
             }
             label={form.reservationsEnabled ? 'Prenotazioni online attive' : 'Prenotazioni online disattivate'}

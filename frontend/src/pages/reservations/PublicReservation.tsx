@@ -20,6 +20,7 @@ import FacebookIcon from '@mui/icons-material/Facebook';
 import LanguageIcon from '@mui/icons-material/Language';
 import { api } from '../../api/client';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
+import { scheduleForDate, type SpecialDaySchedule } from '../../utils/specialDaySchedule';
 
 interface OpeningHoursDay {
   /** 0 = domenica .. 6 = sabato, come Date#getDay(). */
@@ -35,6 +36,7 @@ interface ReservationInfo {
   name: string;
   reservationHorizonDays: number;
   openingHours: OpeningHoursDay[];
+  specialDays?: SpecialDaySchedule[];
   menuAddress?: string;
   city?: string;
   menuPhone?: string;
@@ -200,7 +202,7 @@ export function PublicReservation() {
     .slice(0, 10);
 
   const selectedDaySchedule = form.date
-    ? openingHours.find((d) => d.dayOfWeek === new Date(`${form.date}T00:00:00`).getDay())
+    ? scheduleForDate(openingHours, infoQuery.data.specialDays, form.date)
     : undefined;
   const dayClosed = !!form.date && !!selectedDaySchedule?.closed;
   const timeOptions = form.date ? quarterHourOptionsForDay(selectedDaySchedule) : undefined;

@@ -38,6 +38,7 @@ import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import DeliveryDiningIcon from '@mui/icons-material/DeliveryDining';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -64,6 +65,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { ImageLightbox } from '../../components/ImageLightbox';
 import { ModifierGroupsCard } from './ModifierGroupsCard';
+import { MenuPdfDialog } from './MenuPdfDialog';
+import { useAuthStore } from '../../store/authStore';
 
 import { formatCurrency } from '../../utils/format';
 interface MenuCategory {
@@ -307,6 +310,8 @@ export function MenuAdmin() {
   const [itemSearch, setItemSearch] = useState('');
   const [openCategory, setOpenCategory] = useState<string | false>(false);
   const [importErrors, setImportErrors] = useState<string[] | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const venueName = useAuthStore((s) => s.venueName) ?? '';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categoriesQuery = useQuery({
@@ -649,6 +654,14 @@ export function MenuAdmin() {
         </Button>
       </Stack>
 
+      <MenuPdfDialog
+        open={pdfOpen}
+        categories={categoriesQuery.data ?? []}
+        items={itemsQuery.data ?? []}
+        venueName={venueName}
+        onClose={() => setPdfOpen(false)}
+      />
+
       {locked && (
         <Alert severity="info">
           Il menù è sincronizzato da Loyverse: categorie, prodotti e prezzi si gestiscono da lì.
@@ -669,6 +682,14 @@ export function MenuAdmin() {
                 disabled={exportMutation.isPending}
               >
                 Esporta
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={() => setPdfOpen(true)}
+                disabled={(categoriesQuery.data?.length ?? 0) === 0}
+              >
+                Esporta PDF
               </Button>
               {!locked && (
                 <Button

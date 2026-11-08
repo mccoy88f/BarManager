@@ -56,6 +56,7 @@ import { useCheckoutCartStore, type CartLine } from '../../store/checkoutCartSto
 import { mountSumUpCard, unmountSumUpCard, type SumUpCardResponse } from '../../payments/sumupCardWidget';
 
 import { formatCurrency } from '../../utils/format';
+import { scheduleForDate, type SpecialDaySchedule } from '../../utils/specialDaySchedule';
 const SUMUP_CARD_ELEMENT_ID = 'sumup-card';
 
 const LocationPicker = lazy(() =>
@@ -78,6 +79,7 @@ interface OnlineOrdersInfo {
   onlineOrdersPickupEnabled: boolean;
   onlineOrdersDeliveryEnabled: boolean;
   openingHours: OpeningHoursDay[];
+  specialDays?: SpecialDaySchedule[];
   onlineOrdersMinLeadMinutes: number;
   onlineOrdersMinOrderAmount: number | null;
   deliveryRadiusMeters: number | null;
@@ -763,8 +765,8 @@ export function PublicOnlineOrder() {
   const meetsMinOrder = minOrderAmount == null || subtotal >= minOrderAmount;
 
   const today = new Date().toISOString().slice(0, 10);
-  const selectedDaySchedule = date
-    ? info?.openingHours.find((d) => d.dayOfWeek === new Date(`${date}T00:00:00`).getDay())
+  const selectedDaySchedule = date && info
+    ? scheduleForDate(info.openingHours, info.specialDays, date)
     : undefined;
   const dayClosed = !!date && !!selectedDaySchedule?.closed;
   const timeOptions = date ? quarterHourOptionsForDay(selectedDaySchedule) : undefined;

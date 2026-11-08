@@ -35,6 +35,8 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'display-promo-fallback.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // Gestore push (public/push-sw.js), importato dal service worker generato.
+        importScripts: ['push-sw.js'],
         // I chunk legacy servono solo ai browser senza supporto ES module,
         // che comunque non hanno service worker: non precacharli.
         globIgnores: ['**/*-legacy-*.js'],

@@ -38,6 +38,7 @@ import { useAuthStore } from '../store/authStore';
 import { api } from '../api/client';
 import { navigation, canSeeNavItem, getBreadcrumbTrail } from '../config/navigation';
 import { canAccessModule } from '../config/modules';
+import { PushRegistration } from './PushRegistration';
 import { useOrderNotification } from '../context/OrderNotificationContext';
 import { isNativeApp } from '../printing/nativePrint';
 import { APP_VERSION } from '../version';
@@ -191,6 +192,7 @@ export function AppShell() {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+      <PushRegistration />
       <AppBar
         position="fixed"
         color="primary"

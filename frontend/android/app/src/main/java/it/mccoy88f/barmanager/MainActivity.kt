@@ -2,6 +2,7 @@ package it.mccoy88f.barmanager
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.http.SslError
 import android.os.Bundle
 import android.webkit.SslErrorHandler
@@ -30,6 +31,7 @@ class MainActivity : BridgeActivity() {
 
         registerPlugin(AppSettingsPlugin::class.java)
         registerPlugin(EscPosPrinterPlugin::class.java)
+        registerPlugin(NativePushPlugin::class.java)
 
         val url = if (domain.startsWith("http://") || domain.startsWith("https://")) {
             domain
@@ -39,6 +41,8 @@ class MainActivity : BridgeActivity() {
 
         config = CapConfig.Builder(this).setServerUrl(url).create()
         super.onCreate(savedInstanceState)
+        NativePushRuntime.storeOpenPath(this, intent)
+        PushListenerService.startIfConfigured(this)
 
         // Risolve il problema del certificato Let's Encrypt ISRG Root X1 non riconosciuto dai vecchi trust store Android 6/7
         bridge?.let { b ->
@@ -62,6 +66,8 @@ class MainActivity : BridgeActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        NativePushRuntime.storeOpenPath(this, intent)
         // Riavvia il task solo se richiesto esplicitamente da un cambio dominio,
         // MAI sulla normale chiamata interna di Capacitor (BridgeActivity.load() chiama onNewIntent ad ogni onCreate).
         if (intent.getBooleanExtra("reload_domain", false)) {
@@ -70,6 +76,15 @@ class MainActivity : BridgeActivity() {
             }
             startActivity(restart)
             finish()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NativePushRuntime.PERMISSION_REQUEST &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        ) {
+            PushListenerService.startIfConfigured(this)
         }
     }
 }

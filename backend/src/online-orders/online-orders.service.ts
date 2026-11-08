@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
@@ -44,6 +45,7 @@ import { venuePublicUrl, venueLogoAbsoluteUrl, venuePrivacyUrl } from '../common
 import { loyverseClient } from '../loyverse/loyverse-client';
 import { CustomersService } from '../customers/customers.service';
 import { OnlineOrdersMailService } from './online-orders-mail.service';
+import { PushService } from '../push/push.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
 import { RejectOnlineOrderDto } from './dto/reject-online-order.dto';
@@ -173,6 +175,7 @@ export class OnlineOrdersService {
     private customers: CustomersService,
     private mail: OnlineOrdersMailService,
     private pdf: PdfService,
+    @Optional() private push?: PushService,
   ) {}
 
   private async getVenueSettings(venueId: string): Promise<OnlineOrdersVenueSettings> {
@@ -241,7 +244,7 @@ export class OnlineOrdersService {
     if (findOpenSlot(day, minutesOfDay) === null) {
       throw new BadRequestException(
         day.closed
-          ? 'Il locale è chiuso in questo giorno della settimana'
+          ? 'Il locale è chiuso in questa data'
           : 'Orario non disponibile per gli ordini online (fuori orario di apertura)',
       );
     }
@@ -713,6 +716,12 @@ export class OnlineOrdersService {
         logoUrl,
       );
     }
+    const when = pricing.requestedAt.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+    void this.push?.onlineOrders(
+      venueId,
+      initialStatus === 'CONFIRMED',
+      `${dto.firstName} ${dto.lastName}, ${dto.fulfillment === 'DELIVERY' ? 'consegna' : 'ritiro'} ${when}`,
+    );
     return order;
   }
 
