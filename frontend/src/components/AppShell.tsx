@@ -49,7 +49,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const venueName = useAuthStore((s) => s.venueName);
@@ -67,11 +67,28 @@ export function AppShell() {
   const displayVenueName = venueQuery.data?.name ?? venueName;
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(true);
   const [appSettingsOpen, setAppSettingsOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(
     navigation.find((item) => location.pathname.startsWith(item.path))?.key ?? null,
   );
+
+  const handleDrawerToggle = () => {
+    if (isLargeScreen) {
+      setDesktopOpen((o) => !o);
+    } else {
+      setMobileOpen((o) => !o);
+    }
+  };
+
+  const handleDrawerClose = () => {
+    if (isLargeScreen) {
+      setDesktopOpen(false);
+    } else {
+      setMobileOpen(false);
+    }
+  };
 
   const { soundEnabled, toggleSound, activePendingCount } = useOrderNotification();
   const hasOnlineOrdersAccess = Boolean(
@@ -83,7 +100,7 @@ export function AppShell() {
 
   const goTo = (path: string) => {
     navigate(path);
-    if (!isDesktop) setMobileOpen(false);
+    if (!isLargeScreen) setMobileOpen(false);
   };
 
   const drawerContent = (
@@ -147,7 +164,7 @@ export function AppShell() {
       {isNativeApp() && (
         <ListItemButton
           onClick={() => {
-            if (!isDesktop) setMobileOpen(false);
+            if (!isLargeScreen) setMobileOpen(false);
             setAppSettingsOpen(true);
           }}
         >
@@ -184,8 +201,9 @@ export function AppShell() {
             <IconButton
               color="inherit"
               edge="start"
-              sx={{ mr: 2, display: { md: 'none' } }}
-              onClick={() => setMobileOpen((o) => !o)}
+              aria-label="Menu di navigazione"
+              sx={{ mr: 2 }}
+              onClick={handleDrawerToggle}
             >
               <MenuIcon />
             </IconButton>
@@ -269,11 +287,17 @@ export function AppShell() {
       </AppBar>
 
       {user && user.role !== 'SUPER_ADMIN' && (
-        <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
+        <Box
+          component="nav"
+          sx={{
+            width: { lg: desktopOpen ? DRAWER_WIDTH : 0 },
+            flexShrink: { lg: 0 },
+          }}
+        >
           <Drawer
-            variant={isDesktop ? 'permanent' : 'temporary'}
-            open={isDesktop ? true : mobileOpen}
-            onClose={() => setMobileOpen(false)}
+            variant={isLargeScreen ? 'persistent' : 'temporary'}
+            open={isLargeScreen ? desktopOpen : mobileOpen}
+            onClose={handleDrawerClose}
             ModalProps={{ keepMounted: true }}
             sx={{
               '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
@@ -286,17 +310,15 @@ export function AppShell() {
                 alignItems: 'center',
               }}
             >
-              {!isDesktop && (
-                <IconButton
-                  color="inherit"
-                  edge="start"
-                  aria-label="Chiudi menu"
-                  onClick={() => setMobileOpen(false)}
-                  sx={{ mr: 1.5 }}
-                >
-                  <MenuIcon />
-                </IconButton>
-              )}
+              <IconButton
+                color="inherit"
+                edge="start"
+                aria-label="Chiudi menu"
+                onClick={handleDrawerClose}
+                sx={{ mr: 1.5 }}
+              >
+                <MenuIcon />
+              </IconButton>
               <Typography variant="h6" noWrap sx={{ fontWeight: 600, flexGrow: 1 }}>
                 {displayVenueName || 'Bar Management'}
               </Typography>
@@ -323,7 +345,11 @@ export function AppShell() {
           // che sia il singolo TableContainer/overflow interno a gestire lo
           // scroll orizzontale, come previsto, invece di allargare la pagina.
           minWidth: 0,
-          width: { md: user && user.role !== 'SUPER_ADMIN' ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%' },
+          width: {
+            lg: user && user.role !== 'SUPER_ADMIN' && desktopOpen
+              ? `calc(100% - ${DRAWER_WIDTH}px)`
+              : '100%',
+          },
         }}
       >
         <Toolbar />

@@ -313,3 +313,4 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
     </Dialog>
   );
 }
+
