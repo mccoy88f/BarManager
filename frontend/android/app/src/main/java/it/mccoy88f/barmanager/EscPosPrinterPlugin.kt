@@ -58,14 +58,17 @@ class EscPosPrinterPlugin : Plugin() {
                 val markup = sections.joinToString("") { it.toDantSuMarkup() }
                 printer.printFormattedTextAndCut(markup)
                 Log.i("EscPosPrinter", "Stampa completata con successo su $host:$port")
-                activity.runOnUiThread { call.resolve() }
+                call.resolve()
             } catch (err: Exception) {
                 Log.e("EscPosPrinter", "Errore durante la stampa su $host:$port", err)
                 val detail = err.localizedMessage ?: err.message ?: err.javaClass.simpleName
-                activity.runOnUiThread {
-                    call.reject("Stampante non raggiungibile ($host:$port): $detail", err)
-                }
+                call.reject("Stampante non raggiungibile ($host:$port): $detail", err)
             } finally {
+                try {
+                    // Breve attesa per permettere al buffer di rete di svuotarsi verso la stampante prima della chiusura
+                    Thread.sleep(500)
+                } catch (_: InterruptedException) {
+                }
                 try {
                     connection?.disconnect()
                 } catch (e: Exception) {

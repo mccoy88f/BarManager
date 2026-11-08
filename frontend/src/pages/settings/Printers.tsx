@@ -7,6 +7,7 @@ import {
   CardContent,
   Checkbox,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,12 +27,15 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PrintIcon from '@mui/icons-material/Print';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { shareReceiptPdf } from '../../printing/printJob';
 import { printOrShare, isNativeApp } from '../../printing/nativePrint';
+import { formatErrorMessage } from '../../utils/format';
 
 type PrinterUsage =
   | 'SUPPLIER_ORDER'
@@ -78,6 +82,15 @@ export function Printers() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<PrinterRow | null>(null);
+  const [testingPrinterId, setTestingPrinterId] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{
+    open: boolean;
+    success: boolean;
+    printerName: string;
+    host: string;
+    port: number;
+    message: string;
+  } | null>(null);
 
   const printersQuery = useQuery({
     queryKey: ['printers'],
@@ -129,6 +142,7 @@ export function Printers() {
 
   const testMutation = useMutation({
     mutationFn: async (printer: PrinterRow) => {
+      setTestingPrinterId(printer.id);
       await printOrShare({
         escposUrl: `/printers/${printer.id}/test/escpos`,
         explicitPrinter: { host: printer.host, port: printer.port },
@@ -141,18 +155,32 @@ export function Printers() {
       });
       return printer;
     },
-    onSuccess: (printer) =>
-      showToast(
-        isNativeApp()
-          ? `Test inviato via ESC/POS a "${printer.name}" (${printer.host}:${printer.port})`
-          : `Test di stampa inviato a "${printer.name}" (anteprima PDF)`,
-      ),
-    onError: (err, printer) => {
-      const detail = err instanceof Error ? err.message : undefined;
-      showToast({
-        message: `"${printer.name}": test di stampa non riuscito.${detail ? ` ${detail}` : ''}`,
-        severity: 'error',
+    onSuccess: (printer) => {
+      const isNative = isNativeApp();
+      setTestResult({
+        open: true,
+        success: true,
+        printerName: printer.name,
+        host: printer.host,
+        port: printer.port,
+        message: isNative
+          ? `Comando di stampa ESC/POS inviato con successo a "${printer.name}" (${printer.host}:${printer.port}).`
+          : `Test di stampa inviato a "${printer.name}" (anteprima PDF generata).`,
       });
+    },
+    onError: (err, printer) => {
+      const detail = formatErrorMessage(err);
+      setTestResult({
+        open: true,
+        success: false,
+        printerName: printer.name,
+        host: printer.host,
+        port: printer.port,
+        message: detail,
+      });
+    },
+    onSettled: () => {
+      setTestingPrinterId(null);
     },
   });
 
@@ -254,7 +282,11 @@ export function Printers() {
                   disabled={testMutation.isPending}
                   onClick={() => testMutation.mutate(printer)}
                 >
-                  <PrintIcon fontSize="small" />
+                  {testingPrinterId === printer.id ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <PrintIcon fontSize="small" />
+                  )}
                 </IconButton>
                 <IconButton size="small" title="Modifica" onClick={() => openEdit(printer)}>
                   <EditIcon fontSize="small" />
@@ -340,6 +372,62 @@ export function Printers() {
         onCancel={() => setToDelete(null)}
         onConfirm={() => toDelete && deleteMutation.mutate(toDelete.id)}
       />
+
+      <Dialog
+        open={!!testResult?.open}
+        onClose={() => setTestResult(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {testResult?.success ? (
+            <CheckCircleOutlineIcon color="success" />
+          ) : (
+            <ErrorOutlineIcon color="error" />
+          )}
+          {testResult?.success ? 'Test di stampa riuscito' : 'Test di stampa non riuscito'}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <Typography variant="body2" component="div">
+            Stampante: <strong>{testResult?.printerName}</strong> ({testResult?.host}:{testResult?.port})
+          </Typography>
+          {testResult?.success ? (
+            <>
+              <Alert severity="success">{testResult.message}</Alert>
+              <Typography variant="caption" color="text.secondary">
+                Se la stampante non ha espulso lo scontrino, verifica che sia accesa, che ci sia carta termica a sufficienza e che il rotolo sia inserito correttamente.
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Alert severity="error">
+                <strong>Dettaglio errore:</strong> {testResult?.message}
+              </Alert>
+              <Alert severity="warning">
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  Possibili cause e verifiche consigliate:
+                </Typography>
+                <Box component="ul" sx={{ pl: 2, m: 0, '& li': { mb: 0.5 } }}>
+                  <li>
+                    <strong>Connessione Wi-Fi:</strong> Il tablet o smartphone deve essere collegato alla stessa rete Wi-Fi del locale dove si trova la stampante (disattiva la connessione dati mobili 4G/5G).
+                  </li>
+                  <li>
+                    <strong>Isolamento client / AP Isolation:</strong> Su alcuni router Wi-Fi è attiva la funzione che impedisce ai dispositivi senza fili di comunicare con la rete LAN/Ethernet locale.
+                  </li>
+                  <li>
+                    <strong>Indirizzo IP e porta:</strong> Verifica che l'IP ({testResult?.host}) e la porta ({testResult?.port}) corrispondano alla configurazione della stampante e che sia accesa.
+                  </li>
+                </Box>
+              </Alert>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="contained" onClick={() => setTestResult(null)}>
+            Chiudi
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

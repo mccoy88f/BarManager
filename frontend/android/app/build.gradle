@@ -12,8 +12,8 @@ android {
         // piattaforma web (frontend/src/version.ts) — non semantico.
         // versionCode resta un intero crescente separato, richiesto da
         // Android per capire se un APK è un aggiornamento di un altro.
-        versionCode 26110802
-        versionName "2026.11.08-2"
+        versionCode 26110803
+        versionName "2026.11.08-3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

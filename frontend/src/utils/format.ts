@@ -34,3 +34,27 @@ export function formatDateLong(value: string | Date): string {
     year: 'numeric',
   });
 }
+
+/** Estrae una descrizione leggibile da qualsiasi tipo di errore (Error, Capacitor bridge object, stringa, risposta Axios). */
+export function formatErrorMessage(err: unknown, fallback = 'Errore sconosciuto'): string {
+  if (!err) return fallback;
+  if (typeof err === 'string') return err;
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    const respData = (obj.response as { data?: { message?: string | string[] } })?.data;
+    if (respData?.message) {
+      return Array.isArray(respData.message) ? respData.message.join('; ') : respData.message;
+    }
+    if (typeof obj.message === 'string' && obj.message) return obj.message;
+    if (typeof obj.errorMessage === 'string' && obj.errorMessage) return obj.errorMessage;
+    if (typeof obj.error === 'string' && obj.error) return obj.error;
+    try {
+      const json = JSON.stringify(err);
+      if (json && json !== '{}') return json;
+    } catch {
+      // ignore
+    }
+  }
+  return String(err) || fallback;
+}

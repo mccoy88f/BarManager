@@ -1,4 +1,5 @@
 import { api } from '../api/client';
+import { formatErrorMessage } from '../utils/format';
 
 export interface ReceiptLine {
   text: string;
@@ -110,7 +111,7 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
   );
   const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
   if (failures.length > 0) {
-    throw new Error(failures.map((f) => String((f.reason as Error)?.message ?? f.reason)).join(' / '));
+    throw new Error(failures.map((f) => formatErrorMessage(f.reason)).join(' / '));
   }
 }
 
