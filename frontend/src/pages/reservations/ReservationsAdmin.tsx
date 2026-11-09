@@ -26,6 +26,8 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CakeIcon from '@mui/icons-material/Cake';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import HistoryIcon from '@mui/icons-material/History';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
@@ -38,6 +40,24 @@ import { formatDateAndTime } from '../../utils/format';
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 /** "Chiuse" unisce Rifiutate e Annullate nella stessa scheda, senza divisioni (§10). */
 type QueueFilter = 'PENDING' | 'CONFIRMED' | 'CLOSED';
+
+const QUEUE_TABS: QueueFilter[] = ['PENDING', 'CONFIRMED', 'CLOSED'];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function todayDateOnly(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function shiftDateOnly(dateOnly: string, days: number): string {
+  const [y, m, day] = dateOnly.split('-').map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
 
 interface TableRow {
   id: string;
@@ -176,6 +196,7 @@ export function ReservationsAdmin() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [statusFilter, setStatusFilter] = useState<QueueFilter>('PENDING');
+  const [selectedDate, setSelectedDate] = useState(todayDateOnly);
   const [rejecting, setRejecting] = useState<ReservationRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [cancelling, setCancelling] = useState<ReservationRow | null>(null);
@@ -192,15 +213,24 @@ export function ReservationsAdmin() {
   const [editing, setEditing] = useState<ReservationRow | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
 
+  /** Tutte le prenotazioni del giorno scelto: i conteggi sulle schede e il filtro tab sono client-side, come negli ordini online. */
   const reservationsQuery = useQuery({
-    queryKey: ['reservations-admin', statusFilter],
+    queryKey: ['reservations-admin', selectedDate],
     queryFn: async () =>
-      (
-        await api.get<ReservationRow[]>('/reservations', {
-          params: { status: statusFilter === 'CLOSED' ? 'REJECTED,CANCELLED' : statusFilter },
-        })
-      ).data,
+      (await api.get<ReservationRow[]>('/reservations', { params: { date: selectedDate } })).data,
   });
+
+  const reservationsByTab = useMemo(() => {
+    const grouped: Record<QueueFilter, ReservationRow[]> = { PENDING: [], CONFIRMED: [], CLOSED: [] };
+    for (const reservation of reservationsQuery.data ?? []) {
+      if (reservation.status === 'PENDING') grouped.PENDING.push(reservation);
+      else if (reservation.status === 'CONFIRMED') grouped.CONFIRMED.push(reservation);
+      else grouped.CLOSED.push(reservation);
+    }
+    return grouped;
+  }, [reservationsQuery.data]);
+
+  const visibleReservations = reservationsByTab[statusFilter];
 
   /**
    * Nella scheda Confermate, le prenotazioni ancora senza tavolo vanno
@@ -209,12 +239,12 @@ export function ReservationsAdmin() {
    * segue invariato sotto.
    */
   const confirmedGroups = useMemo(() => {
-    if (statusFilter !== 'CONFIRMED' || !reservationsQuery.data) return null;
+    if (statusFilter !== 'CONFIRMED') return null;
     return {
-      withoutTable: reservationsQuery.data.filter((r) => r.tableIds.length === 0),
-      withTable: reservationsQuery.data.filter((r) => r.tableIds.length > 0),
+      withoutTable: visibleReservations.filter((r) => r.tableIds.length === 0),
+      withTable: visibleReservations.filter((r) => r.tableIds.length > 0),
     };
-  }, [statusFilter, reservationsQuery.data]);
+  }, [statusFilter, visibleReservations]);
 
   const tablesQuery = useQuery({
     queryKey: ['reservations-tables'],
@@ -526,22 +556,109 @@ export function ReservationsAdmin() {
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h6">Prenotazioni</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <Typography variant="h5" fontWeight={700}>
+            Prenotazioni
+          </Typography>
+          {reservationsByTab.PENDING.length > 0 && (
+            <Chip
+              label={`${reservationsByTab.PENDING.length} da confermare`}
+              color="error"
+              size="medium"
+              sx={{ fontWeight: 700 }}
+            />
+          )}
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setManualForm({ ...emptyManualForm, date: selectedDate });
+            setAddOpen(true);
+          }}
+        >
           Aggiungi prenotazione
         </Button>
       </Box>
 
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <IconButton
+            aria-label="Giorno precedente"
+            onClick={() => setSelectedDate((d) => shiftDateOnly(d, -1))}
+            size="small"
+          >
+            <ChevronLeftIcon />
+          </IconButton>
+          <TextField
+            type="date"
+            label="Giorno"
+            size="small"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value || todayDateOnly())}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 160 }}
+          />
+          <IconButton
+            aria-label="Giorno successivo"
+            onClick={() => setSelectedDate((d) => shiftDateOnly(d, 1))}
+            size="small"
+          >
+            <ChevronRightIcon />
+          </IconButton>
+        </Stack>
+        <Button
+          size="small"
+          variant={selectedDate === todayDateOnly() ? 'contained' : 'outlined'}
+          onClick={() => setSelectedDate(todayDateOnly())}
+        >
+          Oggi
+        </Button>
+      </Stack>
+
       <Tabs
         value={statusFilter}
-        onChange={(_e, v) => setStatusFilter(v)}
-        sx={{ minHeight: 0 }}
+        onChange={(_e, v) => setStatusFilter(v as QueueFilter)}
         variant="scrollable"
         scrollButtons="auto"
+        sx={{
+          minHeight: 48,
+          borderBottom: 1,
+          borderColor: 'divider',
+          '& .MuiTab-root': {
+            minHeight: 48,
+            minWidth: { xs: 'auto', sm: 120 },
+            px: { xs: 1.5, sm: 2.5 },
+            py: 1.25,
+            fontWeight: 600,
+            fontSize: '0.9rem',
+            textTransform: 'none',
+          },
+        }}
       >
-        {(Object.keys(tabLabels) as QueueFilter[]).map((s) => (
-          <Tab key={s} value={s} label={tabLabels[s]} sx={{ minHeight: 0 }} />
+        {QUEUE_TABS.map((s) => (
+          <Tab
+            key={s}
+            value={s}
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <span>{tabLabels[s]}</span>
+                <Chip
+                  size="small"
+                  label={reservationsByTab[s].length}
+                  color={
+                    s === 'PENDING' && reservationsByTab[s].length > 0
+                      ? 'error'
+                      : statusFilter === s
+                        ? 'primary'
+                        : 'default'
+                  }
+                  sx={{ height: 22, fontSize: '0.75rem', fontWeight: 700 }}
+                />
+              </Box>
+            }
+          />
         ))}
       </Tabs>
 
@@ -559,11 +676,11 @@ export function ReservationsAdmin() {
             {confirmedGroups.withTable.map(renderReservationCard)}
           </>
         ) : (
-          reservationsQuery.data?.map(renderReservationCard)
+          visibleReservations.map(renderReservationCard)
         )}
-        {reservationsQuery.data?.length === 0 && (
+        {visibleReservations.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            Nessuna prenotazione in questo stato.
+            Nessuna prenotazione in questo stato per il giorno selezionato.
           </Typography>
         )}
       </Stack>

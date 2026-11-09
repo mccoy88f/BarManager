@@ -11,7 +11,13 @@ import {
   resolveOpeningHours,
   specialDayKey,
 } from '../common/opening-hours/opening-hours';
-import { dateOnlyInZone, jsWeekdayInZone, minutesOfDayInZone } from '../common/timezone/timezone';
+import {
+  dateOnlyInZone,
+  jsWeekdayInZone,
+  minutesOfDayInZone,
+  parseDateOnlyEndOfDayInZone,
+  parseDateOnlyStartOfDayInZone,
+} from '../common/timezone/timezone';
 import { venueLogoAbsoluteUrl, venuePrivacyUrl, venuePublicUrl } from '../common/venue-url/venue-url';
 import { ReservationsMailService } from './reservations-mail.service';
 import { CustomersService } from '../customers/customers.service';
@@ -519,6 +525,7 @@ export class ReservationsService {
    * CONFIRMED) senza nemmeno un tavolo assegnato — la "coda prenotazioni"
    * da assegnare, che raccoglie sia le richieste online rimaste manuali
    * sia quelle aggiunte a mano in backoffice senza scegliere un tavolo.
+   * `date` (`YYYY-MM-DD`): limita a quel giorno nel fuso del locale.
    *
    * Ogni riga porta anche `isReturningCustomer`: true se la stessa email
    * ha più di una prenotazione presso questo locale, per mostrare in UI il
@@ -528,17 +535,27 @@ export class ReservationsService {
     venueId: string,
     status?: ReservationStatus | ReservationStatus[],
     withoutTable?: boolean,
+    date?: string,
   ) {
+    const venue = await this.getVenueSettings(venueId);
     const statusFilter = withoutTable
       ? { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] }
       : Array.isArray(status)
         ? { in: status }
         : status;
+    const reservedAtFilter =
+      date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? {
+            gte: parseDateOnlyStartOfDayInZone(date, venue.timezone),
+            lte: parseDateOnlyEndOfDayInZone(date, venue.timezone),
+          }
+        : undefined;
     const reservations = await this.prisma.reservation.findMany({
       where: {
         venueId,
         status: statusFilter,
         tables: withoutTable ? { none: {} } : undefined,
+        reservedAt: reservedAtFilter,
       },
       include: TABLES_INCLUDE,
       orderBy: { reservedAt: 'asc' },
@@ -558,7 +575,6 @@ export class ReservationsService {
     // Tavoli occupati per ciascuna riga, alla SUA finestra oraria (non a
     // quella delle altre): due chiamate qui invece che una per riga,
     // l'overlap fra ciascuna coppia si calcola poi in memoria.
-    const venue = await this.getVenueSettings(venueId);
     const activeWithTable = await this.prisma.reservation.findMany({
       where: {
         venueId,

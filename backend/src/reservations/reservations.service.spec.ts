@@ -1108,6 +1108,7 @@ describe('ReservationsService', () => {
             venueId: 'venue-1',
             status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
             tables: { none: {} },
+            reservedAt: undefined,
           },
         }),
       );
@@ -1123,9 +1124,20 @@ describe('ReservationsService', () => {
             venueId: 'venue-1',
             status: { in: [ReservationStatus.REJECTED, ReservationStatus.CANCELLED] },
             tables: undefined,
+            reservedAt: undefined,
           },
         }),
       );
+    });
+
+    it('con date=YYYY-MM-DD filtra reservedAt al giorno nel fuso del locale', async () => {
+      prisma.reservation.findMany.mockResolvedValue([]);
+      await service.listReservations('venue-1', undefined, false, '2026-11-09');
+
+      const call = prisma.reservation.findMany.mock.calls[0][0];
+      expect(call.where.reservedAt.gte).toBeInstanceOf(Date);
+      expect(call.where.reservedAt.lte).toBeInstanceOf(Date);
+      expect(call.where.reservedAt.lte.getTime()).toBeGreaterThan(call.where.reservedAt.gte.getTime());
     });
 
     it('segnala in busyTableIds il tavolo di un\'altra prenotazione sovrapposta', async () => {
