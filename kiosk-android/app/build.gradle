@@ -11,8 +11,8 @@ android {
         applicationId "it.mccoy88f.barmanager.kiosk"
         minSdk = 21
         targetSdk = 34
-        versionCode 26110904
-        versionName "2026.11.09-4"
+        versionCode 26110905
+        versionName "2026.11.09-5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
