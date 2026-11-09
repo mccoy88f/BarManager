@@ -20,8 +20,15 @@ import {
   Stack,
   Switch,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -29,17 +36,21 @@ import CakeIcon from '@mui/icons-material/Cake';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import HistoryIcon from '@mui/icons-material/History';
+import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
+import ViewListIcon from '@mui/icons-material/ViewList';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, ERROR_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
-import { formatDateAndTime } from '../../utils/format';
+import { formatDateAndTime, formatTime } from '../../utils/format';
 
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 /** "Chiuse" unisce Rifiutate e Annullate nella stessa scheda, senza divisioni (§10). */
 type QueueFilter = 'PENDING' | 'CONFIRMED' | 'CLOSED';
+/** Vista panoramica: coda a lista (stati) oppure griglia tavoli del giorno. */
+type OverviewMode = 'lista' | 'tavoli';
 
 const QUEUE_TABS: QueueFilter[] = ['PENDING', 'CONFIRMED', 'CLOSED'];
 
@@ -196,7 +207,9 @@ export function ReservationsAdmin() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [statusFilter, setStatusFilter] = useState<QueueFilter>('PENDING');
+  const [overviewMode, setOverviewMode] = useState<OverviewMode>('lista');
   const [selectedDate, setSelectedDate] = useState(todayDateOnly);
+  const [detailReservation, setDetailReservation] = useState<ReservationRow | null>(null);
   const [rejecting, setRejecting] = useState<ReservationRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [cancelling, setCancelling] = useState<ReservationRow | null>(null);
@@ -251,6 +264,36 @@ export function ReservationsAdmin() {
     queryFn: async () => (await api.get<TableRow[]>('/reservations/tables')).data,
   });
   const activeTables = useMemo(() => tablesQuery.data?.filter((t) => t.active) ?? [], [tablesQuery.data]);
+
+  /** Tavoli attivi ordinati per nome, ciascuno con le prenotazioni attive del giorno (PENDING/CONFIRMED) ordinate per orario e cognome. */
+  const reservationsByTable = useMemo(() => {
+    const activeForDay = (reservationsQuery.data ?? []).filter(
+      (r) => r.status === 'PENDING' || r.status === 'CONFIRMED',
+    );
+    const sortReservations = (list: ReservationRow[]) =>
+      [...list].sort((a, b) => {
+        const byTime = new Date(a.reservedAt).getTime() - new Date(b.reservedAt).getTime();
+        if (byTime !== 0) return byTime;
+        const nameA = `${a.lastName} ${a.firstName}`.toLocaleLowerCase('it');
+        const nameB = `${b.lastName} ${b.firstName}`.toLocaleLowerCase('it');
+        return nameA.localeCompare(nameB, 'it');
+      });
+
+    return [...activeTables]
+      .sort((a, b) => a.label.localeCompare(b.label, 'it', { numeric: true, sensitivity: 'base' }))
+      .map((table) => ({
+        table,
+        reservations: sortReservations(activeForDay.filter((r) => r.tableIds.includes(table.id))),
+      }));
+  }, [activeTables, reservationsQuery.data]);
+
+  // Tiene aggiornato il dettaglio aperto dopo accept/rifiuto/modifica; lo chiude se la riga non c'è più.
+  useEffect(() => {
+    if (!detailReservation) return;
+    const fresh = reservationsQuery.data?.find((r) => r.id === detailReservation.id);
+    if (fresh) setDetailReservation(fresh);
+    else setDetailReservation(null);
+  }, [reservationsQuery.data, detailReservation?.id]);
 
   const manualReservedAtIso =
     manualForm.date && manualForm.time
@@ -615,75 +658,179 @@ export function ReservationsAdmin() {
         >
           Oggi
         </Button>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={overviewMode}
+          onChange={(_e, value: OverviewMode | null) => value && setOverviewMode(value)}
+          aria-label="Vista panoramica"
+        >
+          <ToggleButton value="lista" aria-label="Vista lista">
+            <ViewListIcon fontSize="small" sx={{ mr: 0.75 }} />
+            Lista
+          </ToggleButton>
+          <ToggleButton value="tavoli" aria-label="Vista tavoli">
+            <TableRestaurantIcon fontSize="small" sx={{ mr: 0.75 }} />
+            Tavoli
+          </ToggleButton>
+        </ToggleButtonGroup>
       </Stack>
 
-      <Tabs
-        value={statusFilter}
-        onChange={(_e, v) => setStatusFilter(v as QueueFilter)}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{
-          minHeight: 48,
-          borderBottom: 1,
-          borderColor: 'divider',
-          '& .MuiTab-root': {
-            minHeight: 48,
-            minWidth: { xs: 'auto', sm: 120 },
-            px: { xs: 1.5, sm: 2.5 },
-            py: 1.25,
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            textTransform: 'none',
-          },
-        }}
-      >
-        {QUEUE_TABS.map((s) => (
-          <Tab
-            key={s}
-            value={s}
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <span>{tabLabels[s]}</span>
-                <Chip
-                  size="small"
-                  label={reservationsByTab[s].length}
-                  color={
-                    s === 'PENDING' && reservationsByTab[s].length > 0
-                      ? 'error'
-                      : statusFilter === s
-                        ? 'primary'
-                        : 'default'
-                  }
-                  sx={{ height: 22, fontSize: '0.75rem', fontWeight: 700 }}
-                />
-              </Box>
-            }
-          />
-        ))}
-      </Tabs>
+      {overviewMode === 'lista' && (
+        <>
+          <Tabs
+            value={statusFilter}
+            onChange={(_e, v) => setStatusFilter(v as QueueFilter)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              minHeight: 48,
+              borderBottom: 1,
+              borderColor: 'divider',
+              '& .MuiTab-root': {
+                minHeight: 48,
+                minWidth: { xs: 'auto', sm: 120 },
+                px: { xs: 1.5, sm: 2.5 },
+                py: 1.25,
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                textTransform: 'none',
+              },
+            }}
+          >
+            {QUEUE_TABS.map((s) => (
+              <Tab
+                key={s}
+                value={s}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <span>{tabLabels[s]}</span>
+                    <Chip
+                      size="small"
+                      label={reservationsByTab[s].length}
+                      color={
+                        s === 'PENDING' && reservationsByTab[s].length > 0
+                          ? 'error'
+                          : statusFilter === s
+                            ? 'primary'
+                            : 'default'
+                      }
+                      sx={{ height: 22, fontSize: '0.75rem', fontWeight: 700 }}
+                    />
+                  </Box>
+                }
+              />
+            ))}
+          </Tabs>
 
-      <Stack spacing={2}>
-        {confirmedGroups ? (
-          <>
-            {confirmedGroups.withoutTable.length > 0 && (
+          <Stack spacing={2}>
+            {confirmedGroups ? (
               <>
-                <Typography variant="subtitle2" color="warning.main">
-                  Da assegnare a un tavolo ({confirmedGroups.withoutTable.length})
-                </Typography>
-                {confirmedGroups.withoutTable.map(renderReservationCard)}
+                {confirmedGroups.withoutTable.length > 0 && (
+                  <>
+                    <Typography variant="subtitle2" color="warning.main">
+                      Da assegnare a un tavolo ({confirmedGroups.withoutTable.length})
+                    </Typography>
+                    {confirmedGroups.withoutTable.map(renderReservationCard)}
+                  </>
+                )}
+                {confirmedGroups.withTable.map(renderReservationCard)}
               </>
+            ) : (
+              visibleReservations.map(renderReservationCard)
             )}
-            {confirmedGroups.withTable.map(renderReservationCard)}
-          </>
-        ) : (
-          visibleReservations.map(renderReservationCard)
-        )}
-        {visibleReservations.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            Nessuna prenotazione in questo stato per il giorno selezionato.
-          </Typography>
-        )}
-      </Stack>
+            {visibleReservations.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Nessuna prenotazione in questo stato per il giorno selezionato.
+              </Typography>
+            )}
+          </Stack>
+        </>
+      )}
+
+      {overviewMode === 'tavoli' && (
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 2,
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
+          }}
+        >
+          {reservationsByTable.map(({ table, reservations }) => (
+            <Card key={table.id} variant="outlined">
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {table.label}
+                  </Typography>
+                  <Chip size="small" label={`${table.seats} posti`} />
+                </Stack>
+                <Table size="small" aria-label={`Prenotazioni ${table.label}`}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ py: 0.5, fontWeight: 600 }}>Ora</TableCell>
+                      <TableCell sx={{ py: 0.5, fontWeight: 600 }}>Nome</TableCell>
+                      <TableCell sx={{ py: 0.5, fontWeight: 600 }} align="right">
+                        N°
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {reservations.map((r) => (
+                      <TableRow
+                        key={r.id}
+                        hover
+                        sx={{ cursor: 'pointer' }}
+                        onClick={() => setDetailReservation(r)}
+                      >
+                        <TableCell sx={{ py: 0.75 }}>
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <span>{formatTime(r.reservedAt)}</span>
+                            {r.status === 'PENDING' && (
+                              <Chip size="small" color="warning" label="?" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell sx={{ py: 0.75 }}>
+                          {r.lastName} {r.firstName}
+                        </TableCell>
+                        <TableCell sx={{ py: 0.75 }} align="right">
+                          {r.partySize}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {reservations.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} sx={{ py: 1.5, color: 'text.secondary' }}>
+                          Nessuna prenotazione
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          ))}
+          {reservationsByTable.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Nessun tavolo attivo. Configurali in Impostazioni prenotazioni.
+            </Typography>
+          )}
+        </Box>
+      )}
+
+      <Dialog
+        open={!!detailReservation}
+        onClose={() => setDetailReservation(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Dettaglio prenotazione</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>{detailReservation && renderReservationCard(detailReservation)}</DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDetailReservation(null)}>Chiudi</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={!!rejecting} onClose={() => setRejecting(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Rifiuta prenotazione</DialogTitle>
