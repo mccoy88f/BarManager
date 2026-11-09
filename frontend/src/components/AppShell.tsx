@@ -46,8 +46,23 @@ import { AppSettingsDialog } from './AppSettingsDialog';
 
 const DRAWER_WIDTH = 260;
 
+/** Ultima release GitHub (stesso tag degli APK); fallback al bundle se offline. */
+function usePlatformVersion(): string {
+  const { data } = useQuery({
+    queryKey: ['platform-version'],
+    queryFn: async () => {
+      const { data: body } = await api.get<{ version: string }>('/health/version');
+      return body.version?.trim() || APP_VERSION;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  return data || APP_VERSION;
+}
+
 export function AppShell() {
   const navigate = useNavigate();
+  const platformVersion = usePlatformVersion();
   const location = useLocation();
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
@@ -178,7 +193,7 @@ export function AppShell() {
     </List>
     <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
       <Typography variant="caption" color="text.secondary" display="block">
-        {APP_VERSION}
+        {platformVersion}
       </Typography>
       <Typography variant="caption" color="text.secondary" display="block">
         Crediti: creato da{' '}
