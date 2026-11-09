@@ -542,6 +542,8 @@ export function VenueSettings() {
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Quando attiva, categorie, prodotti, prezzi e immagini del menù arrivano da Loyverse:
             qui si gestisce solo cosa mostrare online (visibilità, disponibilità, solo pranzo/cena).
+            Con l&apos;integrazione attiva la sincronizzazione parte anche in automatico ogni giorno
+            alle 06:00 e alle 18:00 (orario del locale).
           </Typography>
 
           <FormControlLabel
