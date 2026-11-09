@@ -243,6 +243,12 @@ export function ReservationsAdmin() {
     return grouped;
   }, [reservationsQuery.data]);
 
+  /** Coperti (persone) del giorno selezionato: solo prenotazioni confermate. */
+  const totalGuestsForDay = useMemo(
+    () => reservationsByTab.CONFIRMED.reduce((sum, r) => sum + (Number(r.partySize) || 0), 0),
+    [reservationsByTab],
+  );
+
   const visibleReservations = reservationsByTab[statusFilter];
 
   /**
@@ -602,7 +608,7 @@ export function ReservationsAdmin() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
           <Typography variant="h5" fontWeight={700}>
-            Prenotazioni
+            Prenotazioni ({totalGuestsForDay})
           </Typography>
           {reservationsByTab.PENDING.length > 0 && (
             <Chip
