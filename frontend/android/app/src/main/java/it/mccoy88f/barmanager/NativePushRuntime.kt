@@ -100,7 +100,7 @@ object NativePushRuntime {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(context, LISTENING_CHANNEL_ID)
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(R.drawable.ic_stat_barmanager)
             .setContentTitle("BarManager in ascolto")
             .setContentText("Prenotazioni, ordini e richieste arrivano anche a schermo spento")
             .setOngoing(true)
@@ -128,7 +128,7 @@ object NativePushRuntime {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(R.drawable.ic_stat_barmanager)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

@@ -34,10 +34,12 @@ class PushListenerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!NativePushRuntime.canPostNotifications(this) || !NativePushRuntime.isEnabled(this)) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        // startForegroundService() obbliga a chiamare startForeground() entro pochi
+        // secondi, anche se poi ci fermiamo: altrimenti Android uccide l'intero
+        // processo (RemoteServiceException). Succede tipicamente dopo un upgrade
+        // dell'APK quando le push sono già abilitate ma POST_NOTIFICATIONS non è
+        // ancora concesso (Android 13+).
+        val canRun = NativePushRuntime.isEnabled(this) && NativePushRuntime.canPostNotifications(this)
         try {
             val notification = NativePushRuntime.listeningNotification(this)
             if (Build.VERSION.SDK_INT >= 34) {
@@ -46,6 +48,10 @@ class PushListenerService : Service() {
                 startForeground(NativePushRuntime.LISTENING_ID, notification)
             }
         } catch (_: Exception) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!canRun) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -155,6 +161,7 @@ class PushListenerService : Service() {
 
     companion object {
         fun start(context: Context) {
+            if (!NativePushRuntime.canPostNotifications(context)) return
             val intent = Intent(context, PushListenerService::class.java)
             try {
                 ContextCompat.startForegroundService(context, intent)
@@ -163,7 +170,9 @@ class PushListenerService : Service() {
         }
 
         fun startIfConfigured(context: Context) {
-            if (NativePushRuntime.isEnabled(context)) start(context)
+            if (NativePushRuntime.isEnabled(context) && NativePushRuntime.canPostNotifications(context)) {
+                start(context)
+            }
         }
     }
 }
