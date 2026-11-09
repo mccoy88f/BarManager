@@ -6,8 +6,10 @@ name: Android release
 #
 # Calcola la versione nel formato AAAA.MM.GG-N verificando le release
 # già esistenti su GitHub per la data odierna, inietta la versione nei
-# progetti Android, compila entrambi gli APK e li allega alla stessa
-# GitHub Release.
+# progetti Android e in frontend/src/version.ts (stesso numero mostrato
+# sul sito), compila entrambi gli APK, li allega alla stessa GitHub
+# Release e committa/pusha i file versione su main così il deploy web
+# (Coolify/Portainer) resta sempre allineato agli APK.
 
 on:
   workflow_dispatch:
@@ -111,3 +113,22 @@ jobs:
             "BarManager-Kiosk-${VERSION}.apk" \
             --title "BarManager ${VERSION}" \
             --notes "${RELEASE_NOTES}"
+
+      # Dopo la release: riporta la versione calcolata su main (version.ts +
+      # build.gradle). Il push con GITHUB_TOKEN non riattiva questo workflow
+      # (evita loop), ma il webhook del deploy web vede il commit e ricostruisce
+      # il frontend con lo stesso numero degli APK appena pubblicati.
+      - name: Allinea la versione sul repository (sito = APK)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/version.ts frontend/android/app/build.gradle kiosk-android/app/build.gradle
+          if git diff --staged --quiet; then
+            echo "Versione già allineata a ${VERSION}, nessun commit."
+          else
+            git commit -m "chore: allinea versione piattaforma a ${VERSION}"
+            git pull --rebase origin main
+            git push origin HEAD:main
+            echo "Versione ${VERSION} committata su main per il deploy web."
+          fi
