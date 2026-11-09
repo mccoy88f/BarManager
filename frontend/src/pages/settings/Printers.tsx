@@ -218,14 +218,14 @@ export function Printers() {
         </Typography>
         <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
           {isNativeApp() ? (
-            <Chip size="small" color="success" label="App Android: Stampa diretta ESC/POS attiva" />
+            <Chip size="small" color="success" label="App nativa: stampa diretta ESC/POS attiva" />
           ) : (
             <Chip size="small" color="default" label="Modalità Web / PWA: condivisione PDF" />
           )}
         </Box>
         <Alert severity="info" sx={{ mb: 2 }}>
           Host e porta configurati qui servono solo alla stampa diretta via rete locale (LAN)
-          dell'app Android nativa <strong>BarManager</strong> — scaricala dalla pagina delle{' '}
+          dell'app nativa <strong>BarManager</strong> (Android/iOS) — scaricala dalla pagina delle{' '}
           <a
             href="https://github.com/mccoy88f/BarManager/releases/latest"
             target="_blank"

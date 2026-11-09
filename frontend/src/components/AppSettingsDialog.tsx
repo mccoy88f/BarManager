@@ -175,8 +175,8 @@ export function AppSettingsDialog({ open, onClose }: AppSettingsDialogProps) {
 
             {!native && (
               <Alert severity="info" sx={{ mt: 1 }}>
-                Stai utilizzando la versione Web del gestionale ({APP_VERSION}). Gli aggiornamenti APK automatici da GitHub
-                sono dedicati all'applicazione Android nativa BarManager.{' '}
+                Stai utilizzando la versione Web del gestionale ({APP_VERSION}). Gli aggiornamenti automatici da GitHub
+                sono dedicati all'applicazione nativa BarManager (Android/iOS).{' '}
                 <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
                   <Button
                     size="small"

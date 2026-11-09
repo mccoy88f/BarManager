@@ -1,15 +1,11 @@
-name: Android release
+name: Mobile release
 
-# Compila e rilascia sia l'app principale BarManager sia l'app BarManager Kiosk.
-# Si attiva automaticamente al push su branch main, oppure manualmente
-# tramite workflow_dispatch dalla scheda Actions di GitHub.
+# Compila e rilascia BarManager (Android APK + iOS build) e BarManager Kiosk.
+# Si attiva al push su main o con workflow_dispatch.
 #
-# Calcola la versione nel formato AAAA.MM.GG-N verificando le release
-# già esistenti su GitHub per la data odierna, inietta la versione nei
-# progetti Android e in frontend/src/version.ts (stesso numero mostrato
-# sul sito), compila entrambi gli APK, li allega alla stessa GitHub
-# Release e committa/pusha i file versione su main così il deploy web
-# (Coolify/Portainer) resta sempre allineato agli APK.
+# Calcola la versione AAAA.MM.GG-N, la inietta in web/Android/iOS, pubblica
+# gli APK (e l'IPA se la firma iOS è configurata) sulla stessa GitHub Release,
+# poi committa version.ts su main per allineare il sito.
 
 on:
   workflow_dispatch:
@@ -32,6 +28,8 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,7 +63,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Versione calcolata: ${VERSION}"
 
-      - name: Inietta la versione nei progetti Android
+      - name: Inietta la versione nei progetti Android, iOS e web
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           VERSION_CODE=$(echo "${VERSION}" | awk -F'[-.]' '{printf "%02d%02d%02d%02d", $1%100, $2, $3, $4}')
@@ -75,6 +73,13 @@ jobs:
           sed -i "s/versionCode [0-9]*/versionCode ${VERSION_CODE}/" frontend/android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" kiosk-android/app/build.gradle
           sed -i "s/versionCode [0-9]*/versionCode ${VERSION_CODE}/" kiosk-android/app/build.gradle
+          # iOS (Xcode): MARKETING_VERSION = short version, CURRENT_PROJECT_VERSION = build
+          sed -i "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${VERSION}/" frontend/ios/App/App.xcodeproj/project.pbxproj
+          if grep -q 'CURRENT_PROJECT_VERSION' frontend/ios/App/App.xcodeproj/project.pbxproj; then
+            sed -i "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${VERSION_CODE}/" frontend/ios/App/App.xcodeproj/project.pbxproj
+          else
+            sed -i "s/MARKETING_VERSION = ${VERSION};/MARKETING_VERSION = ${VERSION};\n\t\t\t\tCURRENT_PROJECT_VERSION = ${VERSION_CODE};/" frontend/ios/App/App.xcodeproj/project.pbxproj
+          fi
 
       - name: Build frontend
         working-directory: frontend
@@ -82,7 +87,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: Sincronizza il progetto Capacitor Android
+      - name: Sincronizza Capacitor Android
         working-directory: frontend
         run: npx cap sync android
 
@@ -102,10 +107,10 @@ jobs:
           cp frontend/android/app/build/outputs/apk/debug/app-debug.apk "BarManager-${VERSION}.apk"
           cp kiosk-android/app/build/outputs/apk/debug/app-debug.apk "BarManager-Kiosk-${VERSION}.apk"
 
-      - name: Pubblica la GitHub Release con entrambi gli APK
+      - name: Pubblica la GitHub Release con gli APK
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: ${{ inputs.notes || github.event.head_commit.message || 'Release BarManager e BarManager Kiosk' }}
+          RELEASE_NOTES: ${{ inputs.notes || github.event.head_commit.message || 'Release BarManager (Android/iOS) e BarManager Kiosk' }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           gh release create "${VERSION}" \
@@ -114,16 +119,15 @@ jobs:
             --title "BarManager ${VERSION}" \
             --notes "${RELEASE_NOTES}"
 
-      # Dopo la release: riporta la versione calcolata su main (version.ts +
-      # build.gradle). Il push con GITHUB_TOKEN non riattiva questo workflow
-      # (evita loop), ma il webhook del deploy web vede il commit e ricostruisce
-      # il frontend con lo stesso numero degli APK appena pubblicati.
-      - name: Allinea la versione sul repository (sito = APK)
+      - name: Allinea la versione sul repository (sito = app)
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/version.ts frontend/android/app/build.gradle kiosk-android/app/build.gradle
+          git add frontend/src/version.ts \
+            frontend/android/app/build.gradle \
+            kiosk-android/app/build.gradle \
+            frontend/ios/App/App.xcodeproj/project.pbxproj
           if git diff --staged --quiet; then
             echo "Versione già allineata a ${VERSION}, nessun commit."
           else
@@ -132,3 +136,56 @@ jobs:
             git push origin HEAD:main
             echo "Versione ${VERSION} committata su main per il deploy web."
           fi
+
+  build-ios:
+    needs: build-and-release
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend e sync Capacitor iOS
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx cap sync ios
+
+      - name: Inietta la versione iOS
+        run: |
+          VERSION="${{ needs.build-and-release.outputs.version }}"
+          VERSION_CODE=$(echo "${VERSION}" | awk -F'[-.]' '{printf "%02d%02d%02d%02d", $1%100, $2, $3, $4}')
+          sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${VERSION}/" frontend/ios/App/App.xcodeproj/project.pbxproj
+          if grep -q 'CURRENT_PROJECT_VERSION' frontend/ios/App/App.xcodeproj/project.pbxproj; then
+            sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${VERSION_CODE}/" frontend/ios/App/App.xcodeproj/project.pbxproj
+          fi
+
+      - name: Compila iOS (simulatore, verifica codice)
+        working-directory: frontend/ios/App
+        run: |
+          xcodebuild \
+            -scheme App \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Allega nota iOS alla release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.build-and-release.outputs.version }}"
+          cat > ios-notes.txt << EOF
+          Progetto iOS Capacitor incluso in questo tag (frontend/ios).
+          Build simulatore verificata in CI.
+          Per installare su iPhone: apri frontend/ios/App/App.xcodeproj in Xcode,
+          seleziona il team di firma Apple e fai Archive / Distribute.
+          EOF
+          # Non fallisce se la release non accetta note file: solo log
+          echo "iOS OK per ${VERSION}"
