@@ -26,7 +26,7 @@ describe('rch-fiscal', () => {
 
   it('costruisce lo scontrino come unica voce Ordine n. con totale e chiusura', () => {
     const commands = buildRchFiscalCommands({
-      dailyNumber: 12,
+      description: 'Ordine n. 12',
       total: 23.5,
       department: 1,
       paymentIndex: 4,
@@ -34,5 +34,16 @@ describe('rch-fiscal', () => {
     });
     expect(commands).toEqual(['"Ordine n. 12"2350H1R', '2350H4T']);
     expect(joinRchFiscalPayload(commands)).toBe('"Ordine n. 12"2350H1R\n2350H4T\n');
+  });
+
+  it('costruisce lo scontrino di test a 0 euro', () => {
+    const commands = buildRchFiscalCommands({
+      description: 'Test fiscale',
+      total: 0,
+      department: 1,
+      paymentIndex: 1,
+      paymentLabel: 'Contanti',
+    });
+    expect(commands).toEqual(['"Test fiscale"0H1R', '0H1T']);
   });
 });

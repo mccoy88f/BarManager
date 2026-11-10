@@ -1347,7 +1347,7 @@ export class OnlineOrdersService {
     // Una sola voce fiscale "Ordine n. X" con il totale (consegna inclusa);
     // l'IVA la applica la RCH in base al reparto configurato in impostazioni.
     const commands = buildRchFiscalCommands({
-      dailyNumber: order.dailyNumber,
+      description: `Ordine n. ${order.dailyNumber}`,
       total: order.total,
       department,
       paymentIndex,

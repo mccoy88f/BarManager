@@ -20,6 +20,8 @@ import { api } from '../../api/client';
 import { useToast } from '../../components/ToastProvider';
 import { SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 import { OpeningHoursWeekEditor, type OpeningHoursDay } from '../../components/OpeningHoursWeekEditor';
+import { isNativeApp, printRchFiscal } from '../../printing/nativePrint';
+import { formatErrorMessage } from '../../utils/format';
 
 type SlotMode = 'COMBINED' | 'SEPARATE';
 
@@ -308,6 +310,25 @@ export function OnlineOrdersSettings() {
         })
       ).data,
     onSuccess: () => { invalidateVenue(); showToast('Impostazioni stampante fiscale salvate'); },
+  });
+
+  const testFiscalMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{
+        host: string;
+        port: number;
+        payload: string;
+        paymentLabel: string;
+      }>('/venues/me/fiscal-receipt/test');
+      await printRchFiscal(data.host, data.port, data.payload);
+      return data;
+    },
+    onSuccess: (data) => {
+      showToast(`Scontrino di test (€0,00) inviato (${data.paymentLabel})`);
+    },
+    onError: (err) => {
+      showToast({ message: formatErrorMessage(err), severity: 'error' });
+    },
   });
 
   if (venueQuery.isLoading) {
@@ -821,14 +842,33 @@ export function OnlineOrdersSettings() {
             />
           </Stack>
 
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            disabled={saveRchMutation.isPending}
-            onClick={() => saveRchMutation.mutate()}
-          >
-            Salva
-          </Button>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 2 }}>
+            <Button
+              variant="contained"
+              disabled={saveRchMutation.isPending}
+              onClick={() => saveRchMutation.mutate()}
+            >
+              Salva
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={testFiscalMutation.isPending ? <CircularProgress size={16} /> : <SyncIcon />}
+              disabled={
+                !venueQuery.data?.rchFiscalEnabled ||
+                !isNativeApp() ||
+                testFiscalMutation.isPending ||
+                saveRchMutation.isPending
+              }
+              onClick={() => testFiscalMutation.mutate()}
+            >
+              Testa scontrino fiscale
+            </Button>
+          </Box>
+          {!isNativeApp() && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              Il test di stampa funziona solo dall&apos;app Android sulla rete del locale.
+            </Typography>
+          )}
           {saveRchMutation.isError && (
             <Alert severity="error" sx={{ mt: 2 }}>{extractErrorMessage(saveRchMutation.error)}</Alert>
           )}

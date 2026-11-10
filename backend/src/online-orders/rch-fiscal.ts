@@ -10,8 +10,9 @@
 export type RchPaymentLabel = 'Contanti' | 'Carta';
 
 export interface RchFiscalBuildInput {
-  dailyNumber: number;
-  /** Totale ordine in euro (subtotale + consegna). */
+  /** Descrizione riga vendita (es. "Ordine n. 12" o "Test fiscale"). */
+  description: string;
+  /** Totale in euro (subtotale + consegna; 0 per il test). */
   total: number;
   department: number;
   paymentIndex: number;
@@ -49,11 +50,10 @@ export function buildPaymentCommand(totalEuros: number, paymentIndex: number): s
   return `${toCentesimi(totalEuros)}H${paymentIndex}T`;
 }
 
-/** Una riga "Ordine n. X" al totale, poi chiusura pagamento. */
+/** Una riga di vendita al totale, poi chiusura pagamento. */
 export function buildRchFiscalCommands(input: RchFiscalBuildInput): string[] {
-  const description = `Ordine n. ${input.dailyNumber}`;
   return [
-    buildSaleCommand(description, 1, input.total, input.department),
+    buildSaleCommand(input.description, 1, input.total, input.department),
     buildPaymentCommand(input.total, input.paymentIndex),
   ];
 }

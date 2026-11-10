@@ -6,6 +6,7 @@ import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { encryptSecret, decryptSecret } from '../common/crypto/secret-crypto';
 import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
 import { loyverseClient, variantDisplayName } from '../loyverse/loyverse-client';
+import { buildRchFiscalCommands, joinRchFiscalPayload, RchPaymentLabel } from '../online-orders/rch-fiscal';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateOpeningHoursDto } from './dto/update-opening-hours.dto';
@@ -347,5 +348,62 @@ export class VenuesService {
       }
     }
     return options.sort((a, b) => a.label.localeCompare(b.label, 'it'));
+  }
+
+  /**
+   * Tracciato di prova (€0,00) per la stampante fiscale, con le impostazioni
+   * già salvate sul locale. La stampa TCP avviene solo dall'APK Android.
+   */
+  async prepareFiscalTestReceipt(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        rchFiscalEnabled: true,
+        rchHost: true,
+        rchPort: true,
+        rchDefaultDepartment: true,
+        rchPaymentIndexCash: true,
+        rchPaymentIndexCard: true,
+      },
+    });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+    if (!venue.rchFiscalEnabled) {
+      throw new BadRequestException('Stampante fiscale non abilitata: salva prima le impostazioni.');
+    }
+    const host = venue.rchHost?.trim();
+    if (!host) {
+      throw new BadRequestException('IP della stampante fiscale non configurato.');
+    }
+
+    let paymentIndex: number;
+    let paymentLabel: RchPaymentLabel;
+    if (venue.rchPaymentIndexCash != null) {
+      paymentIndex = venue.rchPaymentIndexCash;
+      paymentLabel = 'Contanti';
+    } else if (venue.rchPaymentIndexCard != null) {
+      paymentIndex = venue.rchPaymentIndexCard;
+      paymentLabel = 'Carta';
+    } else {
+      throw new BadRequestException(
+        'Configura almeno un pulsante Contanti o Carta prima del test.',
+      );
+    }
+
+    const commands = buildRchFiscalCommands({
+      description: 'Test fiscale',
+      total: 0,
+      department: venue.rchDefaultDepartment || 1,
+      paymentIndex,
+      paymentLabel,
+    });
+
+    return {
+      host,
+      port: venue.rchPort || 9100,
+      commands,
+      payload: joinRchFiscalPayload(commands),
+      paymentLabel,
+      total: 0,
+    };
   }
 }

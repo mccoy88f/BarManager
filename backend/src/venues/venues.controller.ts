@@ -261,4 +261,14 @@ export class VenuesController {
   listOwnLoyverseDeliveryVariants(@CurrentUser() user: AuthenticatedUser) {
     return this.venuesService.listLoyverseDeliveryVariants(requireVenueId(user));
   }
+
+  /**
+   * Tracciato di prova (€0,00) per la stampante fiscale.
+   * La stampa TCP avviene solo dall'APK Android sulla LAN del locale.
+   */
+  @Post('me/fiscal-receipt/test')
+  @Roles(Role.ADMIN)
+  prepareOwnFiscalTestReceipt(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.prepareFiscalTestReceipt(requireVenueId(user));
+  }
 }
