@@ -10,10 +10,10 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // §5.11 di docs/DEVELOPMENT.md: AAAA.MM.GG-N, stesso schema della
         // piattaforma web (frontend/src/version.ts) — non semantico.
-        // versionCode 26111005resta un intero crescente separato, richiesto da
+        // versionCode 26111006resta un intero crescente separato, richiesto da
         // Android per capire se un APK è un aggiornamento di un altro.
-        versionCode 26111005
-        versionName "2026.11.10-5"
+        versionCode 26111006
+        versionName "2026.11.10-6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
