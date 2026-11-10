@@ -130,7 +130,7 @@ export function OnlineOrdersSettings() {
   const [rch, setRch] = useState({
     enabled: false,
     host: '',
-    port: '9100',
+    port: '80',
     department: '1',
     paymentCash: '',
     paymentCard: '',
@@ -171,7 +171,7 @@ export function OnlineOrdersSettings() {
     setRch({
       enabled: v.rchFiscalEnabled,
       host: v.rchHost ?? '',
-      port: String(v.rchPort ?? 9100),
+      port: String(v.rchPort ?? 80),
       department: String(v.rchDefaultDepartment ?? 1),
       paymentCash: v.rchPaymentIndexCash != null ? String(v.rchPaymentIndexCash) : '',
       paymentCard: v.rchPaymentIndexCard != null ? String(v.rchPaymentIndexCard) : '',
@@ -303,7 +303,7 @@ export function OnlineOrdersSettings() {
         await api.patch('/venues/me/online-orders-settings', {
           rchFiscalEnabled: rch.enabled,
           rchHost: rch.host.trim() || null,
-          rchPort: Number(rch.port) || 9100,
+          rchPort: Number(rch.port) || 80,
           rchDefaultDepartment: Number(rch.department) || 1,
           rchPaymentIndexCash: rch.paymentCash ? Number(rch.paymentCash) : null,
           rchPaymentIndexCard: rch.paymentCard ? Number(rch.paymentCard) : null,
@@ -782,10 +782,11 @@ export function OnlineOrdersSettings() {
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Stampa a mano dello scontrino fiscale dagli ordini online (stati Pronto o Completato).
             Sul registratore va una sola voce «Ordine n. …» con il totale già comprensivo delle spese
-            di consegna, sul reparto configurato qui (l&apos;IVA la applica la cassa). Il tablet con
-            l&apos;app Android deve essere sulla stessa rete LAN della cassa. Non disponibile da sito/PWA.
-            Gli indici Contanti/Carta sono i numeri dei pulsanti come in programmazione cassa
-            (tipici di fabbrica: Contanti 1, Carta/elettronico 4). Testato solo con stampante{' '}
+            di consegna, sul reparto configurato qui (l&apos;IVA la applica la cassa). Usa il web
+            service della cassa (<code>http://IP/service.cgi</code>, protocollo RCH Standard): in
+            SERVICE → Connettività abilita il web server. Il tablet con l&apos;app Android deve essere
+            sulla stessa rete LAN. Non disponibile da sito/PWA. Indici Contanti/Carta = pulsanti in
+            programmazione cassa (tipici: Contanti 1, Carta/elettronico 4). Solo{' '}
             <strong>RCH PRINT! F</strong>.
           </Typography>
 
@@ -809,12 +810,12 @@ export function OnlineOrdersSettings() {
               placeholder="192.168.1.220"
             />
             <TextField
-              label="Porta TCP"
+              label="Porta web service"
               size="small"
               type="number"
               value={rch.port}
               onChange={(e) => setRch((f) => ({ ...f, port: e.target.value }))}
-              helperText="Spesso 9100 o 23, come configurato sulla stampante"
+              helperText="Di solito 80 (HTTP /service.cgi). Non usare 23/9100 del canale raw."
             />
             <TextField
               label="Reparto fiscale"

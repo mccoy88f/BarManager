@@ -1327,7 +1327,7 @@ export class OnlineOrdersService {
   }
 
   /**
-   * Prepara il tracciato XON/XOFF per la PRINT! F: il socket TCP parte
+   * Prepara l'XML RCH Standard per la PRINT! F: la POST a /service.cgi parte
    * dall'APK Android (stessa LAN della cassa), non dal backend.
    */
   async prepareFiscalReceipt(venueId: string, id: string) {
@@ -1376,7 +1376,7 @@ export class OnlineOrdersService {
 
     return {
       host,
-      port: venue.rchPort || 9100,
+      port: venue.rchPort || 80,
       commands,
       payload: joinRchFiscalPayload(commands),
       paymentLabel,

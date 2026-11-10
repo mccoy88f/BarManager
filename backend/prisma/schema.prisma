@@ -245,14 +245,14 @@ model Venue {
   // sincronizzazione ordini online, non da un campo impostabile a mano.
   loyverseStoreId                  String?
 
-  // Registratore telematico RCH PRINT! F (XON/XOFF LAN): scontrino fiscale
-  // degli ordini online stampato a mano dall'APK Android sulla stessa rete
-  // del locale (il backend prepara solo il tracciato; il socket TCP parte
-  // dal tablet). Indici Contanti/Carta = numero del pulsante come in
-  // programmazione cassa (tipici di fabbrica 1 e 4).
+  // Registratore telematico RCH PRINT! F (web service /service.cgi):
+  // scontrino fiscale degli ordini online stampato a mano dall'APK Android
+  // sulla stessa rete del locale (il backend prepara solo l'XML; la POST
+  // HTTP parte dal tablet). Porta tipica 80. Indici Contanti/Carta =
+  // numero del pulsante come in programmazione cassa (tipici 1 e 4).
   rchFiscalEnabled       Boolean @default(false)
   rchHost                String?
-  rchPort                Int     @default(9100)
+  rchPort                Int     @default(80)
   rchDefaultDepartment   Int     @default(1)
   rchDeliveryDepartment  Int?
   rchPaymentIndexCash    Int?

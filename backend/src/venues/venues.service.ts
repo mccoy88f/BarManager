@@ -352,7 +352,7 @@ export class VenuesService {
 
   /**
    * Tracciato di prova (€0,00) per la stampante fiscale, con le impostazioni
-   * già salvate sul locale. La stampa TCP avviene solo dall'APK Android.
+   * già salvate sul locale. La POST a /service.cgi parte solo dall'APK Android.
    */
   async prepareFiscalTestReceipt(venueId: string) {
     const venue = await this.prisma.venue.findUnique({
@@ -399,7 +399,7 @@ export class VenuesService {
 
     return {
       host,
-      port: venue.rchPort || 9100,
+      port: venue.rchPort || 80,
       commands,
       payload: joinRchFiscalPayload(commands),
       paymentLabel,

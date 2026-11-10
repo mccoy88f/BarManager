@@ -1,6 +1,7 @@
 import {
   buildPaymentCommand,
   buildRchFiscalCommands,
+  buildRchFiscalXml,
   buildSaleCommand,
   joinRchFiscalPayload,
   sanitizeRchDescription,
@@ -13,15 +14,16 @@ describe('rch-fiscal', () => {
     expect(toCentesimi(2.005)).toBe(201);
   });
 
-  it('sanitizza la descrizione a 24 caratteri senza virgolette', () => {
-    expect(sanitizeRchDescription('Pizza "Margherita" molto lunga oltre il limite')).toBe(
+  it('sanitizza la descrizione a 24 caratteri senza separatori RCH', () => {
+    expect(sanitizeRchDescription('Pizza (Margherita) / molto lunga oltre')).toBe(
       'Pizza Margherita molto l',
     );
   });
 
-  it('compone vendita e pagamento XON/XOFF', () => {
-    expect(buildSaleCommand('Ordine n. 7', 1, 20, 1)).toBe('"Ordine n. 7"2000H1R');
-    expect(buildPaymentCommand(20, 4)).toBe('2000H4T');
+  it('compone vendita e pagamento protocollo RCH Standard', () => {
+    expect(buildSaleCommand('Ordine n. 7', 1, 20, 1)).toBe('=R1/$2000/(Ordine n. 7)');
+    expect(buildSaleCommand('Caffe', 2, 1, 2)).toBe('=R2/$100/*2/(Caffe)');
+    expect(buildPaymentCommand(20, 4, 'Carta')).toBe('=T4/$2000/(Carta)');
   });
 
   it('costruisce lo scontrino come unica voce Ordine n. con totale e chiusura', () => {
@@ -32,8 +34,18 @@ describe('rch-fiscal', () => {
       paymentIndex: 4,
       paymentLabel: 'Carta',
     });
-    expect(commands).toEqual(['"Ordine n. 12"2350H1R', '2350H4T']);
-    expect(joinRchFiscalPayload(commands)).toBe('"Ordine n. 12"2350H1R\n2350H4T\n');
+    expect(commands).toEqual(['=R1/$2350/(Ordine n. 12)', '=T4/$2350/(Carta)']);
+    expect(buildRchFiscalXml(commands)).toBe(
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Service>',
+        '  <cmd>=R1/$2350/(Ordine n. 12)</cmd>',
+        '  <cmd>=T4/$2350/(Carta)</cmd>',
+        '</Service>',
+        '',
+      ].join('\n'),
+    );
+    expect(joinRchFiscalPayload(commands)).toBe(buildRchFiscalXml(commands));
   });
 
   it('costruisce lo scontrino di test a 0 euro', () => {
@@ -44,6 +56,6 @@ describe('rch-fiscal', () => {
       paymentIndex: 1,
       paymentLabel: 'Contanti',
     });
-    expect(commands).toEqual(['"Test fiscale"0H1R', '0H1T']);
+    expect(commands).toEqual(['=R1/$0/(Test fiscale)', '=T1/$0/(Contanti)']);
   });
 });

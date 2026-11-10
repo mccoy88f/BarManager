@@ -264,7 +264,7 @@ export class VenuesController {
 
   /**
    * Tracciato di prova (€0,00) per la stampante fiscale.
-   * La stampa TCP avviene solo dall'APK Android sulla LAN del locale.
+   * La POST a /service.cgi avviene solo dall'APK Android sulla LAN del locale.
    */
   @Post('me/fiscal-receipt/test')
   @Roles(Role.ADMIN)
