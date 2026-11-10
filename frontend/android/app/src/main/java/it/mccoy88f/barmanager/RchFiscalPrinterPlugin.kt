@@ -58,7 +58,7 @@ class RchFiscalPrinterPlugin : Plugin() {
                 }
             }
             val detail = lastError?.localizedMessage ?: lastError?.message ?: "errore sconosciuto"
-            call.reject("Registratore RCH non raggiungibile ($host:$port): $detail", lastError)
+            call.reject("Stampante fiscale non raggiungibile ($host:$port): $detail", lastError)
         }
     }
 

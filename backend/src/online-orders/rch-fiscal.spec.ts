@@ -20,22 +20,19 @@ describe('rch-fiscal', () => {
   });
 
   it('compone vendita e pagamento XON/XOFF', () => {
-    expect(buildSaleCommand('Pizza', 1, 8.5, 1)).toBe('"Pizza"850H1R');
-    expect(buildSaleCommand('Pizza', 2, 8.5, 1)).toBe('"Pizza"2*850H1R');
-    expect(buildPaymentCommand(20, 1)).toBe('2000H1T');
+    expect(buildSaleCommand('Ordine n. 7', 1, 20, 1)).toBe('"Ordine n. 7"2000H1R');
+    expect(buildPaymentCommand(20, 4)).toBe('2000H4T');
   });
 
-  it('costruisce lo scontrino con spese di consegna e chiusura carta', () => {
+  it('costruisce lo scontrino come unica voce Ordine n. con totale e chiusura', () => {
     const commands = buildRchFiscalCommands({
-      lines: [{ description: 'Pizza', quantity: 2, unitPrice: 8.5 }],
-      deliveryFee: 3,
-      total: 20,
+      dailyNumber: 12,
+      total: 23.5,
       department: 1,
-      deliveryDepartment: 2,
       paymentIndex: 4,
       paymentLabel: 'Carta',
     });
-    expect(commands).toEqual(['"Pizza"2*850H1R', '"Spese di consegna"300H2R', '2000H4T']);
-    expect(joinRchFiscalPayload(commands)).toBe('"Pizza"2*850H1R\n"Spese di consegna"300H2R\n2000H4T\n');
+    expect(commands).toEqual(['"Ordine n. 12"2350H1R', '2350H4T']);
+    expect(joinRchFiscalPayload(commands)).toBe('"Ordine n. 12"2350H1R\n2350H4T\n');
   });
 });

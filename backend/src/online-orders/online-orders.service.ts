@@ -1328,37 +1328,28 @@ export class OnlineOrdersService {
         rchHost: true,
         rchPort: true,
         rchDefaultDepartment: true,
-        rchDeliveryDepartment: true,
         rchPaymentIndexCash: true,
         rchPaymentIndexCard: true,
       },
     });
     if (!venue) throw new NotFoundException('Locale non trovato');
     if (!venue.rchFiscalEnabled) {
-      throw new BadRequestException('Registratore RCH non abilitato (Impostazioni ordini online)');
+      throw new BadRequestException('Stampante fiscale non abilitata (Impostazioni ordini online)');
     }
     const host = venue.rchHost?.trim();
     if (!host) {
-      throw new BadRequestException('IP del registratore RCH non configurato');
+      throw new BadRequestException('IP della stampante fiscale non configurato');
     }
 
     const { paymentIndex, paymentLabel } = this.resolveRchPayment(order.paymentMethod, venue);
     const department = venue.rchDefaultDepartment || 1;
-    const deliveryDepartment = venue.rchDeliveryDepartment ?? department;
 
+    // Una sola voce fiscale "Ordine n. X" con il totale (consegna inclusa);
+    // l'IVA la applica la RCH in base al reparto configurato in impostazioni.
     const commands = buildRchFiscalCommands({
-      lines: order.lines.map((line) => {
-        const modifiersTotal = line.modifiers.reduce((sum, m) => sum + m.price, 0);
-        return {
-          description: line.variantName ? `${line.itemName} ${line.variantName}` : line.itemName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice + modifiersTotal,
-        };
-      }),
-      deliveryFee: order.deliveryFee,
+      dailyNumber: order.dailyNumber,
       total: order.total,
       department,
-      deliveryDepartment,
       paymentIndex,
       paymentLabel,
     });
@@ -1384,7 +1375,7 @@ export class OnlineOrdersService {
     if (paymentMethod === 'CASH') {
       if (venue.rchPaymentIndexCash == null) {
         throw new BadRequestException(
-          'Pulsante Contanti non configurato sulla RCH (Impostazioni ordini online)',
+          'Pulsante Contanti non configurato per la stampante fiscale (Impostazioni ordini online)',
         );
       }
       return { paymentIndex: venue.rchPaymentIndexCash, paymentLabel: 'Contanti' };
@@ -1392,12 +1383,12 @@ export class OnlineOrdersService {
     if (paymentMethod === 'CARD_ONLINE' || paymentMethod === 'CARD_IN_STORE') {
       if (venue.rchPaymentIndexCard == null) {
         throw new BadRequestException(
-          'Pulsante Carta non configurato sulla RCH (Impostazioni ordini online)',
+          'Pulsante Carta non configurato per la stampante fiscale (Impostazioni ordini online)',
         );
       }
       return { paymentIndex: venue.rchPaymentIndexCard, paymentLabel: 'Carta' };
     }
-    throw new BadRequestException('Metodo di pagamento non supportato per lo scontrino fiscale RCH');
+    throw new BadRequestException('Metodo di pagamento non supportato per lo scontrino fiscale');
   }
 
   async ackFiscalReceipt(

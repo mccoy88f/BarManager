@@ -2,24 +2,18 @@
  * Tracciato XON/XOFF per registratore RCH PRINT! F (LAN).
  * Sintassi allineata al dialetto documentato per RCH/DTR/Custom
  * (importi in centesimi; chiusura su indice pulsante programmato in cassa).
+ *
+ * v1: una sola riga di vendita "Ordine n. X" con il totale ordine
+ * (spese di consegna già incluse), poi chiusura pagamento.
  */
 
 export type RchPaymentLabel = 'Contanti' | 'Carta';
 
-export interface RchFiscalLineInput {
-  description: string;
-  quantity: number;
-  /** Prezzo unitario in euro. */
-  unitPrice: number;
-}
-
 export interface RchFiscalBuildInput {
-  lines: RchFiscalLineInput[];
-  deliveryFee: number;
-  /** Totale ordine in euro (deve coincidere con somma righe + consegna). */
+  dailyNumber: number;
+  /** Totale ordine in euro (subtotale + consegna). */
   total: number;
   department: number;
-  deliveryDepartment: number;
   paymentIndex: number;
   paymentLabel: RchPaymentLabel;
 }
@@ -55,17 +49,13 @@ export function buildPaymentCommand(totalEuros: number, paymentIndex: number): s
   return `${toCentesimi(totalEuros)}H${paymentIndex}T`;
 }
 
-/** Sequenza completa di comandi (una stringa per riga, terminate da \\n in payload). */
+/** Una riga "Ordine n. X" al totale, poi chiusura pagamento. */
 export function buildRchFiscalCommands(input: RchFiscalBuildInput): string[] {
-  const commands: string[] = [];
-  for (const line of input.lines) {
-    commands.push(buildSaleCommand(line.description, line.quantity, line.unitPrice, input.department));
-  }
-  if (input.deliveryFee > 0) {
-    commands.push(buildSaleCommand('Spese di consegna', 1, input.deliveryFee, input.deliveryDepartment));
-  }
-  commands.push(buildPaymentCommand(input.total, input.paymentIndex));
-  return commands;
+  const description = `Ordine n. ${input.dailyNumber}`;
+  return [
+    buildSaleCommand(description, 1, input.total, input.department),
+    buildPaymentCommand(input.total, input.paymentIndex),
+  ];
 }
 
 export function joinRchFiscalPayload(commands: string[]): string {

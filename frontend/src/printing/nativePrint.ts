@@ -150,12 +150,12 @@ export async function printOnPrinter(host: string, port: number, sections: Recei
 }
 
 /**
- * Scontrino fiscale RCH PRINT! F: TCP raw XON/XOFF dall'APK Android.
- * Su sito/PWA non è disponibile (nessun socket TCP dal browser).
+ * Scontrino fiscale (TCP raw XON/XOFF dall'APK Android).
+ * Testato solo con RCH PRINT! F. Su sito/PWA non è disponibile.
  */
 export async function printRchFiscal(host: string, port: number, payload: string): Promise<void> {
   if (!isNativeApp()) {
-    throw new Error('Lo scontrino fiscale RCH si stampa solo dall\'app Android sulla rete del locale.');
+    throw new Error('Lo scontrino fiscale si stampa solo dall\'app Android sulla rete del locale.');
   }
   await (await rchFiscal()).plugin.print({ host, port, payload });
 }

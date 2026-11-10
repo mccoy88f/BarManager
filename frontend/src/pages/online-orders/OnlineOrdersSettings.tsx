@@ -130,7 +130,6 @@ export function OnlineOrdersSettings() {
     host: '',
     port: '9100',
     department: '1',
-    deliveryDepartment: '',
     paymentCash: '',
     paymentCard: '',
   });
@@ -172,7 +171,6 @@ export function OnlineOrdersSettings() {
       host: v.rchHost ?? '',
       port: String(v.rchPort ?? 9100),
       department: String(v.rchDefaultDepartment ?? 1),
-      deliveryDepartment: v.rchDeliveryDepartment != null ? String(v.rchDeliveryDepartment) : '',
       paymentCash: v.rchPaymentIndexCash != null ? String(v.rchPaymentIndexCash) : '',
       paymentCard: v.rchPaymentIndexCard != null ? String(v.rchPaymentIndexCard) : '',
     });
@@ -305,12 +303,11 @@ export function OnlineOrdersSettings() {
           rchHost: rch.host.trim() || null,
           rchPort: Number(rch.port) || 9100,
           rchDefaultDepartment: Number(rch.department) || 1,
-          rchDeliveryDepartment: rch.deliveryDepartment ? Number(rch.deliveryDepartment) : null,
           rchPaymentIndexCash: rch.paymentCash ? Number(rch.paymentCash) : null,
           rchPaymentIndexCard: rch.paymentCard ? Number(rch.paymentCard) : null,
         })
       ).data,
-    onSuccess: () => { invalidateVenue(); showToast('Impostazioni registratore RCH salvate'); },
+    onSuccess: () => { invalidateVenue(); showToast('Impostazioni stampante fiscale salvate'); },
   });
 
   if (venueQuery.isLoading) {
@@ -759,13 +756,16 @@ export function OnlineOrdersSettings() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Registratore fiscale RCH PRINT! F
+            Stampante fiscale
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Stampa a mano dello scontrino fiscale dagli ordini online (stati Pronto o Completato).
-            Il tablet con l&apos;app Android deve essere sulla stessa rete LAN della cassa. Non disponibile
-            da sito/PWA. Gli indici Contanti/Carta sono i numeri dei pulsanti come in programmazione cassa
-            (tipici di fabbrica: Contanti 1, Carta/elettronico 4).
+            Sul registratore va una sola voce «Ordine n. …» con il totale già comprensivo delle spese
+            di consegna, sul reparto configurato qui (l&apos;IVA la applica la cassa). Il tablet con
+            l&apos;app Android deve essere sulla stessa rete LAN della cassa. Non disponibile da sito/PWA.
+            Gli indici Contanti/Carta sono i numeri dei pulsanti come in programmazione cassa
+            (tipici di fabbrica: Contanti 1, Carta/elettronico 4). Testato solo con stampante{' '}
+            <strong>RCH PRINT! F</strong>.
           </Typography>
 
           <FormControlLabel
@@ -776,12 +776,12 @@ export function OnlineOrdersSettings() {
                 onChange={(e) => setRch((f) => ({ ...f, enabled: e.target.checked }))}
               />
             }
-            label={rch.enabled ? 'Stampa fiscale RCH attiva' : 'Stampa fiscale RCH disattivata'}
+            label={rch.enabled ? 'Stampante fiscale attiva' : 'Stampante fiscale disattivata'}
           />
 
           <Stack spacing={2} sx={{ mt: 2, maxWidth: 420 }}>
             <TextField
-              label="Indirizzo IP cassa"
+              label="Indirizzo IP"
               size="small"
               value={rch.host}
               onChange={(e) => setRch((f) => ({ ...f, host: e.target.value }))}
@@ -793,22 +793,15 @@ export function OnlineOrdersSettings() {
               type="number"
               value={rch.port}
               onChange={(e) => setRch((f) => ({ ...f, port: e.target.value }))}
-              helperText="Spesso 9100 o 23, come configurato sulla cassa"
+              helperText="Spesso 9100 o 23, come configurato sulla stampante"
             />
             <TextField
-              label="Reparto fiscale (default)"
+              label="Reparto fiscale"
               size="small"
               type="number"
               value={rch.department}
               onChange={(e) => setRch((f) => ({ ...f, department: e.target.value }))}
-            />
-            <TextField
-              label="Reparto spese di consegna (opzionale)"
-              size="small"
-              type="number"
-              value={rch.deliveryDepartment}
-              onChange={(e) => setRch((f) => ({ ...f, deliveryDepartment: e.target.value }))}
-              helperText="Vuoto = stesso reparto di default"
+              helperText="Reparto su cui registrare l'importo (determina l'IVA)"
             />
             <TextField
               label="Pulsante Contanti (indice)"

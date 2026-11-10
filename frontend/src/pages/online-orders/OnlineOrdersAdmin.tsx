@@ -327,8 +327,8 @@ export function OnlineOrdersAdmin() {
       invalidate();
       showToast(
         result?.paymentLabel
-          ? `Scontrino fiscale inviato alla RCH (${result.paymentLabel})`
-          : 'Scontrino fiscale inviato alla RCH',
+          ? `Scontrino fiscale inviato alla stampante (${result.paymentLabel})`
+          : 'Scontrino fiscale inviato alla stampante',
       );
     },
     onError: (err) => {
@@ -463,8 +463,8 @@ export function OnlineOrdersAdmin() {
                     !isNativeApp()
                       ? 'Scontrino fiscale: disponibile solo dall\'app Android'
                       : order.fiscalPrintedAt
-                        ? 'Ristampa scontrino fiscale RCH'
-                        : 'Stampa scontrino fiscale RCH'
+                        ? 'Ristampa scontrino fiscale'
+                        : 'Stampa scontrino fiscale'
                   }
                 >
                   <span>
@@ -480,7 +480,7 @@ export function OnlineOrdersAdmin() {
                         bgcolor: 'background.paper',
                         '&:hover': { bgcolor: 'action.hover' },
                       }}
-                      aria-label="Stampa scontrino fiscale RCH"
+                      aria-label="Stampa scontrino fiscale"
                     >
                       <PointOfSaleIcon color={order.fiscalPrintedAt ? 'success' : 'inherit'} />
                     </IconButton>
