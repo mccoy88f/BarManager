@@ -70,6 +70,28 @@ function shiftDateOnly(dateOnly: string, days: number): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** True se `now` cade nella fascia [reservedAt, reservedAt + durata occupazione). */
+function isReservationOccupyingNow(
+  reservedAt: string,
+  slotDurationMinutes: number | null | undefined,
+  defaultDurationMinutes: number,
+  nowMs: number,
+): boolean {
+  const start = new Date(reservedAt).getTime();
+  if (Number.isNaN(start)) return false;
+  const duration = (slotDurationMinutes ?? defaultDurationMinutes) * 60_000;
+  return nowMs >= start && nowMs < start + duration;
+}
+
+function matchesReservationSearch(r: ReservationRow, rawQuery: string): boolean {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [r.firstName, r.lastName, r.email, r.phone, `${r.firstName} ${r.lastName}`, `${r.lastName} ${r.firstName}`]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q) || r.phone.replace(/\s+/g, '').includes(q.replace(/\s+/g, ''));
+}
+
 interface TableRow {
   id: string;
   label: string;
@@ -208,7 +230,10 @@ export function ReservationsAdmin() {
   const showToast = useToast();
   const [statusFilter, setStatusFilter] = useState<QueueFilter>('PENDING');
   const [overviewMode, setOverviewMode] = useState<OverviewMode>('lista');
-  const [selectedDate, setSelectedDate] = useState(todayDateOnly);
+  const [dateFrom, setDateFrom] = useState(todayDateOnly);
+  const [dateTo, setDateTo] = useState(todayDateOnly);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [detailReservation, setDetailReservation] = useState<ReservationRow | null>(null);
   const [rejecting, setRejecting] = useState<ReservationRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -226,24 +251,45 @@ export function ReservationsAdmin() {
   const [editing, setEditing] = useState<ReservationRow | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
 
-  /** Tutte le prenotazioni del giorno scelto: i conteggi sulle schede e il filtro tab sono client-side, come negli ordini online. */
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /** Prenotazioni nell'intervallo date: conteggi tab e ricerca sono client-side. */
   const reservationsQuery = useQuery({
-    queryKey: ['reservations-admin', selectedDate],
+    queryKey: ['reservations-admin', dateFrom, dateTo],
     queryFn: async () =>
-      (await api.get<ReservationRow[]>('/reservations', { params: { date: selectedDate } })).data,
+      (
+        await api.get<ReservationRow[]>('/reservations', {
+          params: { from: dateFrom, to: dateTo < dateFrom ? dateFrom : dateTo },
+        })
+      ).data,
   });
+
+  const venueSettingsQuery = useQuery({
+    queryKey: ['venue-me'],
+    queryFn: async () =>
+      (await api.get<{ reservationSlotDurationMinutes: number }>('/venues/me')).data,
+  });
+  const defaultSlotDurationMinutes = venueSettingsQuery.data?.reservationSlotDurationMinutes ?? 120;
+
+  const filteredReservations = useMemo(
+    () => (reservationsQuery.data ?? []).filter((r) => matchesReservationSearch(r, searchQuery)),
+    [reservationsQuery.data, searchQuery],
+  );
 
   const reservationsByTab = useMemo(() => {
     const grouped: Record<QueueFilter, ReservationRow[]> = { PENDING: [], CONFIRMED: [], CLOSED: [] };
-    for (const reservation of reservationsQuery.data ?? []) {
+    for (const reservation of filteredReservations) {
       if (reservation.status === 'PENDING') grouped.PENDING.push(reservation);
       else if (reservation.status === 'CONFIRMED') grouped.CONFIRMED.push(reservation);
       else grouped.CLOSED.push(reservation);
     }
     return grouped;
-  }, [reservationsQuery.data]);
+  }, [filteredReservations]);
 
-  /** Coperti (persone) del giorno selezionato: solo prenotazioni confermate. */
+  /** Coperti (persone) nell'intervallo: solo prenotazioni confermate (dopo eventuale ricerca). */
   const totalGuestsForDay = useMemo(
     () => reservationsByTab.CONFIRMED.reduce((sum, r) => sum + (Number(r.partySize) || 0), 0),
     [reservationsByTab],
@@ -271,9 +317,9 @@ export function ReservationsAdmin() {
   });
   const activeTables = useMemo(() => tablesQuery.data?.filter((t) => t.active) ?? [], [tablesQuery.data]);
 
-  /** Tavoli attivi ordinati per nome, ciascuno con le prenotazioni attive del giorno (PENDING/CONFIRMED) ordinate per orario e cognome. */
+  /** Tavoli attivi ordinati per nome, ciascuno con le prenotazioni attive del periodo (PENDING/CONFIRMED) ordinate per orario e cognome. */
   const reservationsByTable = useMemo(() => {
-    const activeForDay = (reservationsQuery.data ?? []).filter(
+    const activeForDay = filteredReservations.filter(
       (r) => r.status === 'PENDING' || r.status === 'CONFIRMED',
     );
     const sortReservations = (list: ReservationRow[]) =>
@@ -291,7 +337,7 @@ export function ReservationsAdmin() {
         table,
         reservations: sortReservations(activeForDay.filter((r) => r.tableIds.includes(table.id))),
       }));
-  }, [activeTables, reservationsQuery.data]);
+  }, [activeTables, filteredReservations]);
 
   // Tiene aggiornato il dettaglio aperto dopo accept/rifiuto/modifica; lo chiude se la riga non c'è più.
   useEffect(() => {
@@ -623,7 +669,7 @@ export function ReservationsAdmin() {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => {
-            setManualForm({ ...emptyManualForm, date: selectedDate });
+            setManualForm({ ...emptyManualForm, date: dateFrom });
             setAddOpen(true);
           }}
         >
@@ -631,27 +677,50 @@ export function ReservationsAdmin() {
         </Button>
       </Box>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
         <Stack direction="row" spacing={0.5} alignItems="center">
           <IconButton
-            aria-label="Giorno precedente"
-            onClick={() => setSelectedDate((d) => shiftDateOnly(d, -1))}
+            aria-label="Periodo precedente"
+            onClick={() => {
+              setDateFrom((d) => shiftDateOnly(d, -1));
+              setDateTo((d) => shiftDateOnly(d, -1));
+            }}
             size="small"
           >
             <ChevronLeftIcon />
           </IconButton>
           <TextField
             type="date"
-            label="Giorno"
+            label="Da"
             size="small"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value || todayDateOnly())}
+            value={dateFrom}
+            onChange={(e) => {
+              const next = e.target.value || todayDateOnly();
+              setDateFrom(next);
+              if (dateTo < next) setDateTo(next);
+            }}
             InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 150 }}
+          />
+          <TextField
+            type="date"
+            label="A"
+            size="small"
+            value={dateTo}
+            onChange={(e) => {
+              const next = e.target.value || todayDateOnly();
+              setDateTo(next);
+              if (next < dateFrom) setDateFrom(next);
+            }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 150 }}
           />
           <IconButton
-            aria-label="Giorno successivo"
-            onClick={() => setSelectedDate((d) => shiftDateOnly(d, 1))}
+            aria-label="Periodo successivo"
+            onClick={() => {
+              setDateFrom((d) => shiftDateOnly(d, 1));
+              setDateTo((d) => shiftDateOnly(d, 1));
+            }}
             size="small"
           >
             <ChevronRightIcon />
@@ -659,11 +728,23 @@ export function ReservationsAdmin() {
         </Stack>
         <Button
           size="small"
-          variant={selectedDate === todayDateOnly() ? 'contained' : 'outlined'}
-          onClick={() => setSelectedDate(todayDateOnly())}
+          variant={dateFrom === todayDateOnly() && dateTo === todayDateOnly() ? 'contained' : 'outlined'}
+          onClick={() => {
+            const today = todayDateOnly();
+            setDateFrom(today);
+            setDateTo(today);
+          }}
         >
           Oggi
         </Button>
+        <TextField
+          size="small"
+          label="Cerca"
+          placeholder="Nome, cognome, telefono o email"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          sx={{ minWidth: { xs: '100%', sm: 260 }, flex: { sm: 1 }, maxWidth: 360 }}
+        />
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -747,7 +828,8 @@ export function ReservationsAdmin() {
             )}
             {visibleReservations.length === 0 && (
               <Typography variant="body2" color="text.secondary">
-                Nessuna prenotazione in questo stato per il giorno selezionato.
+                Nessuna prenotazione in questo stato per il periodo selezionato
+                {searchQuery.trim() ? ' e la ricerca impostata' : ''}.
               </Typography>
             )}
           </Stack>
@@ -782,29 +864,42 @@ export function ReservationsAdmin() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {reservations.map((r) => (
-                      <TableRow
-                        key={r.id}
-                        hover
-                        sx={{ cursor: 'pointer' }}
-                        onClick={() => setDetailReservation(r)}
-                      >
-                        <TableCell sx={{ py: 0.75 }}>
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            <span>{formatTime(r.reservedAt)}</span>
-                            {r.status === 'PENDING' && (
-                              <Chip size="small" color="warning" label="?" sx={{ height: 18, fontSize: '0.65rem' }} />
-                            )}
-                          </Stack>
-                        </TableCell>
-                        <TableCell sx={{ py: 0.75 }}>
-                          {r.lastName} {r.firstName}
-                        </TableCell>
-                        <TableCell sx={{ py: 0.75 }} align="right">
-                          {r.partySize}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {reservations.map((r) => {
+                      const occupying = isReservationOccupyingNow(
+                        r.reservedAt,
+                        r.slotDurationMinutes,
+                        defaultSlotDurationMinutes,
+                        nowMs,
+                      );
+                      return (
+                        <TableRow
+                          key={r.id}
+                          hover
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: occupying ? 'success.main' : undefined,
+                            '&:hover': occupying ? { bgcolor: 'success.dark' } : undefined,
+                            '& td': occupying ? { color: 'common.white', borderColor: 'success.dark' } : undefined,
+                          }}
+                          onClick={() => setDetailReservation(r)}
+                        >
+                          <TableCell sx={{ py: 0.75 }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <span>{formatTime(r.reservedAt)}</span>
+                              {r.status === 'PENDING' && (
+                                <Chip size="small" color="warning" label="?" sx={{ height: 18, fontSize: '0.65rem' }} />
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell sx={{ py: 0.75 }}>
+                            {r.lastName} {r.firstName}
+                          </TableCell>
+                          <TableCell sx={{ py: 0.75 }} align="right">
+                            {r.partySize}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {reservations.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={3} sx={{ py: 1.5, color: 'text.secondary' }}>

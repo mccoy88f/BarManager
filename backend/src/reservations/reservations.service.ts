@@ -525,7 +525,8 @@ export class ReservationsService {
    * CONFIRMED) senza nemmeno un tavolo assegnato — la "coda prenotazioni"
    * da assegnare, che raccoglie sia le richieste online rimaste manuali
    * sia quelle aggiunte a mano in backoffice senza scegliere un tavolo.
-   * `date` (`YYYY-MM-DD`): limita a quel giorno nel fuso del locale.
+   * `date` / `from` / `to` (`YYYY-MM-DD`): limitano al giorno o all'intervallo
+   * nel fuso del locale (`date` equivale a from=to=date).
    *
    * Ogni riga porta anche `isReturningCustomer`: true se la stessa email
    * ha più di una prenotazione presso questo locale, per mostrare in UI il
@@ -536,6 +537,8 @@ export class ReservationsService {
     status?: ReservationStatus | ReservationStatus[],
     withoutTable?: boolean,
     date?: string,
+    from?: string,
+    to?: string,
   ) {
     const venue = await this.getVenueSettings(venueId);
     const statusFilter = withoutTable
@@ -543,11 +546,14 @@ export class ReservationsService {
       : Array.isArray(status)
         ? { in: status }
         : status;
+    const dateOnlyRe = /^\d{4}-\d{2}-\d{2}$/;
+    const rangeStart = from && dateOnlyRe.test(from) ? from : date && dateOnlyRe.test(date) ? date : undefined;
+    const rangeEnd = to && dateOnlyRe.test(to) ? to : date && dateOnlyRe.test(date) ? date : rangeStart;
     const reservedAtFilter =
-      date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      rangeStart && rangeEnd
         ? {
-            gte: parseDateOnlyStartOfDayInZone(date, venue.timezone),
-            lte: parseDateOnlyEndOfDayInZone(date, venue.timezone),
+            gte: parseDateOnlyStartOfDayInZone(rangeStart, venue.timezone),
+            lte: parseDateOnlyEndOfDayInZone(rangeEnd, venue.timezone),
           }
         : undefined;
     const reservations = await this.prisma.reservation.findMany({

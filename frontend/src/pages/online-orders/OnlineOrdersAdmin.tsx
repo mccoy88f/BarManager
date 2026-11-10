@@ -35,6 +35,8 @@ import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -85,6 +87,22 @@ interface OrderRow {
 
 /** Tab visibili nel pannello (REJECTED e CANCELLED accorpati in CLOSED). */
 const QUEUE_TABS: (OnlineOrderStatus | 'CLOSED')[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CLOSED'];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function todayDateOnly(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function shiftDateOnly(dateOnly: string, days: number): string {
+  const [y, m, day] = dateOnly.split('-').map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
 
 const tabLabels: Record<OnlineOrderStatus | 'CLOSED', string> = {
   PENDING: 'Da confermare',
@@ -169,6 +187,8 @@ export function OnlineOrdersAdmin() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [tab, setTab] = useState<OnlineOrderStatus | 'CLOSED'>('PENDING');
+  const [dateFrom, setDateFrom] = useState(todayDateOnly);
+  const [dateTo, setDateTo] = useState(todayDateOnly);
 
   const [rejecting, setRejecting] = useState<OrderRow | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -199,8 +219,13 @@ export function OnlineOrdersAdmin() {
   const { soundEnabled, toggleSound, markOrderHandled } = useOrderNotification();
 
   const queueQuery = useQuery({
-    queryKey: ['online-orders-queue'],
-    queryFn: async () => (await api.get<OrderRow[]>('/online-orders')).data,
+    queryKey: ['online-orders-queue', dateFrom, dateTo],
+    queryFn: async () =>
+      (
+        await api.get<OrderRow[]>('/online-orders', {
+          params: { from: dateFrom, to: dateTo < dateFrom ? dateFrom : dateTo },
+        })
+      ).data,
     refetchInterval: QUEUE_POLL_MS,
   });
 
@@ -221,6 +246,16 @@ export function OnlineOrdersAdmin() {
     }
     return grouped;
   }, [queueQuery.data]);
+
+  /** Numero ordini del giorno (esclusi rifiutati/annullati), analogo al conteggio in Prenotazioni. */
+  const ordersCountForDay = useMemo(
+    () =>
+      ordersByTab.PENDING.length +
+      ordersByTab.CONFIRMED.length +
+      ordersByTab.READY.length +
+      ordersByTab.COMPLETED.length,
+    [ordersByTab],
+  );
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['online-orders-queue'] });
 
@@ -725,9 +760,9 @@ export function OnlineOrdersAdmin() {
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
           <Typography variant="h5" fontWeight={700}>
-            Ordini online
+            Ordini online ({ordersCountForDay})
           </Typography>
           {ordersByTab.PENDING.length > 0 && (
             <Chip
@@ -755,6 +790,68 @@ export function OnlineOrdersAdmin() {
           {soundEnabled ? 'Notifiche sonore attive' : 'Attiva notifiche sonore'}
         </Button>
       </Box>
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <IconButton
+            aria-label="Periodo precedente"
+            onClick={() => {
+              setDateFrom((d) => shiftDateOnly(d, -1));
+              setDateTo((d) => shiftDateOnly(d, -1));
+            }}
+            size="small"
+          >
+            <ChevronLeftIcon />
+          </IconButton>
+          <TextField
+            type="date"
+            label="Da"
+            size="small"
+            value={dateFrom}
+            onChange={(e) => {
+              const next = e.target.value || todayDateOnly();
+              setDateFrom(next);
+              if (dateTo < next) setDateTo(next);
+            }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 150 }}
+          />
+          <TextField
+            type="date"
+            label="A"
+            size="small"
+            value={dateTo}
+            onChange={(e) => {
+              const next = e.target.value || todayDateOnly();
+              setDateTo(next);
+              if (next < dateFrom) setDateFrom(next);
+            }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 150 }}
+          />
+          <IconButton
+            aria-label="Periodo successivo"
+            onClick={() => {
+              setDateFrom((d) => shiftDateOnly(d, 1));
+              setDateTo((d) => shiftDateOnly(d, 1));
+            }}
+            size="small"
+          >
+            <ChevronRightIcon />
+          </IconButton>
+        </Stack>
+        <Button
+          size="small"
+          variant={dateFrom === todayDateOnly() && dateTo === todayDateOnly() ? 'contained' : 'outlined'}
+          onClick={() => {
+            const today = todayDateOnly();
+            setDateFrom(today);
+            setDateTo(today);
+          }}
+        >
+          Oggi
+        </Button>
+      </Stack>
 
       <Tabs
         value={tab}
@@ -803,13 +900,13 @@ export function OnlineOrdersAdmin() {
         {ordersByTab[tab].map(renderOrderCard)}
         {ordersByTab[tab].length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            Nessun ordine in questo stato.
+            Nessun ordine in questo stato per il periodo selezionato.
           </Typography>
         )}
         {(tab === 'COMPLETED' || tab === 'CLOSED') && (
           <Typography variant="body2" sx={{ textAlign: 'center', mt: 1 }}>
-            Qui sono mostrati solo gli ordini delle ultime 3 ore. Per vedere tutto lo storico ordini{' '}
-            <RouterLink to="/online-orders/history">clicca qui</RouterLink>.
+            Storico su più giorni o con filtri avanzati:{' '}
+            <RouterLink to="/online-orders/history">vai allo storico</RouterLink>.
           </Typography>
         )}
       </Stack>

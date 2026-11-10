@@ -31,7 +31,8 @@ export class ReservationsController {
    * senza distinzione). `withoutTable=true` ignora `status` e restituisce
    * la coda delle prenotazioni attive senza tavolo assegnato, qualunque
    * sia il loro stato (PENDING dal widget pubblico o CONFIRMED aggiunte a
-   * mano). `date=YYYY-MM-DD` filtra al giorno nel fuso del locale.
+   * mano). `date` / `from` / `to` (YYYY-MM-DD) filtrano il giorno o
+   * l'intervallo nel fuso del locale (`date` = from=to).
    */
   @Get()
   list(
@@ -39,6 +40,8 @@ export class ReservationsController {
     @Query('status') status?: string,
     @Query('withoutTable') withoutTable?: string,
     @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     const statusFilter = status ? (status.split(',') as ReservationStatus[]) : undefined;
     return this.reservationsService.listReservations(
@@ -46,6 +49,8 @@ export class ReservationsController {
       statusFilter,
       withoutTable === 'true',
       date,
+      from,
+      to,
     );
   }
 

@@ -35,6 +35,8 @@ import {
   dateOnlyInZone,
   jsWeekdayInZone,
   minutesOfDayInZone,
+  parseDateOnlyEndOfDayInZone,
+  parseDateOnlyStartOfDayInZone,
   startOfDayInZone,
 } from '../common/timezone/timezone';
 import { distanceMeters } from '../common/geo/geo';
@@ -742,25 +744,43 @@ export class OnlineOrdersService {
   }
 
   /**
-   * Ordini ancora aperti (QUEUE_STATUSES) più quelli chiusi di recente
-   * (COMPLETED/REJECTED/CANCELLED nelle ultime 3 ore, v.
-   * QUEUE_CLOSED_WINDOW_MS): alimenta sia le schede "vive" sia "Completati"
-   * e "Rifiutati / Annullati" della coda admin — oltre la finestra di 3 ore
-   * quelle due schede restano vuote, lo storico completo è altrove
-   * (listHistory/OnlineOrdersHistory.tsx).
+   * Coda admin ordini online.
+   * - Con `date` / `from` / `to` (YYYY-MM-DD): ordini con requestedAt nel
+   *   giorno o intervallo (fuso del locale); `date` equivale a from=to.
+   * - Senza date: ordini aperti + chiusi nelle ultime 3 ore (usato anche
+   *   dalle notifiche sonore, che non filtrano per giorno).
    */
-  listQueue(venueId: string) {
+  async listQueue(venueId: string, date?: string, from?: string, to?: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { timezone: true },
+    });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+
+    const dateOnlyRe = /^\d{4}-\d{2}-\d{2}$/;
+    const rangeStart = from && dateOnlyRe.test(from) ? from : date && dateOnlyRe.test(date) ? date : undefined;
+    const rangeEnd = to && dateOnlyRe.test(to) ? to : date && dateOnlyRe.test(date) ? date : rangeStart;
+
+    const dayFilter =
+      rangeStart && rangeEnd
+        ? {
+            requestedAt: {
+              gte: parseDateOnlyStartOfDayInZone(rangeStart, venue.timezone),
+              lte: parseDateOnlyEndOfDayInZone(rangeEnd, venue.timezone),
+            },
+          }
+        : {
+            OR: [
+              { status: { in: QUEUE_STATUSES } },
+              {
+                status: { in: HISTORY_STATUSES },
+                updatedAt: { gte: new Date(Date.now() - QUEUE_CLOSED_WINDOW_MS) },
+              },
+            ],
+          };
+
     return this.prisma.onlineOrder.findMany({
-      where: {
-        venueId,
-        OR: [
-          { status: { in: QUEUE_STATUSES } },
-          {
-            status: { in: HISTORY_STATUSES },
-            updatedAt: { gte: new Date(Date.now() - QUEUE_CLOSED_WINDOW_MS) },
-          },
-        ],
-      },
+      where: { venueId, ...dayFilter },
       include: { lines: { include: { modifiers: true } } },
       orderBy: { requestedAt: 'asc' },
     });

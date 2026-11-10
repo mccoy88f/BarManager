@@ -19,10 +19,19 @@ import { AckFiscalReceiptDto } from './dto/ack-fiscal-receipt.dto';
 export class OnlineOrdersController {
   constructor(private onlineOrdersService: OnlineOrdersService) {}
 
-  /** Ordini ancora "vivi" (PENDING/CONFIRMED/READY), per la coda in tempo reale. */
+  /**
+   * Coda admin: con `date` / `from` / `to` (YYYY-MM-DD) filtra giorno o
+   * intervallo nel fuso del locale; senza date resta la coda aperta +
+   * chiusi recenti (notifiche).
+   */
   @Get()
-  queue(@CurrentUser() user: AuthenticatedUser) {
-    return this.onlineOrdersService.listQueue(requireVenueId(user));
+  queue(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.onlineOrdersService.listQueue(requireVenueId(user), date, from, to);
   }
 
   /** Ordini conclusi (COMPLETED/REJECTED/CANCELLED di default), per lo storico separato dalla coda (§120). */
