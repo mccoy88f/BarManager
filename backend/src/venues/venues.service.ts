@@ -144,6 +144,13 @@ export class VenuesService {
         loyversePaymentTypeIdCardOnline: true,
         loyversePaymentTypeIdCardInStore: true,
         loyverseDeliveryVariantId: true,
+        rchFiscalEnabled: true,
+        rchHost: true,
+        rchPort: true,
+        rchDefaultDepartment: true,
+        rchDeliveryDepartment: true,
+        rchPaymentIndexCash: true,
+        rchPaymentIndexCard: true,
       },
     });
     if (!venue) return venue;

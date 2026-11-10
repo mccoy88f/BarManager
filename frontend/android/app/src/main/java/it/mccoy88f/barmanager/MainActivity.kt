@@ -31,6 +31,7 @@ class MainActivity : BridgeActivity() {
 
         registerPlugin(AppSettingsPlugin::class.java)
         registerPlugin(EscPosPrinterPlugin::class.java)
+        registerPlugin(RchFiscalPrinterPlugin::class.java)
         registerPlugin(NativePushPlugin::class.java)
 
         val url = if (domain.startsWith("http://") || domain.startsWith("https://")) {

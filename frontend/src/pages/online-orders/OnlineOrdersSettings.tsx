@@ -46,6 +46,13 @@ interface VenueOnlineOrdersSettings {
   loyversePaymentTypeIdCardOnline: string | null;
   loyversePaymentTypeIdCardInStore: string | null;
   loyverseDeliveryVariantId: string | null;
+  rchFiscalEnabled: boolean;
+  rchHost: string | null;
+  rchPort: number;
+  rchDefaultDepartment: number;
+  rchDeliveryDepartment: number | null;
+  rchPaymentIndexCash: number | null;
+  rchPaymentIndexCard: number | null;
 }
 
 interface LoyversePaymentType {
@@ -118,6 +125,15 @@ export function OnlineOrdersSettings() {
     cardInStore: '',
     deliveryVariantId: '',
   });
+  const [rch, setRch] = useState({
+    enabled: false,
+    host: '',
+    port: '9100',
+    department: '1',
+    deliveryDepartment: '',
+    paymentCash: '',
+    paymentCard: '',
+  });
 
   const ordersHydrated = useRef(false);
   useEffect(() => {
@@ -150,6 +166,15 @@ export function OnlineOrdersSettings() {
       cardOnline: v.loyversePaymentTypeIdCardOnline ?? '',
       cardInStore: v.loyversePaymentTypeIdCardInStore ?? '',
       deliveryVariantId: v.loyverseDeliveryVariantId ?? '',
+    });
+    setRch({
+      enabled: v.rchFiscalEnabled,
+      host: v.rchHost ?? '',
+      port: String(v.rchPort ?? 9100),
+      department: String(v.rchDefaultDepartment ?? 1),
+      deliveryDepartment: v.rchDeliveryDepartment != null ? String(v.rchDeliveryDepartment) : '',
+      paymentCash: v.rchPaymentIndexCash != null ? String(v.rchPaymentIndexCash) : '',
+      paymentCard: v.rchPaymentIndexCard != null ? String(v.rchPaymentIndexCard) : '',
     });
   }, [venueQuery.data]);
 
@@ -270,6 +295,22 @@ export function OnlineOrdersSettings() {
         })
       ).data,
     onSuccess: () => { invalidateVenue(); showToast('Mappatura Loyverse salvata'); },
+  });
+
+  const saveRchMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await api.patch('/venues/me/online-orders-settings', {
+          rchFiscalEnabled: rch.enabled,
+          rchHost: rch.host.trim() || null,
+          rchPort: Number(rch.port) || 9100,
+          rchDefaultDepartment: Number(rch.department) || 1,
+          rchDeliveryDepartment: rch.deliveryDepartment ? Number(rch.deliveryDepartment) : null,
+          rchPaymentIndexCash: rch.paymentCash ? Number(rch.paymentCash) : null,
+          rchPaymentIndexCard: rch.paymentCard ? Number(rch.paymentCard) : null,
+        })
+      ).data,
+    onSuccess: () => { invalidateVenue(); showToast('Impostazioni registratore RCH salvate'); },
   });
 
   if (venueQuery.isLoading) {
@@ -712,6 +753,92 @@ export function OnlineOrdersSettings() {
           >
             Salva
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Registratore fiscale RCH PRINT! F
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Stampa a mano dello scontrino fiscale dagli ordini online (stati Pronto o Completato).
+            Il tablet con l&apos;app Android deve essere sulla stessa rete LAN della cassa. Non disponibile
+            da sito/PWA. Gli indici Contanti/Carta sono i numeri dei pulsanti come in programmazione cassa
+            (tipici di fabbrica: Contanti 1, Carta/elettronico 4).
+          </Typography>
+
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Switch
+                checked={rch.enabled}
+                onChange={(e) => setRch((f) => ({ ...f, enabled: e.target.checked }))}
+              />
+            }
+            label={rch.enabled ? 'Stampa fiscale RCH attiva' : 'Stampa fiscale RCH disattivata'}
+          />
+
+          <Stack spacing={2} sx={{ mt: 2, maxWidth: 420 }}>
+            <TextField
+              label="Indirizzo IP cassa"
+              size="small"
+              value={rch.host}
+              onChange={(e) => setRch((f) => ({ ...f, host: e.target.value }))}
+              placeholder="192.168.1.220"
+            />
+            <TextField
+              label="Porta TCP"
+              size="small"
+              type="number"
+              value={rch.port}
+              onChange={(e) => setRch((f) => ({ ...f, port: e.target.value }))}
+              helperText="Spesso 9100 o 23, come configurato sulla cassa"
+            />
+            <TextField
+              label="Reparto fiscale (default)"
+              size="small"
+              type="number"
+              value={rch.department}
+              onChange={(e) => setRch((f) => ({ ...f, department: e.target.value }))}
+            />
+            <TextField
+              label="Reparto spese di consegna (opzionale)"
+              size="small"
+              type="number"
+              value={rch.deliveryDepartment}
+              onChange={(e) => setRch((f) => ({ ...f, deliveryDepartment: e.target.value }))}
+              helperText="Vuoto = stesso reparto di default"
+            />
+            <TextField
+              label="Pulsante Contanti (indice)"
+              size="small"
+              type="number"
+              value={rch.paymentCash}
+              onChange={(e) => setRch((f) => ({ ...f, paymentCash: e.target.value }))}
+              helperText="Usato per ordini pagati in contanti"
+            />
+            <TextField
+              label="Pulsante Carta (indice)"
+              size="small"
+              type="number"
+              value={rch.paymentCard}
+              onChange={(e) => setRch((f) => ({ ...f, paymentCard: e.target.value }))}
+              helperText="Usato per carta online e carta in negozio"
+            />
+          </Stack>
+
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            disabled={saveRchMutation.isPending}
+            onClick={() => saveRchMutation.mutate()}
+          >
+            Salva
+          </Button>
+          {saveRchMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>{extractErrorMessage(saveRchMutation.error)}</Alert>
+          )}
         </CardContent>
       </Card>
     </Box>

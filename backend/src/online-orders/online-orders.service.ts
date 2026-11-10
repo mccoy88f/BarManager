@@ -48,6 +48,11 @@ import { OnlineOrdersMailService } from './online-orders-mail.service';
 import { PushService } from '../push/push.service';
 import { CreateOnlineOrderDto } from './dto/create-online-order.dto';
 import { CartDto } from './dto/cart-line.dto';
+import {
+  buildRchFiscalCommands,
+  joinRchFiscalPayload,
+  RchPaymentLabel,
+} from './rch-fiscal';
 import { RejectOnlineOrderDto } from './dto/reject-online-order.dto';
 import { ProposeOrderTimeChangeDto } from './dto/propose-order-time-change.dto';
 import { CompleteOnlineOrderDto } from './dto/complete-online-order.dto';
@@ -1299,5 +1304,119 @@ export class OnlineOrdersService {
     });
     if (!venue) throw new NotFoundException('Locale non trovato');
     return [this.buildFullReceiptPayload(venue, order, venue.timezone)];
+  }
+
+  /**
+   * Prepara il tracciato XON/XOFF per la PRINT! F: il socket TCP parte
+   * dall'APK Android (stessa LAN della cassa), non dal backend.
+   */
+  async prepareFiscalReceipt(venueId: string, id: string) {
+    const order = await this.requireOrder(venueId, id);
+    if (order.status !== 'READY' && order.status !== 'COMPLETED') {
+      throw new BadRequestException('Lo scontrino fiscale si stampa solo con ordine pronto o completato');
+    }
+    if (!order.paymentMethod) {
+      throw new BadRequestException(
+        'Metodo di pagamento assente: completa prima l\'ordine (ritiro) oppure attendi il pagamento in consegna',
+      );
+    }
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        rchFiscalEnabled: true,
+        rchHost: true,
+        rchPort: true,
+        rchDefaultDepartment: true,
+        rchDeliveryDepartment: true,
+        rchPaymentIndexCash: true,
+        rchPaymentIndexCard: true,
+      },
+    });
+    if (!venue) throw new NotFoundException('Locale non trovato');
+    if (!venue.rchFiscalEnabled) {
+      throw new BadRequestException('Registratore RCH non abilitato (Impostazioni ordini online)');
+    }
+    const host = venue.rchHost?.trim();
+    if (!host) {
+      throw new BadRequestException('IP del registratore RCH non configurato');
+    }
+
+    const { paymentIndex, paymentLabel } = this.resolveRchPayment(order.paymentMethod, venue);
+    const department = venue.rchDefaultDepartment || 1;
+    const deliveryDepartment = venue.rchDeliveryDepartment ?? department;
+
+    const commands = buildRchFiscalCommands({
+      lines: order.lines.map((line) => {
+        const modifiersTotal = line.modifiers.reduce((sum, m) => sum + m.price, 0);
+        return {
+          description: line.variantName ? `${line.itemName} ${line.variantName}` : line.itemName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice + modifiersTotal,
+        };
+      }),
+      deliveryFee: order.deliveryFee,
+      total: order.total,
+      department,
+      deliveryDepartment,
+      paymentIndex,
+      paymentLabel,
+    });
+
+    return {
+      host,
+      port: venue.rchPort || 9100,
+      commands,
+      payload: joinRchFiscalPayload(commands),
+      paymentLabel,
+      alreadyPrinted: !!order.fiscalPrintedAt,
+      fiscalPrintedAt: order.fiscalPrintedAt,
+    };
+  }
+
+  private resolveRchPayment(
+    paymentMethod: OnlineOrderPaymentMethod,
+    venue: {
+      rchPaymentIndexCash: number | null;
+      rchPaymentIndexCard: number | null;
+    },
+  ): { paymentIndex: number; paymentLabel: RchPaymentLabel } {
+    if (paymentMethod === 'CASH') {
+      if (venue.rchPaymentIndexCash == null) {
+        throw new BadRequestException(
+          'Pulsante Contanti non configurato sulla RCH (Impostazioni ordini online)',
+        );
+      }
+      return { paymentIndex: venue.rchPaymentIndexCash, paymentLabel: 'Contanti' };
+    }
+    if (paymentMethod === 'CARD_ONLINE' || paymentMethod === 'CARD_IN_STORE') {
+      if (venue.rchPaymentIndexCard == null) {
+        throw new BadRequestException(
+          'Pulsante Carta non configurato sulla RCH (Impostazioni ordini online)',
+        );
+      }
+      return { paymentIndex: venue.rchPaymentIndexCard, paymentLabel: 'Carta' };
+    }
+    throw new BadRequestException('Metodo di pagamento non supportato per lo scontrino fiscale RCH');
+  }
+
+  async ackFiscalReceipt(
+    venueId: string,
+    id: string,
+    result: { success: boolean; error?: string },
+  ) {
+    await this.requireOrder(venueId, id);
+    if (result.success) {
+      return this.prisma.onlineOrder.update({
+        where: { id },
+        data: { fiscalPrintedAt: new Date(), fiscalPrintError: null },
+        include: { lines: { include: { modifiers: true } } },
+      });
+    }
+    return this.prisma.onlineOrder.update({
+      where: { id },
+      data: { fiscalPrintError: result.error?.trim() || 'Stampa fiscale non riuscita' },
+      include: { lines: { include: { modifiers: true } } },
+    });
   }
 }

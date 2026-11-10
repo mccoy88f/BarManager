@@ -245,6 +245,19 @@ model Venue {
   // sincronizzazione ordini online, non da un campo impostabile a mano.
   loyverseStoreId                  String?
 
+  // Registratore telematico RCH PRINT! F (XON/XOFF LAN): scontrino fiscale
+  // degli ordini online stampato a mano dall'APK Android sulla stessa rete
+  // del locale (il backend prepara solo il tracciato; il socket TCP parte
+  // dal tablet). Indici Contanti/Carta = numero del pulsante come in
+  // programmazione cassa (tipici di fabbrica 1 e 4).
+  rchFiscalEnabled       Boolean @default(false)
+  rchHost                String?
+  rchPort                Int     @default(9100)
+  rchDefaultDepartment   Int     @default(1)
+  rchDeliveryDepartment  Int?
+  rchPaymentIndexCash    Int?
+  rchPaymentIndexCard    Int?
+
   users                 User[]
   employees             Employee[]
   fridges               Fridge[]
@@ -1776,6 +1789,11 @@ model OnlineOrder {
   // non è configurata — non blocca mai l'ordine reale, v. §5.10.
   loyverseReceiptId String?
   loyverseSyncError String?
+
+  // Esito stampa scontrino fiscale RCH (APK, a richiesta): timestamp di
+  // successo e ultimo errore — non blocca mai l'ordine reale.
+  fiscalPrintedAt  DateTime?
+  fiscalPrintError String?
 
   venueId String
   venue   Venue  @relation(fields: [venueId], references: [id])

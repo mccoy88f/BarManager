@@ -17,6 +17,10 @@ interface EscposPlugin {
   print(options: { host: string; port: number; sections: ReceiptSection[] }): Promise<void>;
 }
 
+interface RchFiscalPlugin {
+  print(options: { host: string; port: number; payload: string }): Promise<void>;
+}
+
 export interface AppInfoResult {
   versionName: string;
   versionCode: number;
@@ -73,6 +77,7 @@ function nativePlugin<T>(name: string): Promise<{ plugin: T }> {
   return box as Promise<{ plugin: T }>;
 }
 const escpos = () => nativePlugin<EscposPlugin>('Escpos');
+const rchFiscal = () => nativePlugin<RchFiscalPlugin>('RchFiscal');
 export const appSettings = () => nativePlugin<AppSettingsPlugin>('AppSettings');
 
 export interface DevicePermissionState {
@@ -142,6 +147,17 @@ export async function printOnAssignedPrinters(usage: string, sections: ReceiptSe
 /** Test di stampa (§5.11): stampante scelta esplicitamente dall'admin, non risolta per tipo. */
 export async function printOnPrinter(host: string, port: number, sections: ReceiptSection[]): Promise<void> {
   await (await escpos()).plugin.print({ host, port, sections });
+}
+
+/**
+ * Scontrino fiscale RCH PRINT! F: TCP raw XON/XOFF dall'APK Android.
+ * Su sito/PWA non è disponibile (nessun socket TCP dal browser).
+ */
+export async function printRchFiscal(host: string, port: number, payload: string): Promise<void> {
+  if (!isNativeApp()) {
+    throw new Error('Lo scontrino fiscale RCH si stampa solo dall\'app Android sulla rete del locale.');
+  }
+  await (await rchFiscal()).plugin.print({ host, port, payload });
 }
 
 interface PrintOrShareOptions {

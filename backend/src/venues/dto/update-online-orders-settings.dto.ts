@@ -83,4 +83,39 @@ export class UpdateOnlineOrdersSettingsDto {
   @IsOptional()
   @IsString()
   loyverseDeliveryVariantId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  rchFiscalEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  rchHost?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rchPort?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rchDefaultDepartment?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rchDeliveryDepartment?: number | null;
+
+  /** Indice pulsante Contanti sulla programmazione cassa RCH. null = non configurato. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rchPaymentIndexCash?: number | null;
+
+  /** Indice pulsante Carta/elettronico sulla programmazione cassa RCH. null = non configurato. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rchPaymentIndexCard?: number | null;
 }

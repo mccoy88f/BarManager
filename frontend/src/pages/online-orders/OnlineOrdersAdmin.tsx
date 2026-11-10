@@ -34,6 +34,7 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -41,10 +42,9 @@ import { QuarterHourTimeField } from '../../components/QuarterHourTimeField';
 import { useToast } from '../../components/ToastProvider';
 import { PENDING_CHIP_COLOR, SUCCESS_CHIP_COLOR, NEUTRAL_CHIP_COLOR } from '../../config/statusChip';
 import { shareReceiptPdf } from '../../printing/printJob';
-import { printOrShare } from '../../printing/nativePrint';
+import { isNativeApp, printOrShare, printRchFiscal } from '../../printing/nativePrint';
 import { useOrderNotification } from '../../context/OrderNotificationContext';
-
-import { formatCurrency, formatDateAndTime } from '../../utils/format';
+import { formatCurrency, formatDateAndTime, formatErrorMessage } from '../../utils/format';
 type OnlineOrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
 type Fulfillment = 'PICKUP' | 'DELIVERY';
 
@@ -79,6 +79,8 @@ interface OrderRow {
   deliveryFee: number;
   total: number;
   lines: OrderLine[];
+  fiscalPrintedAt: string | null;
+  fiscalPrintError: string | null;
 }
 
 /** Tab visibili nel pannello (REJECTED e CANCELLED accorpati in CLOSED). */
@@ -202,6 +204,13 @@ export function OnlineOrdersAdmin() {
     refetchInterval: QUEUE_POLL_MS,
   });
 
+  const venueQuery = useQuery({
+    queryKey: ['venue-me'],
+    queryFn: async () =>
+      (await api.get<{ rchFiscalEnabled: boolean }>('/venues/me')).data,
+  });
+  const rchFiscalEnabled = venueQuery.data?.rchFiscalEnabled === true;
+
   const ordersByTab = useMemo(() => {
     const grouped: Record<OnlineOrderStatus | 'CLOSED', OrderRow[]> = { PENDING: [], CONFIRMED: [], READY: [], COMPLETED: [], REJECTED: [], CANCELLED: [], CLOSED: [] };
     for (const order of queueQuery.data ?? []) {
@@ -288,6 +297,47 @@ export function OnlineOrdersAdmin() {
         message: `Stampa non riuscita.${err instanceof Error ? ` ${err.message}` : ''}`,
         severity: 'error',
       }),
+  });
+
+  /** Scontrino fiscale RCH: tracciato dal backend, TCP solo dall'APK Android. */
+  const fiscalPrintMutation = useMutation({
+    mutationFn: async (order: OrderRow) => {
+      if (order.fiscalPrintedAt) {
+        const ok = window.confirm('Scontrino fiscale già stampato. Vuoi ristamparlo comunque?');
+        if (!ok) return { skipped: true as const };
+      }
+      const { data } = await api.get<{
+        host: string;
+        port: number;
+        payload: string;
+        paymentLabel: string;
+      }>(`/online-orders/${order.id}/fiscal-receipt`);
+      try {
+        await printRchFiscal(data.host, data.port, data.payload);
+        await api.post(`/online-orders/${order.id}/fiscal-receipt/ack`, { success: true });
+        return { skipped: false as const, paymentLabel: data.paymentLabel };
+      } catch (err) {
+        const message = formatErrorMessage(err);
+        await api.post(`/online-orders/${order.id}/fiscal-receipt/ack`, { success: false, error: message }).catch(() => undefined);
+        throw err;
+      }
+    },
+    onSuccess: (result) => {
+      if (result?.skipped) return;
+      invalidate();
+      showToast(
+        result?.paymentLabel
+          ? `Scontrino fiscale inviato alla RCH (${result.paymentLabel})`
+          : 'Scontrino fiscale inviato alla RCH',
+      );
+    },
+    onError: (err) => {
+      invalidate();
+      showToast({
+        message: `Stampa fiscale non riuscita. ${formatErrorMessage(err)}`,
+        severity: 'error',
+      });
+    },
   });
 
   const renderOrderCard = (order: OrderRow) => (
@@ -405,8 +455,48 @@ export function OnlineOrdersAdmin() {
                 <ReceiptLongIcon />
               </IconButton>
             </Tooltip>
+            {rchFiscalEnabled &&
+              (order.status === 'READY' || order.status === 'COMPLETED') &&
+              !!order.paymentMethod && (
+                <Tooltip
+                  title={
+                    !isNativeApp()
+                      ? 'Scontrino fiscale: disponibile solo dall\'app Android'
+                      : order.fiscalPrintedAt
+                        ? 'Ristampa scontrino fiscale RCH'
+                        : 'Stampa scontrino fiscale RCH'
+                  }
+                >
+                  <span>
+                    <IconButton
+                      onClick={() => fiscalPrintMutation.mutate(order)}
+                      disabled={!isNativeApp() || fiscalPrintMutation.isPending}
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        border: '1px solid',
+                        borderColor: order.fiscalPrintedAt ? 'success.main' : 'divider',
+                        borderRadius: 2,
+                        bgcolor: 'background.paper',
+                        '&:hover': { bgcolor: 'action.hover' },
+                      }}
+                      aria-label="Stampa scontrino fiscale RCH"
+                    >
+                      <PointOfSaleIcon color={order.fiscalPrintedAt ? 'success' : 'inherit'} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
           </Stack>
         </Box>
+        {order.fiscalPrintedAt && (
+          <Chip size="small" color="success" label="Fiscale stampato" sx={{ mt: 1, fontWeight: 600 }} />
+        )}
+        {order.fiscalPrintError && !order.fiscalPrintedAt && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            Ultima stampa fiscale non riuscita: {order.fiscalPrintError}
+          </Alert>
+        )}
 
         {order.proposedRequestedAt && (
           <Box sx={{ mt: 1.5 }}>

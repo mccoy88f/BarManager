@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { OnlineOrderStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,6 +10,7 @@ import { OnlineOrdersService } from './online-orders.service';
 import { RejectOnlineOrderDto } from './dto/reject-online-order.dto';
 import { ProposeOrderTimeChangeDto } from './dto/propose-order-time-change.dto';
 import { CompleteOnlineOrderDto } from './dto/complete-online-order.dto';
+import { AckFiscalReceiptDto } from './dto/ack-fiscal-receipt.dto';
 
 /** Coda e storico ordini online, lato admin/manager autorizzato (§5.10). */
 @Controller('online-orders')
@@ -110,5 +111,24 @@ export class OnlineOrdersController {
   @Get(':id/receipt/escpos')
   async fullReceiptEscpos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return { sections: await this.onlineOrdersService.getFullReceiptSections(requireVenueId(user), id) };
+  }
+
+  /**
+   * Tracciato XON/XOFF + host/porta RCH per lo scontrino fiscale.
+   * La stampa TCP avviene solo dall'APK Android sulla LAN del locale.
+   */
+  @Get(':id/fiscal-receipt')
+  fiscalReceipt(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.onlineOrdersService.prepareFiscalReceipt(requireVenueId(user), id);
+  }
+
+  /** Conferma esito stampa fiscale RCH dall'app nativa. */
+  @Post(':id/fiscal-receipt/ack')
+  ackFiscalReceipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AckFiscalReceiptDto,
+  ) {
+    return this.onlineOrdersService.ackFiscalReceipt(requireVenueId(user), id, dto);
   }
 }
