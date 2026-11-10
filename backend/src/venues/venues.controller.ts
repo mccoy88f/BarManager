@@ -254,4 +254,11 @@ export class VenuesController {
   listOwnLoyversePaymentTypes(@CurrentUser() user: AuthenticatedUser) {
     return this.venuesService.listLoyversePaymentTypes(requireVenueId(user));
   }
+
+  /** Articoli/varianti Loyverse per accoppiare la voce "spese di consegna" sulla ricevuta. */
+  @Get('me/loyverse-delivery-variants')
+  @Roles(Role.ADMIN)
+  listOwnLoyverseDeliveryVariants(@CurrentUser() user: AuthenticatedUser) {
+    return this.venuesService.listLoyverseDeliveryVariants(requireVenueId(user));
+  }
 }

@@ -78,4 +78,9 @@ export class UpdateOnlineOrdersSettingsDto {
   @IsOptional()
   @IsString()
   loyversePaymentTypeIdCardInStore?: string | null;
+
+  /** Variante Loyverse da usare come riga "spese di consegna" sulla ricevuta. null = non accoppiata. */
+  @IsOptional()
+  @IsString()
+  loyverseDeliveryVariantId?: string | null;
 }

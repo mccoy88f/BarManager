@@ -232,6 +232,11 @@ model Venue {
   loyversePaymentTypeIdCash        String?
   loyversePaymentTypeIdCardOnline  String?
   loyversePaymentTypeIdCardInStore String?
+  // Variante Loyverse usata come riga "spese di consegna" sulla ricevuta
+  // degli ordini online (POST /receipts richiede un variant_id per ogni
+  // importo): l'admin crea l'articolo su Loyverse, poi lo sceglie qui.
+  // Obbligatorio solo quando OnlineOrder.deliveryFee > 0.
+  loyverseDeliveryVariantId        String?
   // Punto vendita Loyverse a cui agganciare le ricevute (POST /receipts lo
   // richiede sempre): BarManager assume un account a punto vendita unico
   // per locale (v. loyverse-client.ts), quindi va letto una sola volta

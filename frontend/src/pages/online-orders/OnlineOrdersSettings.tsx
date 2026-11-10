@@ -45,12 +45,18 @@ interface VenueOnlineOrdersSettings {
   loyversePaymentTypeIdCash: string | null;
   loyversePaymentTypeIdCardOnline: string | null;
   loyversePaymentTypeIdCardInStore: string | null;
+  loyverseDeliveryVariantId: string | null;
 }
 
 interface LoyversePaymentType {
   id: string;
   name: string;
   type?: string;
+}
+
+interface LoyverseDeliveryVariantOption {
+  variantId: string;
+  label: string;
 }
 
 /**
@@ -103,7 +109,15 @@ export function OnlineOrdersSettings() {
   const [sumupEnabled, setSumupEnabled] = useState(false);
   const [sumupApiKey, setSumupApiKey] = useState('');
   const [loyversePaymentTypes, setLoyversePaymentTypes] = useState<LoyversePaymentType[] | null>(null);
-  const [loyverseMapping, setLoyverseMapping] = useState({ cash: '', cardOnline: '', cardInStore: '' });
+  const [loyverseDeliveryVariants, setLoyverseDeliveryVariants] = useState<LoyverseDeliveryVariantOption[] | null>(
+    null,
+  );
+  const [loyverseMapping, setLoyverseMapping] = useState({
+    cash: '',
+    cardOnline: '',
+    cardInStore: '',
+    deliveryVariantId: '',
+  });
 
   const ordersHydrated = useRef(false);
   useEffect(() => {
@@ -135,6 +149,7 @@ export function OnlineOrdersSettings() {
       cash: v.loyversePaymentTypeIdCash ?? '',
       cardOnline: v.loyversePaymentTypeIdCardOnline ?? '',
       cardInStore: v.loyversePaymentTypeIdCardInStore ?? '',
+      deliveryVariantId: v.loyverseDeliveryVariantId ?? '',
     });
   }, [venueQuery.data]);
 
@@ -231,6 +246,19 @@ export function OnlineOrdersSettings() {
     },
   });
 
+  const fetchLoyverseDeliveryVariantsMutation = useMutation({
+    mutationFn: async () =>
+      (await api.get<LoyverseDeliveryVariantOption[]>('/venues/me/loyverse-delivery-variants')).data,
+    onSuccess: (variants) => {
+      setLoyverseDeliveryVariants(variants);
+      showToast(
+        variants.length
+          ? `${variants.length} articoli Loyverse letti`
+          : 'Nessun articolo trovato sull\'account Loyverse collegato',
+      );
+    },
+  });
+
   const saveLoyverseMappingMutation = useMutation({
     mutationFn: async () =>
       (
@@ -238,6 +266,7 @@ export function OnlineOrdersSettings() {
           loyversePaymentTypeIdCash: loyverseMapping.cash || null,
           loyversePaymentTypeIdCardOnline: loyverseMapping.cardOnline || null,
           loyversePaymentTypeIdCardInStore: loyverseMapping.cardInStore || null,
+          loyverseDeliveryVariantId: loyverseMapping.deliveryVariantId || null,
         })
       ).data,
     onSuccess: () => { invalidateVenue(); showToast('Mappatura Loyverse salvata'); },
@@ -541,10 +570,66 @@ export function OnlineOrdersSettings() {
           <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mt: 1 }}>
             Alla chiusura effettiva dell'ordine, se l'integrazione Loyverse è attiva (Impostazioni
             locale), crea automaticamente una ricevuta su Loyverse — nessun interruttore separato
-            qui: segue sempre lo stato dell'integrazione generale.
+            qui: segue sempre lo stato dell'integrazione generale. Le spese di consegna (se
+            presenti) diventano una riga aggiuntiva sull'articolo Loyverse scelto sotto.
           </Typography>
 
           <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Articolo spese di consegna
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Crea su Loyverse un articolo dedicato (es. «Spese di consegna»), poi accoppialo qui.
+              Serve solo quando l&apos;ordine ha un costo di consegna maggiore di zero.
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={
+                fetchLoyverseDeliveryVariantsMutation.isPending ? <CircularProgress size={16} /> : <SyncIcon />
+              }
+              disabled={
+                !venueQuery.data?.loyverseIntegrationEnabled || fetchLoyverseDeliveryVariantsMutation.isPending
+              }
+              onClick={() => fetchLoyverseDeliveryVariantsMutation.mutate()}
+            >
+              Leggi articoli Loyverse
+            </Button>
+            {fetchLoyverseDeliveryVariantsMutation.isError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {extractErrorMessage(fetchLoyverseDeliveryVariantsMutation.error)}
+              </Alert>
+            )}
+            {(loyverseDeliveryVariants || venueQuery.data?.loyverseDeliveryVariantId) && (
+              <TextField
+                select
+                label="Articolo spese di consegna"
+                size="small"
+                sx={{ mt: 2, maxWidth: 400, display: 'block' }}
+                value={loyverseMapping.deliveryVariantId}
+                onChange={(e) => setLoyverseMapping((f) => ({ ...f, deliveryVariantId: e.target.value }))}
+                helperText={
+                  !loyverseDeliveryVariants
+                    ? 'Premi «Leggi articoli Loyverse» per aggiornare l\'elenco.'
+                    : undefined
+                }
+              >
+                <MenuItem value="">— Non accoppiato —</MenuItem>
+                {(loyverseDeliveryVariants ?? []).map((v) => (
+                  <MenuItem key={v.variantId} value={v.variantId}>
+                    {v.label}
+                  </MenuItem>
+                ))}
+                {loyverseMapping.deliveryVariantId &&
+                  !(loyverseDeliveryVariants ?? []).some((v) => v.variantId === loyverseMapping.deliveryVariantId) && (
+                    <MenuItem value={loyverseMapping.deliveryVariantId}>
+                      Articolo già collegato (rileggi l&apos;elenco per il nome)
+                    </MenuItem>
+                  )}
+              </TextField>
+            )}
+          </Box>
+
+          <Box sx={{ mt: 3 }}>
             <Typography variant="subtitle2" gutterBottom>
               Mappatura metodi di pagamento
             </Typography>

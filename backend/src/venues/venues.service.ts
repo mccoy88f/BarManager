@@ -5,7 +5,7 @@ import { AuthService } from '../auth/auth.service';
 import { resolveOpeningHours } from '../common/opening-hours/opening-hours';
 import { encryptSecret, decryptSecret } from '../common/crypto/secret-crypto';
 import { SumUpApiError, sumupClient } from '../common/payments/sumup-client';
-import { loyverseClient } from '../loyverse/loyverse-client';
+import { loyverseClient, variantDisplayName } from '../loyverse/loyverse-client';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
 import { UpdateOpeningHoursDto } from './dto/update-opening-hours.dto';
@@ -143,6 +143,7 @@ export class VenuesService {
         loyversePaymentTypeIdCash: true,
         loyversePaymentTypeIdCardOnline: true,
         loyversePaymentTypeIdCardInStore: true,
+        loyverseDeliveryVariantId: true,
       },
     });
     if (!venue) return venue;
@@ -313,5 +314,31 @@ export class VenuesService {
       throw new BadRequestException('Integrazione Loyverse non configurata.');
     }
     return loyverseClient.listPaymentTypes(decryptSecret(venue.loyverseAccessTokenEnc));
+  }
+
+  /**
+   * Articoli/varianti Loyverse per scegliere la voce "spese di consegna"
+   * da mettere sulla ricevuta (§5.10). Un item con una sola variante
+   * senza nome opzione appare come solo il nome articolo; con più
+   * varianti il label include anche la variante.
+   */
+  async listLoyverseDeliveryVariants(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue?.loyverseAccessTokenEnc) {
+      throw new BadRequestException('Integrazione Loyverse non configurata.');
+    }
+    const items = await loyverseClient.listItems(decryptSecret(venue.loyverseAccessTokenEnc));
+    const options: { variantId: string; label: string }[] = [];
+    for (const item of items.filter((i) => !i.deleted_at)) {
+      const variants = (item.variants ?? []).filter((v) => v.variant_id);
+      for (const variant of variants) {
+        const variantLabel = variantDisplayName(variant);
+        options.push({
+          variantId: variant.variant_id,
+          label: variantLabel ? `${item.item_name} — ${variantLabel}` : item.item_name,
+        });
+      }
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'it'));
   }
 }

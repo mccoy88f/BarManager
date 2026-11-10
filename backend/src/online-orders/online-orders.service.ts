@@ -90,6 +90,7 @@ const VENUE_SELECT = {
   loyversePaymentTypeIdCash: true,
   loyversePaymentTypeIdCardOnline: true,
   loyversePaymentTypeIdCardInStore: true,
+  loyverseDeliveryVariantId: true,
 } as const;
 
 type OnlineOrdersVenueSettings = {
@@ -130,6 +131,7 @@ type OnlineOrdersVenueSettings = {
   loyversePaymentTypeIdCash: string | null;
   loyversePaymentTypeIdCardOnline: string | null;
   loyversePaymentTypeIdCardInStore: string | null;
+  loyverseDeliveryVariantId: string | null;
 };
 
 const HISTORY_STATUSES: OnlineOrderStatus[] = ['COMPLETED', 'REJECTED', 'CANCELLED'];
@@ -1003,6 +1005,22 @@ export class OnlineOrdersService {
           }),
         };
       });
+
+      // Loyverse accetta solo righe con variant_id: le spese di consegna
+      // diventano una riga aggiuntiva sull'articolo scelto in Impostazioni.
+      if (order.deliveryFee > 0) {
+        if (!venue.loyverseDeliveryVariantId) {
+          throw new Error(
+            'Spese di consegna non collegate a un articolo Loyverse (v. Impostazioni ordini online)',
+          );
+        }
+        lineItems.push({
+          variant_id: venue.loyverseDeliveryVariantId,
+          quantity: 1,
+          price: order.deliveryFee,
+          line_modifiers: [],
+        });
+      }
 
       const receipt = await loyverseClient.createReceipt(accessToken, {
         store_id: storeId,

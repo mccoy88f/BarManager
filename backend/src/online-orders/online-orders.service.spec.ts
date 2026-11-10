@@ -94,6 +94,7 @@ const baseVenue = {
   loyversePaymentTypeIdCash: null as string | null,
   loyversePaymentTypeIdCardOnline: null as string | null,
   loyversePaymentTypeIdCardInStore: null as string | null,
+  loyverseDeliveryVariantId: null as string | null,
 };
 
 /** Prossimo orario di pranzo (12:30, dentro il margine di 30' su un'apertura 12:00-15:00), evita di dipendere da quando girano i test. */
@@ -908,6 +909,39 @@ describe('OnlineOrdersService', () => {
       const updated = await service.complete(admin, 'venue-1', 'order-1', {});
       expect(loyverseClient.createReceipt).not.toHaveBeenCalled();
       expect((updated as unknown as { loyverseSyncError: string }).loyverseSyncError).toMatch(/Pizza/);
+    });
+
+    it('aggiunge le spese di consegna come riga sull\'articolo Loyverse mappato', async () => {
+      prisma.venue.findUnique.mockResolvedValue({
+        ...loyverseVenue,
+        loyverseDeliveryVariantId: 'loy-delivery-variant',
+      });
+      prisma.onlineOrder.findFirst.mockResolvedValue(
+        completedOrderFixture({ deliveryFee: 3, total: 23 }),
+      );
+      (loyverseClient.createReceipt as jest.Mock).mockResolvedValue({ receipt_number: 'R-3' });
+      await service.complete(admin, 'venue-1', 'order-1', {});
+      expect(loyverseClient.createReceipt).toHaveBeenCalledWith(
+        'loyverse-token',
+        expect.objectContaining({
+          payments: [{ payment_type_id: 'ptype-cash', money_amount: 23 }],
+          line_items: [
+            expect.objectContaining({ variant_id: 'loy-variant-1', quantity: 2, price: 10 }),
+            expect.objectContaining({ variant_id: 'loy-delivery-variant', quantity: 1, price: 3 }),
+          ],
+        }),
+      );
+    });
+
+    it('salva un errore se ci sono spese di consegna ma nessun articolo Loyverse è collegato', async () => {
+      prisma.onlineOrder.findFirst.mockResolvedValue(
+        completedOrderFixture({ deliveryFee: 3, total: 23 }),
+      );
+      const updated = await service.complete(admin, 'venue-1', 'order-1', {});
+      expect(loyverseClient.createReceipt).not.toHaveBeenCalled();
+      expect((updated as unknown as { loyverseSyncError: string }).loyverseSyncError).toMatch(
+        /Spese di consegna non collegate/,
+      );
     });
 
     it('non tenta nulla se loyverseIntegrationEnabled è disattivato, anche con un token già salvato (nessun interruttore proprio)', async () => {
