@@ -346,8 +346,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.10-1;
-				CURRENT_PROJECT_VERSION = 26111001;
+				MARKETING_VERSION = 2026.11.10-2;
+				CURRENT_PROJECT_VERSION = 26111002;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = it.mccoy88f.barmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -368,8 +368,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.10-1;
-				CURRENT_PROJECT_VERSION = 26111001;
+				MARKETING_VERSION = 2026.11.10-2;
+				CURRENT_PROJECT_VERSION = 26111002;
 				PRODUCT_BUNDLE_IDENTIFIER = it.mccoy88f.barmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
